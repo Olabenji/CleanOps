@@ -1,0 +1,654 @@
+import {
+  adminMasterDataSchema,
+  attendanceOverrideSchema,
+  customerOnboardingInputSchema,
+  customerLedgerItemSchema,
+  incidentReportSchema,
+  monthlyStaffSummarySchema,
+  paymentLedgerItemSchema,
+  paymentEntrySchema,
+  routeDetailSchema,
+  routePlanningOptionsSchema,
+  routeStopStatuses,
+  staffOnboardingInputSchema,
+  staffAttendanceRowSchema,
+  truckOnboardingInputSchema,
+  type AdminMasterData,
+  type AttendanceOverride,
+  type CustomerLedgerItem,
+  type CustomerOnboardingInput,
+  type IncidentReport,
+  type MonthlyStaffSummary,
+  type PaymentEntry,
+  type PaymentLedgerItem,
+  type RouteDetail,
+  type RoutePlanningOptions,
+  type RouteStatus,
+  type RouteStopStatus,
+  type StaffOnboardingInput,
+  type StaffAttendanceRow,
+  type TruckOnboardingInput
+} from "@cleanops/shared";
+import { supabase } from "../lib/supabase";
+import {
+  applyPilotAttendanceOverride,
+  getPilotMonthlyStaffSummary,
+  getPilotPaymentHistory,
+  pilotIncidentReports,
+  pilotCustomerLedger,
+  pilotPayments,
+  pilotRouteDetails,
+  pilotStaffAttendance,
+  recordPilotPayment,
+  updatePilotCustomerStatus,
+  updatePilotRouteStatus,
+  updatePilotStopStatus
+} from "./pilotWorkflows";
+
+type RawRouteStop = {
+  id: string;
+  stop_sequence: number;
+  status: string;
+  completed_at: string | null;
+  notes: string | null;
+  skip_reason: string | null;
+  customers:
+    | {
+        display_name?: string;
+        id?: string;
+        address?: string;
+        service_status?: string;
+      }
+    | Array<{
+        display_name?: string;
+        id?: string;
+        address?: string;
+        service_status?: string;
+      }>
+    | null;
+};
+
+export async function getRoutes(operationDate?: string): Promise<RouteDetail[]> {
+  if (!supabase) {
+    return filterPilotRoutesByDate(operationDate);
+  }
+
+  let query = supabase
+    .from("routes")
+    .select(
+      `
+      id,
+      zone_id,
+      truck_id,
+      driver_id,
+      scheduled_date,
+      started_at,
+      completed_at,
+      status,
+      zones(name),
+      trucks(registration_number),
+      staff_members(full_name),
+      route_stops(
+        id,
+        stop_sequence,
+        status,
+        completed_at,
+        notes,
+        skip_reason,
+        customers(id, display_name, address, service_status)
+      )
+    `
+    )
+    .order("scheduled_date", { ascending: false });
+
+  if (operationDate) {
+    query = query.eq("scheduled_date", operationDate);
+  }
+
+  const { data, error } = await query;
+
+  if (error || !data || data.length === 0) {
+    return filterPilotRoutesByDate(operationDate);
+  }
+
+  return data.map(mapRoute).filter(Boolean) as RouteDetail[];
+}
+
+export async function updateRouteStopStatus(
+  routeId: string,
+  stopId: string,
+  status: RouteStopStatus,
+  notes?: string,
+  skipReason?: string,
+  operationDate?: string
+): Promise<RouteDetail[]> {
+  if (!routeStopStatuses.includes(status)) {
+    throw new Error(`Unsupported stop status: ${status}`);
+  }
+
+  if (!supabase) {
+    updatePilotStopStatus(routeId, stopId, status, notes, skipReason);
+    return filterPilotRoutesByDate(operationDate);
+  }
+
+  const { error } = await supabase.rpc("update_route_stop_status", {
+    input_stop_id: stopId,
+    next_status: status,
+    input_notes: notes ?? null,
+    input_skip_reason: skipReason ?? null
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return getRoutes(operationDate);
+}
+
+export async function transitionRouteStatus(routeId: string, status: RouteStatus, operationDate?: string): Promise<RouteDetail[]> {
+  if (!supabase) {
+    updatePilotRouteStatus(routeId, status);
+    return filterPilotRoutesByDate(operationDate);
+  }
+
+  const { error } = await supabase.rpc("transition_route_status", {
+    input_route_id: routeId,
+    next_status: status
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return getRoutes(operationDate);
+}
+
+export async function getPaymentLedger(): Promise<PaymentLedgerItem[]> {
+  if (!supabase) {
+    return pilotPayments;
+  }
+
+  const { data, error } = await supabase
+    .from("payments")
+    .select(
+      `
+      id,
+      channel,
+      amount_kobo,
+      paid_at,
+      customers(display_name, customer_type, address, service_status)
+    `
+    )
+    .order("paid_at", { ascending: false })
+    .limit(50);
+
+  if (error || !data) {
+    return pilotPayments;
+  }
+
+  return data.map((payment) => {
+    const customer = Array.isArray(payment.customers) ? payment.customers[0] : payment.customers;
+
+    return paymentLedgerItemSchema.parse({
+      id: payment.id,
+      customerName: customer?.display_name ?? "Unknown customer",
+      channel: payment.channel,
+      amountKobo: payment.amount_kobo,
+      paidAt: payment.paid_at,
+      customerType: customer?.customer_type ?? "residential",
+      address: customer?.address ?? "No address",
+      serviceStatus: customer?.service_status ?? "active"
+    });
+  });
+}
+
+export async function getCustomerLedger(): Promise<CustomerLedgerItem[]> {
+  if (!supabase) {
+    return pilotCustomerLedger;
+  }
+
+  const { data, error } = await supabase.rpc("customer_ledger_snapshot");
+
+  if (error || !data) {
+    return pilotCustomerLedger;
+  }
+
+  return customerLedgerItemSchema.array().parse(data);
+}
+
+export async function getCustomerPaymentHistory(customerId: string): Promise<PaymentLedgerItem[]> {
+  if (!supabase) {
+    return getPilotPaymentHistory(customerId);
+  }
+
+  const { data, error } = await supabase.rpc("customer_payment_history", {
+    input_customer_id: customerId
+  });
+
+  if (error || !data) {
+    return [];
+  }
+
+  return paymentLedgerItemSchema.array().parse(data);
+}
+
+export async function recordPayment(entry: PaymentEntry): Promise<CustomerLedgerItem[]> {
+  const parsed = paymentEntrySchema.parse(entry);
+
+  if (!supabase) {
+    return recordPilotPayment(parsed);
+  }
+
+  const { error } = await supabase.rpc("record_operator_payment", {
+    input_customer_id: parsed.customerId,
+    input_channel: parsed.channel,
+    input_amount_kobo: parsed.amountKobo,
+    input_external_reference: parsed.externalReference ?? null
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return getCustomerLedger();
+}
+
+export async function updateCustomerAccountStatus(
+  customerId: string,
+  status: CustomerLedgerItem["serviceStatus"],
+  tagMonth?: string
+): Promise<CustomerLedgerItem[]> {
+  if (!supabase) {
+    return updatePilotCustomerStatus(customerId, status, tagMonth);
+  }
+
+  const { error } = await supabase.rpc("update_customer_account_status", {
+    input_customer_id: customerId,
+    next_status: status,
+    next_tag_month: tagMonth ?? null
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return getCustomerLedger();
+}
+
+export async function getStaffAttendance(
+  attendanceDate = new Date().toISOString().slice(0, 10)
+): Promise<StaffAttendanceRow[]> {
+  if (!supabase) {
+    return pilotStaffAttendance;
+  }
+
+  const { data, error } = await supabase.rpc("attendance_snapshot", {
+    input_date: attendanceDate
+  });
+
+  if (error || !data) {
+    return pilotStaffAttendance;
+  }
+
+  return staffAttendanceRowSchema.array().parse(data);
+}
+
+export async function recordAttendanceOverride(override: AttendanceOverride): Promise<StaffAttendanceRow[]> {
+  const parsed = attendanceOverrideSchema.parse(override);
+
+  if (!supabase) {
+    return applyPilotAttendanceOverride(parsed);
+  }
+
+  const { error } = await supabase.rpc("record_attendance_override", {
+    input_staff_member_id: parsed.staffMemberId,
+    input_attendance_date: parsed.attendanceDate,
+    input_checked_in: parsed.checkedIn,
+    input_reason: parsed.reason ?? null,
+    input_note: parsed.note ?? null
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return getStaffAttendance(parsed.attendanceDate);
+}
+
+export async function getMonthlyStaffSummary(
+  month = new Date().toISOString().slice(0, 10)
+): Promise<MonthlyStaffSummary[]> {
+  if (!supabase) {
+    return getPilotMonthlyStaffSummary();
+  }
+
+  const { data, error } = await supabase.rpc("monthly_staff_summary", {
+    input_month: month
+  });
+
+  if (error || !data) {
+    return getPilotMonthlyStaffSummary();
+  }
+
+  return monthlyStaffSummarySchema.array().parse(data);
+}
+
+export async function getRecentIncidentReports(operationDate?: string): Promise<IncidentReport[]> {
+  if (!supabase) {
+    return filterPilotIncidentsByDate(operationDate);
+  }
+
+  const { data, error } = await supabase.rpc("recent_incident_reports", {
+    input_limit: 10,
+    input_date: operationDate ?? null
+  });
+
+  if (error || !data) {
+    return filterPilotIncidentsByDate(operationDate);
+  }
+
+  return incidentReportSchema.array().parse(data);
+}
+
+export async function planDailyRoutes(operationDate: string): Promise<number> {
+  if (!supabase) {
+    return 0;
+  }
+
+  const { data, error } = await supabase.rpc("plan_daily_routes", {
+    input_scheduled_date: operationDate
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return Number(data ?? 0);
+}
+
+export async function getRoutePlanningOptions(): Promise<RoutePlanningOptions> {
+  if (!supabase) {
+    return {
+      zones: [],
+      trucks: [],
+      drivers: [],
+      customers: []
+    };
+  }
+
+  const { data, error } = await supabase.rpc("route_planning_options");
+
+  if (error || !data) {
+    throw new Error(error?.message ?? "Unable to load route planning options");
+  }
+
+  return routePlanningOptionsSchema.parse(data);
+}
+
+export async function updateRoutePlanAssignment(
+  routeId: string,
+  zoneId: string,
+  truckId: string,
+  driverId: string | null,
+  operationDate?: string
+): Promise<RouteDetail[]> {
+  if (!supabase) {
+    return filterPilotRoutesByDate(operationDate);
+  }
+
+  const { error } = await supabase.rpc("update_route_plan_assignment", {
+    input_route_id: routeId,
+    input_zone_id: zoneId,
+    input_truck_id: truckId,
+    input_driver_id: driverId
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return getRoutes(operationDate);
+}
+
+export async function addRoutePlanStop(routeId: string, customerId: string, operationDate?: string): Promise<RouteDetail[]> {
+  if (!supabase) {
+    return filterPilotRoutesByDate(operationDate);
+  }
+
+  const { error } = await supabase.rpc("add_route_plan_stop", {
+    input_route_id: routeId,
+    input_customer_id: customerId
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return getRoutes(operationDate);
+}
+
+export async function removeRoutePlanStop(stopId: string, operationDate?: string): Promise<RouteDetail[]> {
+  if (!supabase) {
+    return filterPilotRoutesByDate(operationDate);
+  }
+
+  const { error } = await supabase.rpc("remove_route_plan_stop", {
+    input_stop_id: stopId
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return getRoutes(operationDate);
+}
+
+export async function moveRoutePlanStop(
+  stopId: string,
+  direction: "up" | "down",
+  operationDate?: string
+): Promise<RouteDetail[]> {
+  if (!supabase) {
+    return filterPilotRoutesByDate(operationDate);
+  }
+
+  const { error } = await supabase.rpc("move_route_plan_stop", {
+    input_stop_id: stopId,
+    input_direction: direction
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return getRoutes(operationDate);
+}
+
+export async function getAdminMasterData(): Promise<AdminMasterData> {
+  if (!supabase) {
+    return {
+      zones: [],
+      staff: [],
+      trucks: [],
+      customers: []
+    };
+  }
+
+  const { data, error } = await supabase.rpc("admin_master_data");
+
+  if (error || !data) {
+    throw new Error(error?.message ?? "Unable to load admin master data");
+  }
+
+  return adminMasterDataSchema.parse(data);
+}
+
+export async function onboardStaffMember(input: StaffOnboardingInput) {
+  const parsed = staffOnboardingInputSchema.parse(input);
+
+  if (!supabase) {
+    return;
+  }
+
+  const { error } = await supabase.rpc("onboard_staff_member", {
+    input_full_name: parsed.fullName,
+    input_phone: parsed.phone,
+    input_role: parsed.role,
+    input_monthly_salary_kobo: parsed.monthlySalaryKobo
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function setStaffActive(staffId: string, active: boolean) {
+  if (!supabase) {
+    return;
+  }
+
+  const { error } = await supabase.rpc("set_staff_active", {
+    input_staff_id: staffId,
+    next_active: active
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function onboardTruck(input: TruckOnboardingInput) {
+  const parsed = truckOnboardingInputSchema.parse(input);
+
+  if (!supabase) {
+    return;
+  }
+
+  const { error } = await supabase.rpc("onboard_truck", {
+    input_zone_id: parsed.zoneId,
+    input_registration_number: parsed.registrationNumber,
+    input_make: parsed.make ?? null,
+    input_model: parsed.model ?? null,
+    input_year: parsed.year ?? null,
+    input_status: parsed.status
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function setTruckActive(truckId: string, active: boolean) {
+  if (!supabase) {
+    return;
+  }
+
+  const { error } = await supabase.rpc("set_truck_active", {
+    input_truck_id: truckId,
+    next_active: active
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function onboardCustomer(input: CustomerOnboardingInput) {
+  const parsed = customerOnboardingInputSchema.parse(input);
+
+  if (!supabase) {
+    return;
+  }
+
+  const { error } = await supabase.rpc("onboard_customer", {
+    input_zone_id: parsed.zoneId,
+    input_display_name: parsed.displayName,
+    input_phone: parsed.phone ?? null,
+    input_address: parsed.address,
+    input_customer_type: parsed.customerType,
+    input_monthly_rate_kobo: parsed.monthlyRateKobo,
+    input_service_status: parsed.serviceStatus
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function setCustomerServiceStatus(customerId: string, serviceStatus: CustomerLedgerItem["serviceStatus"]) {
+  if (!supabase) {
+    return;
+  }
+
+  const { error } = await supabase.rpc("set_customer_service_status", {
+    input_customer_id: customerId,
+    next_status: serviceStatus
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+function filterPilotRoutesByDate(operationDate?: string) {
+  if (!operationDate) {
+    return pilotRouteDetails;
+  }
+
+  const filtered = pilotRouteDetails.filter((route) => route.scheduledDate === operationDate);
+
+  return filtered.length > 0 ? filtered : [];
+}
+
+function filterPilotIncidentsByDate(operationDate?: string) {
+  if (!operationDate) {
+    return pilotIncidentReports;
+  }
+
+  return pilotIncidentReports.filter((incident) => incident.createdAt.slice(0, 10) === operationDate);
+}
+
+function mapRoute(route: any): RouteDetail | null {
+  const zone = Array.isArray(route.zones) ? route.zones[0] : route.zones;
+  const truck = Array.isArray(route.trucks) ? route.trucks[0] : route.trucks;
+  const driver = Array.isArray(route.staff_members) ? route.staff_members[0] : route.staff_members;
+  const stops: RawRouteStop[] = Array.isArray(route.route_stops) ? route.route_stops : [];
+  const completedStops = stops.filter((stop) => stop.status === "completed").length;
+
+  const parsed = routeDetailSchema.safeParse({
+    id: route.id,
+    zoneId: route.zone_id,
+    zoneName: zone?.name ?? "Unassigned zone",
+    truckId: route.truck_id,
+    truckRegistration: truck?.registration_number ?? "Unassigned truck",
+    driverId: route.driver_id,
+    driverName: driver?.full_name ?? "Unassigned driver",
+    status: route.status,
+    completedStops,
+    totalStops: Math.max(stops.length, 1),
+    delayed: route.status === "in_progress" && completedStops / Math.max(stops.length, 1) < 0.35,
+    scheduledDate: route.scheduled_date,
+    startedAt: route.started_at,
+    completedAt: route.completed_at,
+    stops: stops
+      .sort((a: RawRouteStop, b: RawRouteStop) => a.stop_sequence - b.stop_sequence)
+      .map((stop) => {
+        const customer = Array.isArray(stop.customers) ? stop.customers[0] : stop.customers;
+
+        return {
+          id: stop.id,
+          customerId: customer?.id,
+          customerName: customer?.display_name ?? "Unknown customer",
+          address: customer?.address ?? "No address",
+          stopSequence: stop.stop_sequence,
+          status: stop.status,
+          completedAt: stop.completed_at,
+          notes: stop.notes,
+          skipReason: stop.skip_reason,
+          serviceStatus: customer?.service_status ?? "active"
+        };
+      })
+  });
+
+  return parsed.success ? parsed.data : null;
+}

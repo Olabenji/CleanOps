@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "CleanOps",
+    "slug": "cleanops",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "cleanops",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.nexttogodliness.cleanops"
+    },
+    "extra": {
+      "eas": {
+        "projectId": ""
+      }
+    }
+  }
+}

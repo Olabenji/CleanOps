@@ -1,0 +1,29 @@
+{
+  "name": "@cleanops/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@cleanops/shared": "file:../../packages/shared",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@supabase/supabase-js": "latest",
+    "expo": "latest",
+    "expo-status-bar": "latest",
+    "react": "latest",
+    "react-native": "latest",
+    "react-native-mmkv": "latest",
+    "react-native-safe-area-context": "^5.8.0",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@types/react": "latest",
+    "typescript": "latest"
+  }
+}
