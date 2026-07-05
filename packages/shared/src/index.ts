@@ -271,6 +271,7 @@ export const customerLedgerItemSchema = z.object({
   paidThisMonthKobo: z.number().int().nonnegative(),
   outstandingKobo: z.number().int().nonnegative(),
   serviceStatus: z.enum(["active", "suspended"]),
+  suspensionReason: z.string().nullable(),
   currentTagMonth: z.string().nullable(),
   lastPaymentAt: z.string().nullable(),
   lastPaymentAmountKobo: z.number().int().positive().nullable(),
@@ -282,6 +283,69 @@ export const paymentEntrySchema = z.object({
   channel: z.enum(paymentChannels),
   amountKobo: z.number().int().positive(),
   externalReference: z.string().optional()
+});
+
+export const agentPaymentEntrySchema = z.object({
+  customerId: z.string().uuid(),
+  channel: z.enum(paymentChannels),
+  amountKobo: z.number().int().positive(),
+  externalReference: z.string().optional(),
+  idempotencyKey: z.string().optional()
+});
+
+export const agentPaymentReceiptSchema = z.object({
+  paymentId: z.string().uuid(),
+  receiptReference: z.string(),
+  customerName: z.string(),
+  amountKobo: z.number().int().positive(),
+  channel: z.enum(paymentChannels),
+  paidAt: z.string(),
+  outstandingKobo: z.number().int().nonnegative()
+});
+
+export const agentCollectionPaymentSchema = z.object({
+  paymentId: z.string().uuid(),
+  customerName: z.string(),
+  amountKobo: z.number().int().positive(),
+  channel: z.enum(paymentChannels),
+  receiptReference: z.string().nullable(),
+  paidAt: z.string()
+});
+
+export const agentDailyCollectionSummarySchema = z.object({
+  collectionDate: z.string(),
+  agentName: z.string(),
+  totalCollectedKobo: z.number().int().nonnegative(),
+  paymentCount: z.number().int().nonnegative(),
+  payments: z.array(agentCollectionPaymentSchema)
+});
+
+export const operatorAgentCollectionAgentSchema = z.object({
+  agentStaffId: z.string().uuid(),
+  agentName: z.string(),
+  totalCollectedKobo: z.number().int().nonnegative(),
+  paymentCount: z.number().int().nonnegative(),
+  payments: z.array(agentCollectionPaymentSchema)
+});
+
+export const operatorAgentCollectionsSnapshotSchema = z.object({
+  collectionDate: z.string(),
+  totalCollectedKobo: z.number().int().nonnegative(),
+  paymentCount: z.number().int().nonnegative(),
+  agents: z.array(operatorAgentCollectionAgentSchema)
+});
+
+export const agentPaymentActionSchema = z.object({
+  id: z.string(),
+  customerId: z.string().uuid(),
+  customerName: z.string(),
+  channel: z.enum(paymentChannels),
+  amountKobo: z.number().int().positive(),
+  externalReference: z.string().optional(),
+  idempotencyKey: z.string(),
+  queuedAt: z.string(),
+  syncedAt: z.string().nullable(),
+  errorMessage: z.string().optional()
 });
 
 export const staffAttendanceRowSchema = z.object({
@@ -369,6 +433,13 @@ export type PaymentSummary = z.infer<typeof paymentSummarySchema>;
 export type PaymentLedgerItem = z.infer<typeof paymentLedgerItemSchema>;
 export type CustomerLedgerItem = z.infer<typeof customerLedgerItemSchema>;
 export type PaymentEntry = z.infer<typeof paymentEntrySchema>;
+export type AgentPaymentEntry = z.infer<typeof agentPaymentEntrySchema>;
+export type AgentPaymentReceipt = z.infer<typeof agentPaymentReceiptSchema>;
+export type AgentCollectionPayment = z.infer<typeof agentCollectionPaymentSchema>;
+export type AgentDailyCollectionSummary = z.infer<typeof agentDailyCollectionSummarySchema>;
+export type OperatorAgentCollectionAgent = z.infer<typeof operatorAgentCollectionAgentSchema>;
+export type OperatorAgentCollectionsSnapshot = z.infer<typeof operatorAgentCollectionsSnapshotSchema>;
+export type AgentPaymentAction = z.infer<typeof agentPaymentActionSchema>;
 export type StaffAttendanceRow = z.infer<typeof staffAttendanceRowSchema>;
 export type AttendanceOverride = z.infer<typeof attendanceOverrideSchema>;
 export type MonthlyStaffSummary = z.infer<typeof monthlyStaffSummarySchema>;

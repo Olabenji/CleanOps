@@ -4,10 +4,11 @@
   "private": true,
   "main": "index.js",
   "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web",
+    "start": "npx expo start",
+    "start:clear": "npx expo start -c",
+    "android": "npx expo start --android",
+    "ios": "npx expo start --ios",
+    "web": "npx expo start --web",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
@@ -24,6 +25,7 @@
   },
   "devDependencies": {
     "@types/react": "latest",
+    "@types/react-native": "^0.72.8",
     "typescript": "latest"
   }
 }

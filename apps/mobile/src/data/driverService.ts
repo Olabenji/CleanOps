@@ -6,7 +6,10 @@ import {
   type RouteStatus
 } from "@cleanops/shared";
 import { supabase } from "../lib/supabase";
+import { withTimeout } from "../lib/withTimeout";
 import { pilotDriver, pilotDriverRoute } from "./driverPilot";
+
+const REQUEST_TIMEOUT_MS = 15_000;
 
 export const driverCredentials = {
   email: "driver@cleanops.local",
@@ -43,10 +46,24 @@ export async function fetchAssignedRoute(): Promise<RouteDetail> {
     return pilotDriverRoute;
   }
 
-  const { data, error } = await supabase.rpc("driver_assigned_route");
+  const { data: sessionData } = await supabase.auth.getSession();
 
-  if (error || !data) {
-    throw new Error(error?.message ?? "No route assigned today");
+  if (!sessionData.session) {
+    throw new Error("Driver is not signed in to Supabase");
+  }
+
+  const { data, error } = await withTimeout(
+    supabase.rpc("driver_assigned_route"),
+    REQUEST_TIMEOUT_MS,
+    "Timed out while loading assigned route"
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (data == null) {
+    throw new Error("No route assigned today");
   }
 
   const parsed = routeDetailSchema.safeParse(data);

@@ -3,7 +3,6 @@ import type {
   AttendanceOverride,
   CustomerLedgerItem,
   CustomerOnboardingInput,
-  CustomerType,
   IncidentReport,
   MonthlyStaffSummary,
   OperatorDashboard,
@@ -17,15 +16,14 @@ import type {
   RouteStopStatus,
   StaffOnboardingInput,
   StaffAttendanceRow,
-  TruckOnboardingInput,
-  TruckStatus,
-  UserRole
+  TruckOnboardingInput
 } from "@cleanops/shared";
 import {
   AlertTriangle,
   CheckCircle2,
   Clock,
   LogOut,
+  RefreshCw,
   Route,
   Truck,
   Users,
@@ -34,6 +32,8 @@ import {
 } from "lucide-react";
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
+import AdminView from "./components/AdminView";
+import AgentCollectionsView from "./components/AgentCollectionsView";
 import {
   getCurrentOperatorProfile,
   signInOperator,
@@ -69,6 +69,8 @@ import {
   updateRouteStopStatus
 } from "./data/operatorWorkflowService";
 import { demoCredentials } from "./data/pilotWorkflows";
+import { formatAppError, parseAmountNairaToKobo } from "./lib/errors";
+import { deriveRouteProgress } from "./lib/routeProgress";
 
 const metricIcons = [Truck, WalletCards, Users, Wrench];
 type View = "dashboard" | "routes" | "payments" | "staff" | "admin";
@@ -101,11 +103,8 @@ const operatorPaymentChannels: PaymentChannel[] = [
   "paystack"
 ];
 
-const adminStaffRoles: UserRole[] = ["driver", "collection_agent", "operations_supervisor"];
-const adminCustomerTypes: CustomerType[] = ["residential", "small_business", "restaurant", "estate"];
-const adminTruckStatuses: TruckStatus[] = ["operational", "standby", "workshop"];
-
 const todayIso = new Date().toISOString().slice(0, 10);
+const LIVE_POLL_MS = 45_000;
 
 const emptyPlanningOptions: RoutePlanningOptions = {
   zones: [],
@@ -146,10 +145,74 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     void bootstrap();
   }, []);
+
+  useEffect(() => {
+    if (!auth || operationDate !== todayIso) {
+      return;
+    }
+
+    if (activeView !== "dashboard" && activeView !== "routes") {
+      return;
+    }
+
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    async function refreshLiveOperations() {
+      try {
+        const [dashboardData, routesData, incidentData] = await Promise.all([
+          getOperatorDashboard(operationDate),
+          getRoutes(operationDate),
+          getRecentIncidentReports(operationDate)
+        ]);
+        setDashboard(dashboardData);
+        setRoutes(routesData);
+        setIncidents(incidentData);
+        setSelectedRouteId((current) =>
+          routesData.some((route) => route.id === current) ? current : routesData[0]?.id ?? null
+        );
+      } catch {
+        // Keep the last good snapshot during background refresh failures.
+      }
+    }
+
+    function startPolling() {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
+
+      intervalId = setInterval(() => {
+        void refreshLiveOperations();
+      }, LIVE_POLL_MS);
+    }
+
+    function handleVisibilityChange() {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+
+      if (document.visibilityState === "visible") {
+        void refreshLiveOperations();
+        startPolling();
+      }
+    }
+
+    void refreshLiveOperations();
+    startPolling();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [auth, activeView, operationDate, todayIso]);
 
   async function bootstrap() {
     setLoading(true);
@@ -203,6 +266,21 @@ export function App() {
     setIncidents(incidentData);
     setSelectedRouteId((current) => (routesData.some((route) => route.id === current) ? current : routesData[0]?.id ?? null));
     setSelectedCustomerId((current) => current ?? ledgerData[0]?.customerId ?? null);
+  }
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    setError(null);
+    setRouteInlineError(null);
+
+    try {
+      await loadWorkspace(operationDate);
+      setStatusMessage(`Refreshed at ${new Date().toLocaleTimeString()}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to refresh workspace");
+    } finally {
+      setRefreshing(false);
+    }
   }
 
   async function handleDemoSignIn() {
@@ -271,13 +349,17 @@ export function App() {
 
     try {
       const nextRoutes = await updateRouteStopStatus(routeId, stopId, status, notes, skipReason, operationDate);
-      setRoutes(nextRoutes);
+      setRoutes(nextRoutes.map(deriveRouteProgress));
       await getOperatorDashboard(operationDate).then(setDashboard);
       setStatusMessage("Stop status updated.");
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to update stop status";
       setRouteInlineError({
         area: "stopCorrection",
-        message: err instanceof Error ? err.message : "Unable to update stop status"
+        message:
+          message === "Route stop not found"
+            ? "This stop is not in the database for the selected date. Use “Plan selected date from templates” on the left, then try again."
+            : message
       });
     }
   }
@@ -316,35 +398,26 @@ export function App() {
     setStatusMessage(null);
     setError(null);
 
-    try {
-      const nextLedger = await recordPayment(entry);
-      const [nextPayments, nextDashboard] = await Promise.all([getPaymentLedger(), getOperatorDashboard(operationDate)]);
-      setCustomerLedger(nextLedger);
-      setPayments(nextPayments);
-      setDashboard(nextDashboard);
-      setSelectedCustomerId(entry.customerId);
-      setStatusMessage("Payment recorded.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to record payment");
-    }
+    const nextLedger = await recordPayment(entry);
+    const [nextPayments, nextDashboard] = await Promise.all([getPaymentLedger(), getOperatorDashboard(operationDate)]);
+    setCustomerLedger(nextLedger);
+    setPayments(nextPayments);
+    setDashboard(nextDashboard);
+    setSelectedCustomerId(entry.customerId);
+    setStatusMessage("Payment recorded.");
   }
 
   async function handleCustomerStatus(
     customerId: string,
     status: CustomerLedgerItem["serviceStatus"],
-    tagMonth?: string
+    tagMonth?: string,
+    suspensionReason?: string
   ) {
     setStatusMessage(null);
-    setError(null);
-
-    try {
-      const nextLedger = await updateCustomerAccountStatus(customerId, status, tagMonth);
-      setCustomerLedger(nextLedger);
-      setSelectedCustomerId(customerId);
-      setStatusMessage(`Customer marked ${status}.`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to update customer status");
-    }
+    const nextLedger = await updateCustomerAccountStatus(customerId, status, tagMonth, suspensionReason);
+    setCustomerLedger(nextLedger);
+    setSelectedCustomerId(customerId);
+    setStatusMessage(`Customer marked ${status}.`);
   }
 
   async function handleAttendanceDateChange(nextDate: string) {
@@ -514,80 +587,51 @@ export function App() {
 
   async function handleOnboardStaff(input: StaffOnboardingInput) {
     setStatusMessage(null);
-    setError(null);
-
-    try {
-      await onboardStaffMember(input);
-      await refreshAdminData();
-      setStatusMessage("Staff member onboarded.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to onboard staff member");
-    }
+    await onboardStaffMember(input);
+    await refreshAdminData();
+    setStatusMessage("Staff member onboarded.");
   }
 
   async function handleSetStaffActive(staffId: string, active: boolean) {
     setStatusMessage(null);
-    setError(null);
-
-    try {
-      await setStaffActive(staffId, active);
-      await refreshAdminData();
-      setStatusMessage(active ? "Staff member reactivated." : "Staff member deactivated.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to update staff status");
-    }
+    await setStaffActive(staffId, active);
+    await refreshAdminData();
+    setStatusMessage(active ? "Staff member reactivated." : "Staff member deactivated.");
   }
 
   async function handleOnboardTruck(input: TruckOnboardingInput) {
     setStatusMessage(null);
-    setError(null);
-
-    try {
-      await onboardTruck(input);
-      await refreshAdminData();
-      setStatusMessage("Truck onboarded.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to onboard truck");
-    }
+    await onboardTruck(input);
+    await refreshAdminData();
+    setStatusMessage("Truck onboarded.");
   }
 
   async function handleSetTruckActive(truckId: string, active: boolean) {
     setStatusMessage(null);
-    setError(null);
-
-    try {
-      await setTruckActive(truckId, active);
-      await refreshAdminData();
-      setStatusMessage(active ? "Truck reactivated." : "Truck deactivated.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to update truck status");
-    }
+    await setTruckActive(truckId, active);
+    await refreshAdminData();
+    setStatusMessage(active ? "Truck reactivated." : "Truck deactivated.");
   }
 
   async function handleOnboardCustomer(input: CustomerOnboardingInput) {
     setStatusMessage(null);
-    setError(null);
-
-    try {
-      await onboardCustomer(input);
-      await refreshAdminData();
-      setStatusMessage("Customer onboarded.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to onboard customer");
-    }
+    await onboardCustomer(input);
+    await refreshAdminData();
+    setStatusMessage("Customer onboarded.");
   }
 
-  async function handleSetCustomerServiceStatus(customerId: string, serviceStatus: CustomerLedgerItem["serviceStatus"]) {
+  async function handleSetCustomerServiceStatus(
+    customerId: string,
+    serviceStatus: CustomerLedgerItem["serviceStatus"]
+  ) {
     setStatusMessage(null);
-    setError(null);
-
-    try {
-      await setCustomerServiceStatus(customerId, serviceStatus);
-      await refreshAdminData();
-      setStatusMessage(`Customer marked ${serviceStatus}.`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to update customer status");
-    }
+    await setCustomerServiceStatus(
+      customerId,
+      serviceStatus,
+      serviceStatus === "suspended" ? "Suspended by operator" : undefined
+    );
+    await refreshAdminData();
+    setStatusMessage(`Customer marked ${serviceStatus}.`);
   }
 
   if (loading) {
@@ -614,15 +658,29 @@ export function App() {
           <p className="eyebrow">Operations Date</p>
           <h2>{operationDate === todayIso ? "Today" : new Date(`${operationDate}T00:00:00`).toLocaleDateString()}</h2>
           <p>View daily route, attendance, payment, and incident state. Plan future routes from recent templates.</p>
+          {operationDate === todayIso && (activeView === "dashboard" || activeView === "routes") ? (
+            <p className="live-refresh-hint">Dashboard and routes auto-refresh every 45 seconds while this tab is open.</p>
+          ) : null}
         </div>
-        <label>
-          Select date
-          <input
-            onChange={(event) => void handleOperationDateChange(event.target.value)}
-            type="date"
-            value={operationDate}
-          />
-        </label>
+        <div className="date-control-actions">
+          <label>
+            Select date
+            <input
+              onChange={(event) => void handleOperationDateChange(event.target.value)}
+              type="date"
+              value={operationDate}
+            />
+          </label>
+          <button
+            className="primary-button refresh-button"
+            disabled={refreshing}
+            onClick={() => void handleRefresh()}
+            type="button"
+          >
+            <RefreshCw aria-hidden="true" className={refreshing ? "spinning" : undefined} />
+            {refreshing ? "Refreshing..." : "Refresh data"}
+          </button>
+        </div>
       </section>
 
       <nav className="workspace-tabs" aria-label="Operator workflow sections">
@@ -662,6 +720,7 @@ export function App() {
       {activeView === "payments" ? (
         <PaymentsView
           customerLedger={customerLedger}
+          operationDate={operationDate}
           payments={payments}
           selectedCustomer={selectedCustomer}
           onRecordPayment={handleRecordPayment}
@@ -910,14 +969,17 @@ function DashboardView({
               <p className="panel-subtitle">No recent incidents reported.</p>
             ) : (
               incidents.map((incident) => (
-                <div className="incident-row" key={incident.id}>
+                <div
+                  className={`incident-row ${incident.resolvedAt ? "" : "incident-row-open"}`}
+                  key={incident.id}
+                >
                   <div>
                     <strong>{incident.title}</strong>
                     <span>
                       {incident.routeLabel ?? "Route"} · {incident.truckRegistration ?? "Truck"} ·{" "}
                       {incident.reportedBy ?? "Unknown reporter"}
                     </span>
-                    <p>{incident.description}</p>
+                    <p className="incident-description">{incident.description}</p>
                   </div>
                   <span className={incident.resolvedAt ? "pill" : "pill danger"}>
                     {incident.resolvedAt ? "Resolved" : "Open"}
@@ -973,6 +1035,7 @@ function RoutesView({
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [selectedCustomerToAdd, setSelectedCustomerToAdd] = useState("");
   const pendingStops = selectedRoute?.stops.filter((stop) => stop.status === "pending").length ?? 0;
+  const resolvedStops = selectedRoute ? selectedRoute.stops.length - pendingStops : 0;
   const routeFinalized = selectedRoute?.status === "completed" || selectedRoute?.status === "cancelled";
   const routePlanEditable = selectedRoute?.status === "scheduled" && !selectedRoute.startedAt && !selectedRoute.completedAt;
   const customersAlreadyPlanned = new Set(selectedRoute?.stops.map((stop) => stop.customerId).filter(Boolean));
@@ -1002,7 +1065,10 @@ function RoutesView({
         </div>
         <div className="stack-list">
           {routes.length === 0 ? (
-            <p className="panel-subtitle">Use the planning button above to create future route plans.</p>
+            <p className="panel-subtitle">
+              No routes exist in Supabase for this date. Use the planning button above to create route plans from recent
+              templates, or choose a date that already has routes.
+            </p>
           ) : (
             routes.map((routeItem) => (
               <button
@@ -1038,14 +1104,40 @@ function RoutesView({
 
         {selectedRoute ? (
           <>
-            <div className="route-operations">
+            <div className={`route-operations route-operations--${selectedRoute.status}`}>
+              <div>
+                <span>Route status</span>
+                <strong className={`route-status-pill route-status-pill--${selectedRoute.status}`}>
+                  {selectedRoute.status.replace("_", " ")}
+                </strong>
+              </div>
               <div>
                 <span>Started</span>
-                <strong>{selectedRoute.startedAt ? new Date(selectedRoute.startedAt).toLocaleTimeString() : "Not started"}</strong>
+                <strong>
+                  {selectedRoute.startedAt
+                    ? new Date(selectedRoute.startedAt).toLocaleTimeString()
+                    : selectedRoute.status === "completed"
+                      ? "At completion"
+                      : selectedRoute.status === "in_progress"
+                        ? "In progress"
+                        : "Not started"}
+                </strong>
               </div>
               <div>
                 <span>Completed</span>
-                <strong>{selectedRoute.completedAt ? new Date(selectedRoute.completedAt).toLocaleTimeString() : "Open"}</strong>
+                <strong>
+                  {selectedRoute.completedAt
+                    ? new Date(selectedRoute.completedAt).toLocaleTimeString()
+                    : pendingStops === 0 && selectedRoute.stops.length > 0
+                      ? "All stops resolved"
+                      : "Open"}
+                </strong>
+              </div>
+              <div>
+                <span>Stops resolved</span>
+                <strong>
+                  {resolvedStops}/{selectedRoute.stops.length}
+                </strong>
               </div>
               <div>
                 <span>Pending stops</span>
@@ -1177,8 +1269,18 @@ function RoutesView({
                         #{stop.stopSequence} {stop.customerName}
                       </strong>
                       <span>{stop.address}</span>
-                      {stop.notes ? <small>Note: {stop.notes}</small> : null}
-                      {stop.skipReason ? <small>Skip reason: {stop.skipReason}</small> : null}
+                      {stop.notes ? (
+                        <p className="field-note">
+                          <strong>Note</strong>
+                          {stop.notes}
+                        </p>
+                      ) : null}
+                      {stop.skipReason ? (
+                        <p className="field-skip-reason">
+                          <strong>Skip reason</strong>
+                          {stop.skipReason}
+                        </p>
+                      ) : null}
                     </div>
                     <span className={`pill ${stop.status === "skipped" ? "danger" : ""}`}>
                       {stop.status.replace("_", " ")}
@@ -1267,6 +1369,7 @@ function RoutesView({
 
 function PaymentsView({
   customerLedger,
+  operationDate,
   payments,
   selectedCustomer,
   onRecordPayment,
@@ -1274,6 +1377,7 @@ function PaymentsView({
   onUpdateCustomerStatus
 }: {
   customerLedger: CustomerLedgerItem[];
+  operationDate: string;
   payments: PaymentLedgerItem[];
   selectedCustomer?: CustomerLedgerItem;
   onRecordPayment: (entry: PaymentEntry) => Promise<void>;
@@ -1281,14 +1385,18 @@ function PaymentsView({
   onUpdateCustomerStatus: (
     customerId: string,
     status: CustomerLedgerItem["serviceStatus"],
-    tagMonth?: string
-  ) => void;
+    tagMonth?: string,
+    suspensionReason?: string
+  ) => Promise<void>;
 }) {
+  const [activeSection, setActiveSection] = useState<"ledger" | "agents">("ledger");
   const [amountNaira, setAmountNaira] = useState("");
   const [channel, setChannel] = useState<PaymentChannel>("agent_cash");
   const [externalReference, setExternalReference] = useState("");
   const [tagMonth, setTagMonth] = useState(new Date().toISOString().slice(0, 10));
   const [history, setHistory] = useState<PaymentLedgerItem[]>([]);
+  const [paymentFormError, setPaymentFormError] = useState<string | null>(null);
+  const [customerStatusError, setCustomerStatusError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!selectedCustomer) {
@@ -1307,20 +1415,72 @@ function PaymentsView({
       return;
     }
 
-    const amountKobo = Math.round(Number(amountNaira) * 100);
+    const amountKobo = parseAmountNairaToKobo(amountNaira);
+    if (amountKobo === null) {
+      setPaymentFormError("Enter a payment amount greater than zero.");
+      return;
+    }
 
-    await onRecordPayment({
-      customerId: selectedCustomer.customerId,
-      channel,
-      amountKobo,
-      externalReference: externalReference.trim() || undefined
-    });
-    setHistory(await getCustomerPaymentHistory(selectedCustomer.customerId));
-    setAmountNaira("");
-    setExternalReference("");
+    setPaymentFormError(null);
+
+    try {
+      await onRecordPayment({
+        customerId: selectedCustomer.customerId,
+        channel,
+        amountKobo,
+        externalReference: externalReference.trim() || undefined
+      });
+      setHistory(await getCustomerPaymentHistory(selectedCustomer.customerId));
+      setAmountNaira("");
+      setExternalReference("");
+    } catch (err) {
+      setPaymentFormError(formatAppError(err, "Unable to record payment."));
+    }
   }
 
+  async function submitCustomerStatus(
+    status: CustomerLedgerItem["serviceStatus"],
+    tagMonth?: string,
+    suspensionReason?: string
+  ) {
+    if (!selectedCustomer) {
+      return;
+    }
+
+    setCustomerStatusError(null);
+
+    try {
+      await onUpdateCustomerStatus(selectedCustomer.customerId, status, tagMonth, suspensionReason);
+    } catch (err) {
+      setCustomerStatusError(err instanceof Error ? err.message : "Unable to update customer status");
+    }
+  }
+
+  const parsedAmountKobo = parseAmountNairaToKobo(amountNaira);
+  const canSubmitPayment = Boolean(selectedCustomer) && parsedAmountKobo !== null;
+
   return (
+    <>
+      <nav aria-label="Payments sections" className="admin-tabs payment-subtabs">
+        <button
+          className={activeSection === "ledger" ? "active" : ""}
+          onClick={() => setActiveSection("ledger")}
+          type="button"
+        >
+          Customer ledger
+        </button>
+        <button
+          className={activeSection === "agents" ? "active" : ""}
+          onClick={() => setActiveSection("agents")}
+          type="button"
+        >
+          Agent collections
+        </button>
+      </nav>
+
+      {activeSection === "agents" ? (
+        <AgentCollectionsView collectionDate={operationDate} />
+      ) : (
     <section className="workflow-grid payment-workflow">
       <article className="panel">
         <div className="panel-header">
@@ -1349,6 +1509,9 @@ function PaymentsView({
               <span className={`pill ${customer.serviceStatus === "suspended" ? "danger" : ""}`}>
                 {customer.serviceStatus}
               </span>
+              {customer.serviceStatus === "suspended" && customer.suspensionReason ? (
+                <span className="suspension-note">{customer.suspensionReason}</span>
+              ) : null}
             </button>
           ))}
         </div>
@@ -1363,6 +1526,9 @@ function PaymentsView({
               <p className="panel-subtitle">
                 {selectedCustomer.address} · {selectedCustomer.customerType.replace("_", " ")}
               </p>
+            ) : null}
+            {selectedCustomer?.serviceStatus === "suspended" && selectedCustomer.suspensionReason ? (
+              <p className="suspension-note">{selectedCustomer.suspensionReason}</p>
             ) : null}
           </div>
           <WalletCards aria-hidden="true" />
@@ -1392,12 +1558,18 @@ function PaymentsView({
             <div className="payment-detail-grid">
               <div className="entry-card">
                 <h3>Record Payment</h3>
+                {paymentFormError ? <p className="inline-error">{paymentFormError}</p> : null}
                 <label>
                   Amount in naira
                   <input
                     min="1"
-                    onChange={(event) => setAmountNaira(event.target.value)}
+                    onChange={(event) => {
+                      setAmountNaira(event.target.value);
+                      setPaymentFormError(null);
+                    }}
                     placeholder="5000"
+                    required
+                    step="0.01"
                     type="number"
                     value={amountNaira}
                   />
@@ -1421,7 +1593,12 @@ function PaymentsView({
                     value={externalReference}
                   />
                 </label>
-                <button className="primary-button" onClick={submitPayment} type="button">
+                <button
+                  className="primary-button"
+                  disabled={!canSubmitPayment}
+                  onClick={() => void submitPayment()}
+                  type="button"
+                >
                   Record payment
                 </button>
               </div>
@@ -1432,19 +1609,20 @@ function PaymentsView({
                   Use this only when approving service outside the automatic payment rule.
                   Full payment will activate the customer automatically.
                 </p>
+                {customerStatusError ? <p className="inline-error">{customerStatusError}</p> : null}
                 <label>
                   Service tag date
                   <input onChange={(event) => setTagMonth(event.target.value)} type="date" value={tagMonth} />
                 </label>
                 <div className="button-row">
                   <button
-                    onClick={() => onUpdateCustomerStatus(selectedCustomer.customerId, "active", tagMonth)}
+                    onClick={() => void submitCustomerStatus("active", tagMonth)}
                     type="button"
                   >
                     Activate tag
                   </button>
                   <button
-                    onClick={() => onUpdateCustomerStatus(selectedCustomer.customerId, "suspended")}
+                    onClick={() => void submitCustomerStatus("suspended", undefined, "Suspended by operator")}
                     type="button"
                   >
                     Suspend
@@ -1474,364 +1652,8 @@ function PaymentsView({
         )}
       </article>
     </section>
-  );
-}
-
-function AdminView({
-  adminData,
-  onOnboardCustomer,
-  onOnboardStaff,
-  onOnboardTruck,
-  onSetCustomerServiceStatus,
-  onSetStaffActive,
-  onSetTruckActive
-}: {
-  adminData: AdminMasterData;
-  onOnboardCustomer: (input: CustomerOnboardingInput) => Promise<void>;
-  onOnboardStaff: (input: StaffOnboardingInput) => Promise<void>;
-  onOnboardTruck: (input: TruckOnboardingInput) => Promise<void>;
-  onSetCustomerServiceStatus: (customerId: string, serviceStatus: CustomerLedgerItem["serviceStatus"]) => Promise<void>;
-  onSetStaffActive: (staffId: string, active: boolean) => Promise<void>;
-  onSetTruckActive: (truckId: string, active: boolean) => Promise<void>;
-}) {
-  const defaultZoneId = adminData.zones[0]?.id ?? "";
-  const [staffForm, setStaffForm] = useState({
-    fullName: "",
-    monthlySalaryNaira: "",
-    phone: "",
-    role: "driver" as UserRole
-  });
-  const [truckForm, setTruckForm] = useState({
-    make: "",
-    model: "",
-    registrationNumber: "",
-    status: "operational" as TruckStatus,
-    year: "",
-    zoneId: defaultZoneId
-  });
-  const [customerForm, setCustomerForm] = useState({
-    address: "",
-    customerType: "residential" as CustomerType,
-    displayName: "",
-    monthlyRateNaira: "",
-    phone: "",
-    serviceStatus: "active" as CustomerLedgerItem["serviceStatus"],
-    zoneId: defaultZoneId
-  });
-
-  useEffect(() => {
-    if (!defaultZoneId) {
-      return;
-    }
-
-    setTruckForm((current) => ({ ...current, zoneId: current.zoneId || defaultZoneId }));
-    setCustomerForm((current) => ({ ...current, zoneId: current.zoneId || defaultZoneId }));
-  }, [defaultZoneId]);
-
-  async function submitStaff(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    await onOnboardStaff({
-      fullName: staffForm.fullName,
-      monthlySalaryKobo: Math.round(Number(staffForm.monthlySalaryNaira || 0) * 100),
-      phone: staffForm.phone,
-      role: staffForm.role
-    });
-    setStaffForm({ fullName: "", monthlySalaryNaira: "", phone: "", role: "driver" });
-  }
-
-  async function submitTruck(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    await onOnboardTruck({
-      make: truckForm.make || undefined,
-      model: truckForm.model || undefined,
-      registrationNumber: truckForm.registrationNumber,
-      status: truckForm.status,
-      year: truckForm.year ? Number(truckForm.year) : undefined,
-      zoneId: truckForm.zoneId
-    });
-    setTruckForm({
-      make: "",
-      model: "",
-      registrationNumber: "",
-      status: "operational",
-      year: "",
-      zoneId: defaultZoneId
-    });
-  }
-
-  async function submitCustomer(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    await onOnboardCustomer({
-      address: customerForm.address,
-      customerType: customerForm.customerType,
-      displayName: customerForm.displayName,
-      monthlyRateKobo: Math.round(Number(customerForm.monthlyRateNaira || 0) * 100),
-      phone: customerForm.phone || undefined,
-      serviceStatus: customerForm.serviceStatus,
-      zoneId: customerForm.zoneId
-    });
-    setCustomerForm({
-      address: "",
-      customerType: "residential",
-      displayName: "",
-      monthlyRateNaira: "",
-      phone: "",
-      serviceStatus: "active",
-      zoneId: defaultZoneId
-    });
-  }
-
-  return (
-    <section className="admin-workflow">
-      <article className="panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Admin</p>
-            <h2>Drivers & Staff</h2>
-            <p className="panel-subtitle">Onboard field workers and deactivate records without losing history.</p>
-          </div>
-          <Users aria-hidden="true" />
-        </div>
-        <form className="entry-card admin-form" onSubmit={(event) => void submitStaff(event)}>
-          <label>
-            Full name
-            <input
-              onChange={(event) => setStaffForm((current) => ({ ...current, fullName: event.target.value }))}
-              required
-              value={staffForm.fullName}
-            />
-          </label>
-          <label>
-            Phone
-            <input
-              onChange={(event) => setStaffForm((current) => ({ ...current, phone: event.target.value }))}
-              required
-              value={staffForm.phone}
-            />
-          </label>
-          <label>
-            Role
-            <select
-              onChange={(event) => setStaffForm((current) => ({ ...current, role: event.target.value as UserRole }))}
-              value={staffForm.role}
-            >
-              {adminStaffRoles.map((role) => (
-                <option key={role} value={role}>
-                  {role.replace("_", " ")}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Monthly salary (naira)
-            <input
-              min="0"
-              onChange={(event) => setStaffForm((current) => ({ ...current, monthlySalaryNaira: event.target.value }))}
-              type="number"
-              value={staffForm.monthlySalaryNaira}
-            />
-          </label>
-          <button className="primary-button" type="submit">Add staff</button>
-        </form>
-        <div className="admin-list">
-          {adminData.staff.map((staff) => (
-            <div className="admin-row" key={staff.id}>
-              <div>
-                <strong>{staff.fullName}</strong>
-                <span>{staff.phone} · {staff.role.replace("_", " ")} · {formatKobo(staff.monthlySalaryKobo)}</span>
-                <small>{staff.hasLoginProfile ? "Login linked" : "No login profile yet"}</small>
-              </div>
-              <span className={`pill ${staff.active ? "" : "danger"}`}>{staff.active ? "active" : "inactive"}</span>
-              <button onClick={() => void onSetStaffActive(staff.id, !staff.active)} type="button">
-                {staff.active ? "Deactivate" : "Reactivate"}
-              </button>
-            </div>
-          ))}
-        </div>
-      </article>
-
-      <article className="panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Admin</p>
-            <h2>Trucks</h2>
-            <p className="panel-subtitle">Register fleet assets and bind them to operating zones.</p>
-          </div>
-          <Truck aria-hidden="true" />
-        </div>
-        <form className="entry-card admin-form" onSubmit={(event) => void submitTruck(event)}>
-          <label>
-            Zone
-            <select
-              onChange={(event) => setTruckForm((current) => ({ ...current, zoneId: event.target.value }))}
-              required
-              value={truckForm.zoneId}
-            >
-              <option value="">Select zone</option>
-              {adminData.zones.map((zone) => (
-                <option key={zone.id} value={zone.id}>{zone.name}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Registration
-            <input
-              onChange={(event) => setTruckForm((current) => ({ ...current, registrationNumber: event.target.value }))}
-              required
-              value={truckForm.registrationNumber}
-            />
-          </label>
-          <label>
-            Make
-            <input onChange={(event) => setTruckForm((current) => ({ ...current, make: event.target.value }))} value={truckForm.make} />
-          </label>
-          <label>
-            Model
-            <input onChange={(event) => setTruckForm((current) => ({ ...current, model: event.target.value }))} value={truckForm.model} />
-          </label>
-          <label>
-            Year
-            <input
-              onChange={(event) => setTruckForm((current) => ({ ...current, year: event.target.value }))}
-              type="number"
-              value={truckForm.year}
-            />
-          </label>
-          <label>
-            Status
-            <select
-              onChange={(event) => setTruckForm((current) => ({ ...current, status: event.target.value as TruckStatus }))}
-              value={truckForm.status}
-            >
-              {adminTruckStatuses.map((status) => (
-                <option key={status} value={status}>{status}</option>
-              ))}
-            </select>
-          </label>
-          <button className="primary-button" type="submit">Add truck</button>
-        </form>
-        <div className="admin-list">
-          {adminData.trucks.map((truck) => (
-            <div className="admin-row" key={truck.id}>
-              <div>
-                <strong>{truck.registrationNumber}</strong>
-                <span>{truck.zoneName ?? "No zone"} · {truck.status} · {[truck.make, truck.model, truck.year].filter(Boolean).join(" ") || "No vehicle details"}</span>
-              </div>
-              <span className={`pill ${truck.active ? "" : "danger"}`}>{truck.active ? "active" : "inactive"}</span>
-              <button onClick={() => void onSetTruckActive(truck.id, !truck.active)} type="button">
-                {truck.active ? "Deactivate" : "Reactivate"}
-              </button>
-            </div>
-          ))}
-        </div>
-      </article>
-
-      <article className="panel panel-wide">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Admin</p>
-            <h2>Customers</h2>
-            <p className="panel-subtitle">Create customer accounts used by billing, route planning, and stop lists.</p>
-          </div>
-          <WalletCards aria-hidden="true" />
-        </div>
-        <form className="entry-card admin-form customer-admin-form" onSubmit={(event) => void submitCustomer(event)}>
-          <label>
-            Zone
-            <select
-              onChange={(event) => setCustomerForm((current) => ({ ...current, zoneId: event.target.value }))}
-              required
-              value={customerForm.zoneId}
-            >
-              <option value="">Select zone</option>
-              {adminData.zones.map((zone) => (
-                <option key={zone.id} value={zone.id}>{zone.name}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Customer name
-            <input
-              onChange={(event) => setCustomerForm((current) => ({ ...current, displayName: event.target.value }))}
-              required
-              value={customerForm.displayName}
-            />
-          </label>
-          <label>
-            Phone
-            <input onChange={(event) => setCustomerForm((current) => ({ ...current, phone: event.target.value }))} value={customerForm.phone} />
-          </label>
-          <label>
-            Address
-            <input
-              onChange={(event) => setCustomerForm((current) => ({ ...current, address: event.target.value }))}
-              required
-              value={customerForm.address}
-            />
-          </label>
-          <label>
-            Type
-            <select
-              onChange={(event) => setCustomerForm((current) => ({ ...current, customerType: event.target.value as CustomerType }))}
-              value={customerForm.customerType}
-            >
-              {adminCustomerTypes.map((type) => (
-                <option key={type} value={type}>{type.replace("_", " ")}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Monthly rate (naira)
-            <input
-              min="0"
-              onChange={(event) => setCustomerForm((current) => ({ ...current, monthlyRateNaira: event.target.value }))}
-              required
-              type="number"
-              value={customerForm.monthlyRateNaira}
-            />
-          </label>
-          <label>
-            Service status
-            <select
-              onChange={(event) =>
-                setCustomerForm((current) => ({
-                  ...current,
-                  serviceStatus: event.target.value as CustomerLedgerItem["serviceStatus"]
-                }))
-              }
-              value={customerForm.serviceStatus}
-            >
-              <option value="active">active</option>
-              <option value="suspended">suspended</option>
-            </select>
-          </label>
-          <button className="primary-button" type="submit">Add customer</button>
-        </form>
-        <div className="admin-list">
-          {adminData.customers.map((customer) => (
-            <div className="admin-row" key={customer.id}>
-              <div>
-                <strong>{customer.displayName}</strong>
-                <span>{customer.zoneName} · {customer.address} · {formatKobo(customer.monthlyRateKobo)}</span>
-                <small>{customer.phone ?? "No phone"} · {customer.customerType.replace("_", " ")}</small>
-              </div>
-              <span className={`pill ${customer.serviceStatus === "suspended" ? "danger" : ""}`}>{customer.serviceStatus}</span>
-              <button
-                onClick={() =>
-                  void onSetCustomerServiceStatus(
-                    customer.id,
-                    customer.serviceStatus === "active" ? "suspended" : "active"
-                  )
-                }
-                type="button"
-              >
-                {customer.serviceStatus === "active" ? "Suspend" : "Reactivate"}
-              </button>
-            </div>
-          ))}
-        </div>
-      </article>
-    </section>
+      )}
+    </>
   );
 }
 

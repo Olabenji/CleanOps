@@ -3,6 +3,7 @@ import type {
   CustomerLedgerItem,
   IncidentReport,
   MonthlyStaffSummary,
+  OperatorAgentCollectionsSnapshot,
   OperatorDashboard,
   OperatorProfile,
   PaymentChannel,
@@ -14,6 +15,7 @@ import type {
   StaffAttendanceRow
 } from "@cleanops/shared";
 import { pilotDashboard } from "./pilotDashboard";
+import { deriveRouteProgress } from "../lib/routeProgress";
 
 export const demoCredentials = {
   email: "owner@cleanops.local",
@@ -105,6 +107,7 @@ export let pilotCustomerLedger: CustomerLedgerItem[] = [
     paidThisMonthKobo: 500000,
     outstandingKobo: 0,
     serviceStatus: "active",
+    suspensionReason: null,
     currentTagMonth: new Date().toISOString().slice(0, 10),
     lastPaymentAt: new Date().toISOString(),
     lastPaymentAmountKobo: 500000,
@@ -121,6 +124,7 @@ export let pilotCustomerLedger: CustomerLedgerItem[] = [
     paidThisMonthKobo: 0,
     outstandingKobo: 1500000,
     serviceStatus: "suspended",
+    suspensionReason: "Outstanding monthly balance unpaid",
     currentTagMonth: null,
     lastPaymentAt: null,
     lastPaymentAmountKobo: null,
@@ -137,6 +141,7 @@ export let pilotCustomerLedger: CustomerLedgerItem[] = [
     paidThisMonthKobo: 7500000,
     outstandingKobo: 0,
     serviceStatus: "active",
+    suspensionReason: null,
     currentTagMonth: new Date().toISOString().slice(0, 10),
     lastPaymentAt: new Date().toISOString(),
     lastPaymentAmountKobo: 7500000,
@@ -290,15 +295,38 @@ export function getPilotMonthlyStaffSummary(): MonthlyStaffSummary[] {
   }));
 }
 
-function reconcilePilotRoute(route: RouteDetail): RouteDetail {
-  const resolvedStops = route.stops.filter((stop) => stop.status !== "pending").length;
+export function getPilotOperatorAgentCollections(collectionDate: string): OperatorAgentCollectionsSnapshot {
+  const agentPayments = pilotPayments
+    .filter((payment) => payment.channel === "agent_cash")
+    .map((payment) => ({
+      paymentId: payment.id,
+      customerName: payment.customerName,
+      amountKobo: payment.amountKobo,
+      channel: payment.channel,
+      receiptReference: null,
+      paidAt: payment.paidAt
+    }));
+
+  const totalCollectedKobo = agentPayments.reduce((sum, payment) => sum + payment.amountKobo, 0);
 
   return {
-    ...route,
-    completedStops: resolvedStops,
-    totalStops: route.stops.length,
-    delayed: route.status === "in_progress" && resolvedStops / Math.max(route.stops.length, 1) < 0.35
+    collectionDate,
+    totalCollectedKobo,
+    paymentCount: agentPayments.length,
+    agents: [
+      {
+        agentStaffId: "00000000-0000-4000-8000-000000000205",
+        agentName: "Kunle Martins",
+        totalCollectedKobo,
+        paymentCount: agentPayments.length,
+        payments: agentPayments
+      }
+    ]
   };
+}
+
+function reconcilePilotRoute(route: RouteDetail): RouteDetail {
+  return deriveRouteProgress(route);
 }
 
 export function recordPilotPayment(entry: PaymentEntry): CustomerLedgerItem[] {
@@ -338,6 +366,7 @@ export function recordPilotPayment(entry: PaymentEntry): CustomerLedgerItem[] {
       paidThisMonthKobo,
       outstandingKobo,
       serviceStatus: shouldReactivate ? "active" : customer.serviceStatus,
+      suspensionReason: shouldReactivate ? null : customer.suspensionReason,
       currentTagMonth: shouldReactivate ? new Date().toISOString().slice(0, 10) : customer.currentTagMonth,
       lastPaymentAt: paidAt,
       lastPaymentAmountKobo: entry.amountKobo,
@@ -351,13 +380,18 @@ export function recordPilotPayment(entry: PaymentEntry): CustomerLedgerItem[] {
 export function updatePilotCustomerStatus(
   customerId: string,
   status: CustomerLedgerItem["serviceStatus"],
-  tagMonth?: string
+  tagMonth?: string,
+  suspensionReason?: string
 ): CustomerLedgerItem[] {
   pilotCustomerLedger = pilotCustomerLedger.map((customer) =>
     customer.customerId === customerId
       ? {
           ...customer,
           serviceStatus: status,
+          suspensionReason:
+            status === "suspended"
+              ? suspensionReason ?? "Suspended by operator"
+              : null,
           currentTagMonth: status === "active" ? tagMonth ?? customer.currentTagMonth : null
         }
       : customer

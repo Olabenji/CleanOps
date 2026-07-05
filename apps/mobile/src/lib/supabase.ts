@@ -5,11 +5,13 @@ const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
 export const hasSupabaseConfig = Boolean(supabaseUrl && supabaseAnonKey);
 
+export const supabaseDisplayUrl = supabaseUrl ?? null;
+
 export const supabase = hasSupabaseConfig
   ? createClient(supabaseUrl!, supabaseAnonKey!, {
       auth: {
         autoRefreshToken: true,
-        persistSession: false
+        persistSession: true
       }
     })
   : null;

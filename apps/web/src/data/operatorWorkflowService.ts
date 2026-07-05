@@ -4,6 +4,7 @@ import {
   customerOnboardingInputSchema,
   customerLedgerItemSchema,
   incidentReportSchema,
+  operatorAgentCollectionsSnapshotSchema,
   monthlyStaffSummarySchema,
   paymentLedgerItemSchema,
   paymentEntrySchema,
@@ -19,6 +20,7 @@ import {
   type CustomerOnboardingInput,
   type IncidentReport,
   type MonthlyStaffSummary,
+  type OperatorAgentCollectionsSnapshot,
   type PaymentEntry,
   type PaymentLedgerItem,
   type RouteDetail,
@@ -29,10 +31,13 @@ import {
   type StaffAttendanceRow,
   type TruckOnboardingInput
 } from "@cleanops/shared";
+import { deriveRouteProgress } from "../lib/routeProgress";
+import { formatAppError } from "../lib/errors";
 import { supabase } from "../lib/supabase";
 import {
   applyPilotAttendanceOverride,
   getPilotMonthlyStaffSummary,
+  getPilotOperatorAgentCollections,
   getPilotPaymentHistory,
   pilotIncidentReports,
   pilotCustomerLedger,
@@ -70,7 +75,17 @@ type RawRouteStop = {
 
 export async function getRoutes(operationDate?: string): Promise<RouteDetail[]> {
   if (!supabase) {
-    return filterPilotRoutesByDate(operationDate);
+    return filterPilotRoutesByDate(operationDate).map(deriveRouteProgress);
+  }
+
+  if (operationDate) {
+    const { error: reconcileError } = await supabase.rpc("reconcile_routes_for_date", {
+      input_date: operationDate
+    });
+
+    if (reconcileError) {
+      console.warn("Route reconcile skipped:", reconcileError.message);
+    }
   }
 
   let query = supabase
@@ -107,11 +122,15 @@ export async function getRoutes(operationDate?: string): Promise<RouteDetail[]> 
 
   const { data, error } = await query;
 
-  if (error || !data || data.length === 0) {
-    return filterPilotRoutesByDate(operationDate);
+  if (error) {
+    throw new Error(error.message);
   }
 
-  return data.map(mapRoute).filter(Boolean) as RouteDetail[];
+  if (!data || data.length === 0) {
+    return [];
+  }
+
+  return (data.map(mapRoute).filter(Boolean) as RouteDetail[]).map(deriveRouteProgress);
 }
 
 export async function updateRouteStopStatus(
@@ -233,17 +252,20 @@ export async function getCustomerPaymentHistory(customerId: string): Promise<Pay
 }
 
 export async function recordPayment(entry: PaymentEntry): Promise<CustomerLedgerItem[]> {
-  const parsed = paymentEntrySchema.parse(entry);
+  const parsed = paymentEntrySchema.safeParse(entry);
+  if (!parsed.success) {
+    throw new Error(formatAppError(parsed.error, "Enter a valid payment amount greater than zero."));
+  }
 
   if (!supabase) {
-    return recordPilotPayment(parsed);
+    return recordPilotPayment(parsed.data);
   }
 
   const { error } = await supabase.rpc("record_operator_payment", {
-    input_customer_id: parsed.customerId,
-    input_channel: parsed.channel,
-    input_amount_kobo: parsed.amountKobo,
-    input_external_reference: parsed.externalReference ?? null
+    input_customer_id: parsed.data.customerId,
+    input_channel: parsed.data.channel,
+    input_amount_kobo: parsed.data.amountKobo,
+    input_external_reference: parsed.data.externalReference ?? null
   });
 
   if (error) {
@@ -256,16 +278,18 @@ export async function recordPayment(entry: PaymentEntry): Promise<CustomerLedger
 export async function updateCustomerAccountStatus(
   customerId: string,
   status: CustomerLedgerItem["serviceStatus"],
-  tagMonth?: string
+  tagMonth?: string,
+  suspensionReason?: string
 ): Promise<CustomerLedgerItem[]> {
   if (!supabase) {
-    return updatePilotCustomerStatus(customerId, status, tagMonth);
+    return updatePilotCustomerStatus(customerId, status, tagMonth, suspensionReason);
   }
 
   const { error } = await supabase.rpc("update_customer_account_status", {
     input_customer_id: customerId,
     next_status: status,
-    next_tag_month: tagMonth ?? null
+    next_tag_month: tagMonth ?? null,
+    input_suspension_reason: suspensionReason ?? null
   });
 
   if (error) {
@@ -273,6 +297,24 @@ export async function updateCustomerAccountStatus(
   }
 
   return getCustomerLedger();
+}
+
+export async function getOperatorAgentCollections(
+  collectionDate = new Date().toISOString().slice(0, 10)
+): Promise<OperatorAgentCollectionsSnapshot> {
+  if (!supabase) {
+    return getPilotOperatorAgentCollections(collectionDate);
+  }
+
+  const { data, error } = await supabase.rpc("operator_agent_collections_snapshot", {
+    input_date: collectionDate
+  });
+
+  if (error || !data) {
+    return getPilotOperatorAgentCollections(collectionDate);
+  }
+
+  return operatorAgentCollectionsSnapshotSchema.parse(data);
 }
 
 export async function getStaffAttendance(
@@ -575,14 +617,20 @@ export async function onboardCustomer(input: CustomerOnboardingInput) {
   }
 }
 
-export async function setCustomerServiceStatus(customerId: string, serviceStatus: CustomerLedgerItem["serviceStatus"]) {
+export async function setCustomerServiceStatus(
+  customerId: string,
+  serviceStatus: CustomerLedgerItem["serviceStatus"],
+  suspensionReason?: string
+) {
   if (!supabase) {
     return;
   }
 
   const { error } = await supabase.rpc("set_customer_service_status", {
     input_customer_id: customerId,
-    next_status: serviceStatus
+    next_status: serviceStatus,
+    input_suspension_reason:
+      serviceStatus === "suspended" ? suspensionReason ?? "Suspended by operator" : null
   });
 
   if (error) {
@@ -613,7 +661,7 @@ function mapRoute(route: any): RouteDetail | null {
   const truck = Array.isArray(route.trucks) ? route.trucks[0] : route.trucks;
   const driver = Array.isArray(route.staff_members) ? route.staff_members[0] : route.staff_members;
   const stops: RawRouteStop[] = Array.isArray(route.route_stops) ? route.route_stops : [];
-  const completedStops = stops.filter((stop) => stop.status === "completed").length;
+  const completedStops = stops.filter((stop) => stop.status !== "pending").length;
 
   const parsed = routeDetailSchema.safeParse({
     id: route.id,

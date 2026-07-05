@@ -151,6 +151,78 @@ values (
 )
 on conflict (provider_id, provider) do nothing;
 
+insert into auth.users (
+  id,
+  instance_id,
+  aud,
+  role,
+  email,
+  phone,
+  encrypted_password,
+  email_confirmed_at,
+  phone_confirmed_at,
+  created_at,
+  updated_at,
+  raw_app_meta_data,
+  raw_user_meta_data,
+  is_super_admin,
+  confirmation_token,
+  recovery_token,
+  email_change_token_new,
+  email_change,
+  phone_change_token,
+  phone_change,
+  email_change_token_current,
+  reauthentication_token
+)
+values (
+  '00000000-0000-4000-8000-000000000031',
+  '00000000-0000-0000-0000-000000000000',
+  'authenticated',
+  'authenticated',
+  'agent@cleanops.local',
+  '+2348000000205',
+  crypt('cleanops-agent-password', gen_salt('bf')),
+  now(),
+  now(),
+  now(),
+  now(),
+  '{"provider":"email","providers":["email"]}'::jsonb,
+  '{"full_name":"Kunle Martins"}'::jsonb,
+  false,
+  '',
+  '',
+  '',
+  '',
+  '',
+  '',
+  '',
+  ''
+)
+on conflict (id) do nothing;
+
+insert into auth.identities (
+  id,
+  provider_id,
+  user_id,
+  identity_data,
+  provider,
+  last_sign_in_at,
+  created_at,
+  updated_at
+)
+values (
+  '00000000-0000-4000-8000-000000000032',
+  '00000000-0000-4000-8000-000000000031',
+  '00000000-0000-4000-8000-000000000031',
+  '{"sub":"00000000-0000-4000-8000-000000000031","email":"agent@cleanops.local","email_verified":true,"phone_verified":true}'::jsonb,
+  'email',
+  now(),
+  now(),
+  now()
+)
+on conflict (provider_id, provider) do nothing;
+
 insert into public.profiles (
   id,
   operator_id,
@@ -175,11 +247,43 @@ insert into public.profiles (
   phone
 )
 values (
+  '00000000-0000-4000-8000-000000000031',
+  '00000000-0000-4000-8000-000000000001',
+  'collection_agent',
+  'Kunle Martins',
+  '+2348000000205'
+)
+on conflict (id) do nothing;
+
+insert into public.profiles (
+  id,
+  operator_id,
+  role,
+  full_name,
+  phone
+)
+values (
   '00000000-0000-4000-8000-000000000021',
   '00000000-0000-4000-8000-000000000001',
   'driver',
   'Adewale Johnson',
   '+2348000000201'
+)
+on conflict (id) do nothing;
+
+insert into public.profiles (
+  id,
+  operator_id,
+  role,
+  full_name,
+  phone
+)
+values (
+  '00000000-0000-4000-8000-000000000031',
+  '00000000-0000-4000-8000-000000000001',
+  'collection_agent',
+  'Kunle Martins',
+  '+2348000000205'
 )
 on conflict (id) do nothing;
 
@@ -237,6 +341,10 @@ update public.staff_members
 set profile_id = '00000000-0000-4000-8000-000000000021'
 where id = '00000000-0000-4000-8000-000000000201';
 
+update public.staff_members
+set profile_id = '00000000-0000-4000-8000-000000000031'
+where id = '00000000-0000-4000-8000-000000000205';
+
 insert into public.trucks (
   id,
   operator_id,
@@ -265,14 +373,15 @@ insert into public.customers (
   customer_type,
   monthly_rate_kobo,
   service_status,
-  current_tag_month
+  current_tag_month,
+  suspension_reason
 )
 values
-  ('00000000-0000-4000-8000-000000000401', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000101', 'Mrs. Folake Adebayo', '+2348000000401', '14 Akinwunmi Street, Surulere', 'residential', 500000, 'active', date_trunc('month', current_date)::date),
-  ('00000000-0000-4000-8000-000000000402', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000101', 'Mr. Tunde Lawal', '+2348000000402', '16 Akinwunmi Street, Surulere', 'residential', 500000, 'active', date_trunc('month', current_date)::date),
-  ('00000000-0000-4000-8000-000000000403', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000102', 'Tasty Bites Eatery', '+2348000000403', '22 Market Road, Surulere', 'restaurant', 2500000, 'active', date_trunc('month', current_date)::date),
-  ('00000000-0000-4000-8000-000000000404', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000102', 'Blue Gate Mini Mart', '+2348000000404', '25 Market Road, Surulere', 'small_business', 1500000, 'suspended', null),
-  ('00000000-0000-4000-8000-000000000405', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000103', 'Block C Residents Association', '+2348000000405', 'Block C Estate, Surulere', 'estate', 7500000, 'active', date_trunc('month', current_date)::date)
+  ('00000000-0000-4000-8000-000000000401', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000101', 'Mrs. Folake Adebayo', '+2348000000401', '14 Akinwunmi Street, Surulere', 'residential', 500000, 'active', date_trunc('month', current_date)::date, null),
+  ('00000000-0000-4000-8000-000000000402', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000101', 'Mr. Tunde Lawal', '+2348000000402', '16 Akinwunmi Street, Surulere', 'residential', 500000, 'active', date_trunc('month', current_date)::date, null),
+  ('00000000-0000-4000-8000-000000000403', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000102', 'Tasty Bites Eatery', '+2348000000403', '22 Market Road, Surulere', 'restaurant', 2500000, 'active', date_trunc('month', current_date)::date, null),
+  ('00000000-0000-4000-8000-000000000404', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000102', 'Blue Gate Mini Mart', '+2348000000404', '25 Market Road, Surulere', 'small_business', 1500000, 'suspended', null, 'Outstanding monthly balance unpaid'),
+  ('00000000-0000-4000-8000-000000000405', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000103', 'Block C Residents Association', '+2348000000405', 'Block C Estate, Surulere', 'estate', 7500000, 'active', date_trunc('month', current_date)::date, null)
 on conflict (id) do nothing;
 
 insert into public.routes (

@@ -1,6 +1,6 @@
 # CleanOps Status Report
 
-**As of:** 23 June 2026  
+**As of:** 5 July 2026  
 **Phase:** Phase 1 — Core Ops Pilot (Weeks 1–8 target)  
 **Workspace:** TypeScript monorepo (`apps/web`, `apps/mobile`, `packages/shared`, `supabase/`)
 
@@ -8,21 +8,21 @@
 
 ## Executive Summary
 
-CleanOps has a working **local pilot stack**: Supabase schema (13 migrations), operator web dashboard with five workflow tabs, and a driver mobile app with live Supabase sync and offline queuing. The platform covers daily operations for a single PSP operator — routes, payments, staff attendance, incidents, and master-data onboarding.
+CleanOps has a working **local pilot stack**: Supabase schema (21 migrations), operator web dashboard with five workflow tabs, a driver mobile app with live Supabase sync and offline queuing, and a **collection agent mobile workflow** with operator-side reconciliation on web.
 
 **Rough completion against Phase 1 backlog:**
 
 | Area | Status |
 |------|--------|
-| Foundation (schema, shared types, local dev) | ~75% |
-| Operator web (dashboard, routes, payments, staff, admin) | ~60% |
+| Foundation (schema, shared types, local dev) | ~85% |
+| Operator web (dashboard, routes, payments, staff, admin) | ~75% |
 | Driver mobile | ~55% |
-| Collection agent mobile | 0% |
+| Collection agent mobile | ~90% (WhatsApp/PDF receipts deferred) |
 | Resident mobile | 0% |
 | Integrations (Paystack, Twilio, Termii, push) | ~10% (stubs only) |
 | Quality (CI, tests, device QA) | ~5% |
 
-The system is **demo-ready for operator + driver field testing** on one ward. It is **not production-ready** — no OTP auth, no collection-agent workflow, no payment webhooks wired, and no CI.
+The system is **demo-ready for operator + driver + collection agent field testing** on one ward. It is **not production-ready** — no OTP auth, no payment webhooks wired, and no CI.
 
 ---
 
@@ -34,10 +34,10 @@ The system is **demo-ready for operator + driver field testing** on one ward. It
 
 - npm workspaces monorepo with shared Zod schemas in `packages/shared`
 - PostgreSQL schema: operators, zones, staff, trucks, customers, routes, route stops, payments, attendance, incidents, fuel logs, dumpsite runs, maintenance events
-- 13 migrations (`0001`–`0013`) with RLS policies and role-aware RPCs
-- Seed data for one pilot operator, zones, trucks, customers, routes, demo users
+- 21 migrations (`0001`–`0021`) with RLS policies and role-aware RPCs
+- Seed data for one pilot operator, zones, trucks, customers, routes, demo users (operator, driver, collection agent)
 - Local Supabase via Docker CLI; web env via Vite `envDir`
-- Pilot-mode fallbacks in web services when Supabase is not configured
+- Pilot-mode fallbacks in web and mobile services when Supabase is not configured
 
 **Functional spec (delivered)**
 
@@ -46,8 +46,8 @@ The system is **demo-ready for operator + driver field testing** on one ward. It
 | Multi-tenant data model | All tenant tables carry `operator_id`; RLS scopes by authenticated profile |
 | Role enum | `operator_owner`, `operations_supervisor`, `driver`, `collection_agent`, `resident`, `platform_admin` |
 | Auth helpers | `current_operator_id()`, `current_app_role()` |
-| Shared validation | Zod schemas for all domain types (routes, payments, attendance, admin, incidents) |
-| Demo credentials | `owner@cleanops.local` / `driver@cleanops.local` (seed) |
+| Shared validation | Zod schemas for all domain types (routes, payments, attendance, admin, incidents, agent collections) |
+| Demo credentials | `owner@cleanops.local`, `driver@cleanops.local`, `agent@cleanops.local` (seed) |
 
 **Pending**
 
@@ -90,7 +90,7 @@ The system is **demo-ready for operator + driver field testing** on one ward. It
 ### 3. Route Operations (Web)
 
 **Location:** Routes tab  
-**Backend:** `plan_daily_routes`, `update_route_stop_status`, `transition_route_status`, `route_planning_options`, `update_route_plan_assignment`, `add/remove/move_route_plan_stop` (migrations `0004`, `0010`–`0012`)
+**Backend:** `plan_daily_routes`, `update_route_stop_status`, `transition_route_status`, `route_planning_options`, `update_route_plan_assignment`, `add/remove/move_route_plan_stop` (migrations `0004`, `0010`–`0012`, `0014`–`0015`)
 
 **Functional spec (delivered)**
 
@@ -104,6 +104,7 @@ The system is **demo-ready for operator + driver field testing** on one ward. It
 | Route cancellation | Operator can cancel; start/complete is field-only (driver mobile) |
 | Inline errors | Validation errors shown near planner controls, not only top banner |
 | Status lifecycle | `scheduled` → `in_progress` → `completed` / `cancelled` |
+| Route progress reconcile | Derived stop counts synced via migrations `0014`–`0015` |
 
 **Pending**
 
@@ -119,26 +120,26 @@ The system is **demo-ready for operator + driver field testing** on one ward. It
 ### 4. Payment Ledger (Web)
 
 **Location:** Payments tab  
-**Backend:** `customer_ledger_snapshot`, `customer_payment_history`, `record_operator_payment`, `update_customer_account_status` (migration `0005`)
+**Backend:** `customer_ledger_snapshot`, `customer_payment_history`, `record_operator_payment`, `update_customer_account_status`, `operator_agent_collections_snapshot` (migrations `0005`, `0019`, `0021`)
 
 **Functional spec (delivered)**
 
 | Capability | Detail |
 |------------|--------|
-| Customer ledger | Balance, paid-this-month, outstanding, service status, last payment |
+| Customer ledger | Balance, paid-this-month, outstanding, service status, suspension reason, last payment |
 | Payment history | Per-customer payment timeline |
 | Record payment | Manual entry with channel (cash, bank transfer, OPay, etc.) |
 | Service status toggle | Suspend / reactivate customer service |
 | Two-column layout | Customer list + detail panel |
+| Agent collections | Sub-tab reconciles field agent cash by operations date; per-agent payment drill-down |
+| Auto-activation | Full monthly payment reactivates suspended customers (migration `0019`) |
 
 **Pending**
 
 - Paystack checkout initiation from web
 - Automated payment posting via webhook (stub exists, not deployed/verified)
-- Receipt generation (PDF/WhatsApp)
-- Collection-agent reconciliation view
+- Receipt generation (PDF/WhatsApp) — deferred
 - Dedicated transfer account handling
-- Current-month tag automation on payment
 
 ---
 
@@ -167,18 +168,20 @@ The system is **demo-ready for operator + driver field testing** on one ward. It
 
 ### 6. Admin / Master Data (Web)
 
-**Location:** Admin tab  
-**Backend:** `admin_master_data`, `onboard_staff_member`, `onboard_truck`, `onboard_customer`, `set_*_active` (migration `0013`)
+**Location:** Admin tab (`AdminView` component)  
+**Backend:** `admin_master_data`, `onboard_staff_member`, `onboard_truck`, `onboard_customer`, `set_*_active` (migrations `0013`, `0020`)
 
 **Functional spec (delivered)**
 
 | Capability | Detail |
 |------------|--------|
-| Staff onboarding | Name, phone, role, monthly salary; list with active/inactive toggle |
-| Truck onboarding | Registration, zone, make/model/year, status; activate/deactivate |
-| Customer onboarding | Zone, address, type, monthly rate, service status; suspend/reactivate |
+| Sub-tabs | Staff, Trucks, Customers with per-tab filters |
+| Staff onboarding | Modal form: name, phone, role, monthly salary; list with active/inactive toggle |
+| Truck onboarding | Modal form: registration, zone, make/model/year, status; activate/deactivate |
+| Customer onboarding | Modal form: zone, address, type, monthly rate, service status; suspend/reactivate |
 | Zone reference | Read-only zone list for form dropdowns |
 | Login indicator | `hasLoginProfile` flag shows whether staff has a linked Supabase auth user |
+| Inline errors | Per-form and per-row error messages (not global banner only) |
 
 **Pending**
 
@@ -199,6 +202,7 @@ The system is **demo-ready for operator + driver field testing** on one ward. It
 
 | Capability | Detail |
 |------------|--------|
+| Role router | Sign-in screen routes to Driver or Collection Agent workflow |
 | Driver sign-in | Demo email/password via Supabase Auth |
 | Assigned route | Fetches today's (or configured) route with stops |
 | Start shift | Transitions route to `in_progress` |
@@ -209,6 +213,7 @@ The system is **demo-ready for operator + driver field testing** on one ward. It
 | Sync controls | Settings toggle for sync on/off; manual sync; last-sync timestamp |
 | Per-stop sync state | Visual indicator for pending/failed offline items |
 | Safe area layout | `react-native-safe-area-context` |
+| Network resilience | LAN IP config, backend diagnostics, pilot fallback on timeout |
 
 **Pending**
 
@@ -223,7 +228,33 @@ The system is **demo-ready for operator + driver field testing** on one ward. It
 
 ---
 
-### 8. Incident Reporting (Cross-surface)
+### 8. Collection Agent Mobile App
+
+**Location:** `apps/mobile` → Collection Agent workflow (`AgentApp`, `CustomerPaymentModal`)  
+**Backend:** `search_customers`, `record_agent_payment`, `agent_daily_collection_summary`, `reconcile_customer_service_after_payment` (migrations `0016`–`0019`)
+
+**Functional spec (delivered)**
+
+| Capability | Detail |
+|------------|--------|
+| Agent sign-in | Seed login `agent@cleanops.local`; role-based routing from sign-in screen |
+| Customer search | Search by name, phone, or address |
+| Payment entry | Modal on customer select; channel selection; optional receipt reference |
+| Transaction history | Per-customer payment timeline in payment modal |
+| Receipt confirmation | On-screen receipt reference after payment; share via native Share sheet |
+| Daily summary | End-of-day collection count and total kobo |
+| Offline queue | Payment actions queued and synced when back online |
+| Auto-activation | Full payment reactivates suspended customer service |
+| Suspension context | Suspension reason shown on customer cards and payment modal |
+
+**Pending**
+
+- WhatsApp/SMS receipt delivery
+- Printed PDF receipts
+
+---
+
+### 9. Incident Reporting (Cross-surface)
 
 **Functional spec (delivered)**
 
@@ -242,7 +273,7 @@ The system is **demo-ready for operator + driver field testing** on one ward. It
 
 ---
 
-### 9. Backend RPC Inventory (Built)
+### 10. Backend RPC Inventory (Built)
 
 | RPC | Purpose |
 |-----|---------|
@@ -261,6 +292,11 @@ The system is **demo-ready for operator + driver field testing** on one ward. It
 | `customer_payment_history` | Per-customer payments |
 | `record_operator_payment` | Manual payment entry |
 | `update_customer_account_status` | Suspend/reactivate |
+| `search_customers` | Agent customer lookup |
+| `record_agent_payment` | Idempotent agent payment with receipt |
+| `agent_daily_collection_summary` | Per-agent daily totals |
+| `operator_agent_collections_snapshot` | Operator reconciliation by date |
+| `reconcile_customer_service_after_payment` | Auto-activate on full payment |
 | `attendance_snapshot` | Daily attendance |
 | `record_attendance_override` | Supervisor override |
 | `monthly_staff_summary` | Payroll estimate |
@@ -276,7 +312,6 @@ These are in `docs/roadmap.md` and `docs/backlog.md` but have **no implementatio
 
 | Module | Phase | Notes |
 |--------|-------|-------|
-| **Collection agent mobile** | 1 | Ledger lookup, payment entry, receipt, daily reconciliation — highest-priority gap |
 | **Resident mobile** | 2 | Registration, schedule, balance, payments, missed collection |
 | **Fleet operations UI** | 1–2 | `fuel_logs`, `dumpsite_runs`, `maintenance_events` tables exist; no web or mobile UI |
 | **Paystack integration** | 1 | Edge Function stub only; no checkout, no signature verification, not deployed |
@@ -309,33 +344,33 @@ Several tables have RLS policies but **no application layer**:
 
 Ordered by impact on Phase 1 go-live (*one PSP, one ward, three trucks, full staff team*):
 
-### 1. Collection agent mobile workflow (critical path)
-
-The largest missing Phase 1 slice. Agents are in seed data and payment RLS already allows `collection_agent` inserts. Build: customer lookup, payment entry, receipt reference, end-of-day reconciliation — mirroring the driver app's Supabase + offline pattern.
-
-### 2. Admin: auth provisioning for new staff
+### 1. Admin: auth provisioning for new staff
 
 Onboarding creates `staff_members` rows but not login profiles. Wire `onboard_staff_member` (or a follow-up RPC) to create Supabase Auth users and link `profile_id`, so new drivers/agents can sign in without manual DB work.
 
-### 3. Paystack webhook hardening + deployment
+### 2. Paystack webhook hardening + deployment
 
 Add signature verification to `supabase/functions/paystack-webhook`, deploy locally/staging, and connect payment confirmation to ledger refresh on web.
 
-### 4. End-to-end pilot validation
+### 3. End-to-end pilot validation
 
-Run a full day simulation: plan tomorrow's routes on web → driver completes stops on device → operator sees live updates → record agent cash payment → verify ledger and attendance.
+Run a full day simulation: plan tomorrow's routes on web → driver completes stops on device → agent records cash payment → operator verifies ledger and agent collections reconciliation → check attendance.
 
-### 5. Driver field completeness
+### 4. Driver field completeness
 
 Add dumpsite and fuel log screens (tables and RLS already exist). These are on the Phase 1 backlog and needed for operational completeness.
 
-### 6. Quality gate before go-live
+### 5. Quality gate before go-live
 
-Add CI (`typecheck` + migration lint), smoke tests for sign-in / plan routes / record payment, and one real Android device QA pass for driver sync and offline recovery.
+Add CI (`typecheck` + migration lint), smoke tests for sign-in / plan routes / record payment, and one real Android device QA pass for driver and agent offline sync.
 
-### 7. Admin edit flows
+### 6. Admin edit flows
 
 Allow updating existing staff, truck, and customer records (not just create + deactivate).
+
+### 7. Collection agent receipts (deferred)
+
+WhatsApp/SMS and PDF receipt delivery after core pilot validation.
 
 ---
 
@@ -344,19 +379,23 @@ Allow updating existing staff, truck, and customer records (not just create + de
 ```bash
 npm install
 supabase start          # or supabase db reset for fresh seed
+supabase migration up   # apply any new migrations
 npm run dev:web         # http://localhost:5173
-npm run dev:mobile      # Expo; set LAN IP in apps/mobile/.env.local
+npm run dev:mobile      # npx expo start -c; set LAN IP in apps/mobile/.env.local
 ```
 
 | Role | Credentials |
 |------|-------------|
 | Operator (web) | `owner@cleanops.local` / `cleanops-demo-password` |
 | Driver (mobile) | `driver@cleanops.local` / `cleanops-driver-password` |
+| Collection agent (mobile) | `agent@cleanops.local` / `cleanops-agent-password` |
 
 ---
 
 ## Summary
 
-CleanOps has a solid **operator command center** (dashboard, routes, payments, staff, admin) and a **functional driver field app** with offline resilience. The database and RPC layer are ahead of the mobile surface area — collection agent, fleet logging, and integrations are the main gaps before a real ward pilot.
+CleanOps has a solid **operator command center** (dashboard, routes, payments with agent reconciliation, staff, admin) and **field apps** for drivers and collection agents with offline resilience. Sprint 1 (collection agent mobile + operator reconciliation) is complete except WhatsApp/PDF receipts.
 
-The single highest-leverage next build is the **collection agent mobile workflow**, followed by **staff auth provisioning** and **Paystack webhook** so payments can flow without manual operator entry.
+The highest-leverage next builds are **staff auth provisioning**, **Paystack webhook**, and **end-to-end pilot validation** before expanding into fleet logging and resident mobile.
+
+See [build-plan.md](./build-plan.md) for sprint sequencing.
