@@ -12,6 +12,9 @@ import {
   routePlanningOptionsSchema,
   routeStopStatuses,
   staffOnboardingInputSchema,
+  staffOnboardingResultSchema,
+  staffLoginProvisionInputSchema,
+  staffPasswordResetTargetSchema,
   staffAttendanceRowSchema,
   truckOnboardingInputSchema,
   type AdminMasterData,
@@ -28,6 +31,8 @@ import {
   type RouteStatus,
   type RouteStopStatus,
   type StaffOnboardingInput,
+  type StaffOnboardingResult,
+  type StaffLoginProvisionInput,
   type StaffAttendanceRow,
   type TruckOnboardingInput
 } from "@cleanops/shared";
@@ -525,23 +530,85 @@ export async function getAdminMasterData(): Promise<AdminMasterData> {
   return adminMasterDataSchema.parse(data);
 }
 
-export async function onboardStaffMember(input: StaffOnboardingInput) {
+export async function onboardStaffMember(input: StaffOnboardingInput): Promise<StaffOnboardingResult> {
   const parsed = staffOnboardingInputSchema.parse(input);
 
   if (!supabase) {
-    return;
+    return staffOnboardingResultSchema.parse({
+      staffId: crypto.randomUUID(),
+      profileId: null,
+      loginEmail: null,
+      temporaryPassword: null,
+      loginProvisioned: false
+    });
   }
 
-  const { error } = await supabase.rpc("onboard_staff_member", {
+  const { data, error } = await supabase.rpc("onboard_staff_member", {
     input_full_name: parsed.fullName,
     input_phone: parsed.phone,
     input_role: parsed.role,
-    input_monthly_salary_kobo: parsed.monthlySalaryKobo
+    input_monthly_salary_kobo: parsed.monthlySalaryKobo,
+    input_login_email: parsed.loginEmail ?? null,
+    input_provision_login: parsed.provisionLogin
   });
 
   if (error) {
     throw new Error(error.message);
   }
+
+  return staffOnboardingResultSchema.parse(data);
+}
+
+export async function provisionStaffMemberLogin(
+  input: StaffLoginProvisionInput
+): Promise<StaffOnboardingResult> {
+  const parsed = staffLoginProvisionInputSchema.parse(input);
+
+  if (!supabase) {
+    throw new Error("Staff login provisioning requires Supabase.");
+  }
+
+  const { data, error } = await supabase.rpc("provision_staff_member_login", {
+    input_staff_id: parsed.staffId,
+    input_login_email: parsed.loginEmail
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return staffOnboardingResultSchema.parse(data);
+}
+
+export async function requestStaffPasswordReset(staffId: string) {
+  if (!supabase) {
+    throw new Error("Password reset requires Supabase.");
+  }
+
+  const { data, error } = await supabase.rpc("get_staff_password_reset_target", {
+    input_staff_id: staffId
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const target = staffPasswordResetTargetSchema.parse(data);
+  const redirectTo = typeof window !== "undefined" ? window.location.origin : undefined;
+
+  const { error: resetError } = await supabase.auth.resetPasswordForEmail(target.loginEmail, {
+    redirectTo
+  });
+
+  if (resetError) {
+    throw new Error(resetError.message);
+  }
+
+  return {
+    sent: true as const,
+    loginEmail: target.loginEmail,
+    staffName: target.staffName
+  };
 }
 
 export async function setStaffActive(staffId: string, active: boolean) {

@@ -55,7 +55,7 @@ function createPaymentAction(
   };
 }
 
-export default function AgentApp({ session }: { session: FieldSession }) {
+export default function AgentApp({ session, onSignOut }: { session: FieldSession; onSignOut: () => void }) {
   const [customers, setCustomers] = useState<CustomerLedgerItem[]>([]);
   const [paymentModalCustomerId, setPaymentModalCustomerId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -341,6 +341,9 @@ export default function AgentApp({ session }: { session: FieldSession }) {
                 value={syncEnabled}
               />
             </View>
+            <Pressable onPress={onSignOut} style={styles.signOutSettingsButton}>
+              <Text style={styles.signOutSettingsText}>Sign out and switch user</Text>
+            </Pressable>
           </View>
         ) : null}
 
@@ -542,6 +545,19 @@ const styles = StyleSheet.create({
   },
   settingsTextBlock: {
     flex: 1
+  },
+  signOutSettingsButton: {
+    borderColor: "#dbe7dd",
+    borderRadius: 12,
+    borderTopWidth: 1,
+    marginTop: 16,
+    paddingTop: 16
+  },
+  signOutSettingsText: {
+    color: "#a8550b",
+    fontSize: 14,
+    fontWeight: "700",
+    textAlign: "center"
   },
   settingsTitle: {
     color: "#102017",

@@ -1,6 +1,6 @@
 # CleanOps Build Plan
 
-**Last updated:** 5 July 2026  
+**Last updated:** 9 July 2026  
 **Reference:** [status-report.md](./status-report.md), [roadmap.md](./roadmap.md), [backlog.md](./backlog.md)
 
 ---
@@ -39,13 +39,50 @@ Phase 1 critical path. Agents collect cash in the field; operators reconcile tho
 
 ---
 
+## Sprint 2 — Staff auth provisioning — **complete**
+
+Operators can create staff logins from Admin without manual database work.
+
+### Delivered
+
+| Capability | Deliverable |
+|------------|-------------|
+| Onboard + login | `onboard_staff_member` creates Auth user, profile, and links `staff_members.profile_id` |
+| Login email | Stored on `staff_members.login_email`; shown in Admin list |
+| Temp password | Generated on create; shown once in credentials modal |
+| Existing staff | `provision_staff_member_login` for staff without login |
+| Password reset | Admin “Send reset email” via `get_staff_password_reset_target` + `auth.resetPasswordForEmail` (Inbucket locally) |
+| Admin UI | Login email field, provision toggle, Create login + Send reset email actions |
+| Mobile sign-in | Email/password login for any provisioned staff; demo accounts still available |
+
+### Backend (migrations `0022`–`0024`)
+
+- `create_staff_auth_profile(...)` — security definer Auth user + profile creation
+- `generate_staff_temporary_password()` — one-time credential generator
+- `onboard_staff_member(...)` — returns `{ staffId, profileId, loginEmail, temporaryPassword, loginProvisioned }`
+- `provision_staff_member_login(staff_id, login_email)` — backfill login for existing staff
+- `get_staff_password_reset_target(staff_id)` — operator-scoped login email for reset
+- `staff_members.login_email` column + operator-scoped unique index + auth user backfill
+- Optional Edge Function `staff-auth` remains in repo; web reset path no longer depends on it
+
+### Deferred (post Sprint 2)
+
+- Invite-only flow with forced password change on first login
+- Deactivate Auth user when staff is deactivated
+
+---
+
+## Post–Sprint 2 polish (shipped with Sprint 2 commit)
+
+| Item | Detail |
+|------|--------|
+| Mobile keyboard UX | Sign-in scrolls above keyboard; Android resize mode |
+| Show/hide password | Toggle on staff login field |
+| Driver empty assignment | Live drivers with no route for today see “Waiting for assignment” instead of silent pilot fallback |
+
+---
+
 ## Upcoming Sprints (ordered)
-
-### Sprint 2 — Staff auth provisioning
-
-- Create Supabase Auth users when onboarding staff in Admin tab
-- Link `staff_members.profile_id` automatically
-- Password reset / invite flow (email)
 
 ### Sprint 3 — Paystack webhook
 

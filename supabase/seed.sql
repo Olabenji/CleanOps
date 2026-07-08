@@ -338,11 +338,13 @@ values
 on conflict (id) do nothing;
 
 update public.staff_members
-set profile_id = '00000000-0000-4000-8000-000000000021'
+set profile_id = '00000000-0000-4000-8000-000000000021',
+    login_email = 'driver@cleanops.local'
 where id = '00000000-0000-4000-8000-000000000201';
 
 update public.staff_members
-set profile_id = '00000000-0000-4000-8000-000000000031'
+set profile_id = '00000000-0000-4000-8000-000000000031',
+    login_email = 'agent@cleanops.local'
 where id = '00000000-0000-4000-8000-000000000205';
 
 insert into public.trucks (

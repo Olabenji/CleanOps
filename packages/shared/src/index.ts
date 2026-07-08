@@ -186,7 +186,8 @@ export const adminStaffSchema = z.object({
   role: z.enum(userRoles),
   monthlySalaryKobo: z.number().int().nonnegative(),
   active: z.boolean(),
-  hasLoginProfile: z.boolean()
+  hasLoginProfile: z.boolean(),
+  loginEmail: z.string().nullable()
 });
 
 export const adminTruckSchema = z.object({
@@ -224,7 +225,27 @@ export const staffOnboardingInputSchema = z.object({
   fullName: z.string().min(2),
   phone: z.string().min(7),
   role: z.enum(userRoles),
-  monthlySalaryKobo: z.number().int().nonnegative()
+  monthlySalaryKobo: z.number().int().nonnegative(),
+  loginEmail: z.string().email().optional(),
+  provisionLogin: z.boolean().default(true)
+});
+
+export const staffOnboardingResultSchema = z.object({
+  staffId: z.string().uuid(),
+  profileId: z.string().uuid().nullable(),
+  loginEmail: z.string().nullable(),
+  temporaryPassword: z.string().nullable(),
+  loginProvisioned: z.boolean()
+});
+
+export const staffLoginProvisionInputSchema = z.object({
+  staffId: z.string().uuid(),
+  loginEmail: z.string().email()
+});
+
+export const staffPasswordResetTargetSchema = z.object({
+  loginEmail: z.string().email(),
+  staffName: z.string()
 });
 
 export const truckOnboardingInputSchema = z.object({
@@ -427,6 +448,9 @@ export type AdminTruck = z.infer<typeof adminTruckSchema>;
 export type AdminCustomer = z.infer<typeof adminCustomerSchema>;
 export type AdminMasterData = z.infer<typeof adminMasterDataSchema>;
 export type StaffOnboardingInput = z.infer<typeof staffOnboardingInputSchema>;
+export type StaffOnboardingResult = z.infer<typeof staffOnboardingResultSchema>;
+export type StaffLoginProvisionInput = z.infer<typeof staffLoginProvisionInputSchema>;
+export type StaffPasswordResetTarget = z.infer<typeof staffPasswordResetTargetSchema>;
 export type TruckOnboardingInput = z.infer<typeof truckOnboardingInputSchema>;
 export type CustomerOnboardingInput = z.infer<typeof customerOnboardingInputSchema>;
 export type PaymentSummary = z.infer<typeof paymentSummarySchema>;

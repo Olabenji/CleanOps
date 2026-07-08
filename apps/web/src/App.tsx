@@ -15,6 +15,8 @@ import type {
   RouteStatus,
   RouteStopStatus,
   StaffOnboardingInput,
+  StaffOnboardingResult,
+  StaffLoginProvisionInput,
   StaffAttendanceRow,
   TruckOnboardingInput
 } from "@cleanops/shared";
@@ -56,6 +58,8 @@ import {
   moveRoutePlanStop,
   onboardCustomer,
   onboardStaffMember,
+  provisionStaffMemberLogin,
+  requestStaffPasswordReset,
   onboardTruck,
   recordAttendanceOverride,
   recordPayment,
@@ -585,11 +589,31 @@ export function App() {
     setCustomerLedger(nextLedger);
   }
 
-  async function handleOnboardStaff(input: StaffOnboardingInput) {
+  async function handleOnboardStaff(input: StaffOnboardingInput): Promise<StaffOnboardingResult> {
     setStatusMessage(null);
-    await onboardStaffMember(input);
+    const result = await onboardStaffMember(input);
     await refreshAdminData();
-    setStatusMessage("Staff member onboarded.");
+    setStatusMessage(
+      result.loginProvisioned
+        ? `Staff member onboarded. Login created for ${result.loginEmail}.`
+        : "Staff member onboarded."
+    );
+    return result;
+  }
+
+  async function handleProvisionStaffLogin(input: StaffLoginProvisionInput): Promise<StaffOnboardingResult> {
+    setStatusMessage(null);
+    const result = await provisionStaffMemberLogin(input);
+    await refreshAdminData();
+    setStatusMessage(`Login created for ${result.loginEmail}.`);
+    return result;
+  }
+
+  async function handleRequestStaffPasswordReset(staffId: string) {
+    setStatusMessage(null);
+    const result = await requestStaffPasswordReset(staffId);
+    setStatusMessage(`Password reset email sent to ${result.loginEmail}. Check Inbucket locally.`);
+    return result;
   }
 
   async function handleSetStaffActive(staffId: string, active: boolean) {
@@ -745,6 +769,8 @@ export function App() {
           onOnboardCustomer={handleOnboardCustomer}
           onOnboardStaff={handleOnboardStaff}
           onOnboardTruck={handleOnboardTruck}
+          onProvisionStaffLogin={handleProvisionStaffLogin}
+          onRequestStaffPasswordReset={handleRequestStaffPasswordReset}
           onSetCustomerServiceStatus={handleSetCustomerServiceStatus}
           onSetStaffActive={handleSetStaffActive}
           onSetTruckActive={handleSetTruckActive}

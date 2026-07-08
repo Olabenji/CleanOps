@@ -70,9 +70,11 @@ function updateStop(route: RouteDetail, stopId: string, status: RouteStopStatus,
   };
 }
 
-export default function DriverApp({ session }: { session: FieldSession }) {
-  const [route, setRoute] = useState<RouteDetail>(pilotDriverRoute);
-  const [shiftStarted, setShiftStarted] = useState(Boolean(pilotDriverRoute.startedAt));
+export default function DriverApp({ session, onSignOut }: { session: FieldSession; onSignOut: () => void }) {
+  const [route, setRoute] = useState<RouteDetail | null>(session.mode === "pilot" ? pilotDriverRoute : null);
+  const [shiftStarted, setShiftStarted] = useState(
+    session.mode === "pilot" ? Boolean(pilotDriverRoute.startedAt) : false
+  );
   const [queue, setQueue] = useState<DriverStopAction[]>([]);
   const [incidentQueue, setIncidentQueue] = useState<IncidentReportInput[]>([]);
   const [notes, setNotes] = useState<Record<string, string>>({});
@@ -92,10 +94,13 @@ export default function DriverApp({ session }: { session: FieldSession }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [message, setMessage] = useState("Loading driver workspace...");
-  const progress = useMemo(
-    () => Math.round((route.completedStops / route.totalStops) * 100),
-    [route.completedStops, route.totalStops]
-  );
+  const progress = useMemo(() => {
+    if (!route || route.totalStops === 0) {
+      return 0;
+    }
+
+    return Math.round((route.completedStops / route.totalStops) * 100);
+  }, [route]);
   const pendingActions = useMemo(() => queue.filter((item) => !item.syncedAt), [queue]);
   const pendingActionByStop = useMemo(
     () =>
@@ -162,14 +167,29 @@ export default function DriverApp({ session }: { session: FieldSession }) {
       setLoading(true);
     }
 
+    if (session.mode === "pilot") {
+      setRoute(pilotDriverRoute);
+      setShiftStarted(Boolean(pilotDriverRoute.startedAt));
+      setMessage(`Signed in as ${session.fullName} (pilot)`);
+      if (!isRefresh) {
+        setLoading(false);
+      }
+      return;
+    }
+
     try {
       const assignedRoute = await fetchAssignedRoute();
       setRoute(assignedRoute);
       setShiftStarted(assignedRoute.status === "in_progress" || Boolean(assignedRoute.startedAt));
-      setMessage(`Signed in as ${session.fullName} (${session.mode})`);
+      setMessage(`Signed in as ${session.fullName} (supabase)`);
     } catch (error) {
-      setRoute(pilotDriverRoute);
-      setMessage(error instanceof Error ? `Using pilot route: ${error.message}` : "Using pilot route");
+      setRoute(null);
+      setShiftStarted(false);
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "No route assigned today. Ask an operator to assign you on Routes."
+      );
     } finally {
       if (!isRefresh) {
         setLoading(false);
@@ -178,6 +198,11 @@ export default function DriverApp({ session }: { session: FieldSession }) {
   }
 
   async function handleStartShift() {
+    if (!route) {
+      setMessage("No route assigned today. Ask an operator to assign you on Routes.");
+      return;
+    }
+
     setShiftStarted(true);
 
     if (session?.mode === "pilot") {
@@ -195,6 +220,10 @@ export default function DriverApp({ session }: { session: FieldSession }) {
   }
 
   async function handleStopAction(stop: RouteStop, status: RouteStopStatus) {
+    if (!route) {
+      return;
+    }
+
     const note = notes[stop.id];
     const skipReason = skipReasons[stop.id];
 
@@ -207,7 +236,7 @@ export default function DriverApp({ session }: { session: FieldSession }) {
     }
 
     if (session?.mode === "pilot") {
-      setRoute((current) => updateStop(current, stop.id, status, note, skipReason));
+      setRoute((current) => (current ? updateStop(current, stop.id, status, note, skipReason) : current));
       setMessage("Pilot route updated locally. Supabase sync is disabled in pilot mode.");
       return;
     }
@@ -234,7 +263,7 @@ export default function DriverApp({ session }: { session: FieldSession }) {
         return;
       }
 
-      setRoute((current) => updateStop(current, stop.id, status, note, skipReason));
+      setRoute((current) => (current ? updateStop(current, stop.id, status, note, skipReason) : current));
       setQueue((current) => [
         {
           ...action,
@@ -249,6 +278,11 @@ export default function DriverApp({ session }: { session: FieldSession }) {
   }
 
   async function handleIncidentSubmit() {
+    if (!route) {
+      Alert.alert("No route assigned", "Incidents can only be reported against an assigned route.");
+      return;
+    }
+
     const trimmedTitle = incidentTitle.trim();
     const trimmedDescription = incidentDescription.trim();
 
@@ -397,6 +431,48 @@ export default function DriverApp({ session }: { session: FieldSession }) {
     }
   }
 
+  if (!route) {
+    return (
+      <View style={styles.safeArea}>
+        <ScrollView
+          contentContainerStyle={styles.container}
+          style={styles.scrollView}
+          refreshControl={
+            <RefreshControl
+              colors={["#1a7f45"]}
+              onRefresh={() => void handleRefresh()}
+              refreshing={refreshing}
+              tintColor="#1a7f45"
+            />
+          }
+        >
+          <StatusBar style="dark" />
+          <Text style={styles.eyebrow}>CleanOps Driver</Text>
+          <Text style={styles.heading}>No route assigned</Text>
+          <Text style={styles.copy}>
+            {session?.fullName ?? pilotDriver.fullName} · Shift not started · Pull down to refresh
+          </Text>
+          <View style={styles.notice}>
+            <Text style={styles.noticeText}>{loading ? "Loading..." : message}</Text>
+            <Text style={styles.noticeSubtext}>
+              {session.mode === "supabase" ? "Connected to Supabase" : "Pilot mode active"}
+            </Text>
+          </View>
+          <View style={styles.emptyRouteCard}>
+            <Text style={styles.cardTitle}>Waiting for assignment</Text>
+            <Text style={styles.cardCopy}>
+              You are signed in live, but no route is assigned to you for today. Ask the operator to set you as the
+              driver on a scheduled route, then pull down to refresh.
+            </Text>
+          </View>
+          <Pressable onPress={onSignOut} style={styles.settingsButton}>
+            <Text style={styles.settingsButtonText}>Sign out and switch user</Text>
+          </Pressable>
+        </ScrollView>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.safeArea}>
       <ScrollView
@@ -415,7 +491,8 @@ export default function DriverApp({ session }: { session: FieldSession }) {
         <Text style={styles.eyebrow}>CleanOps Driver</Text>
         <Text style={styles.heading}>{route.zoneName} collection run</Text>
         <Text style={styles.copy}>
-          {(session?.fullName ?? pilotDriver.fullName)} · {route.truckRegistration} · {shiftStarted ? "Shift active" : "Shift not started"} · Pull down to refresh
+          {(session?.fullName ?? pilotDriver.fullName)} · {route.truckRegistration} ·{" "}
+          {shiftStarted ? "Shift active" : "Shift not started"} · Pull down to refresh
         </Text>
         <View style={styles.notice}>
           <Text style={styles.noticeText}>{loading ? "Loading..." : message}</Text>
@@ -446,6 +523,9 @@ export default function DriverApp({ session }: { session: FieldSession }) {
                 value={syncEnabled}
               />
             </View>
+            <Pressable onPress={onSignOut} style={styles.signOutSettingsButton}>
+              <Text style={styles.signOutSettingsText}>Sign out and switch user</Text>
+            </Pressable>
           </View>
         ) : null}
 
@@ -776,6 +856,19 @@ const styles = StyleSheet.create({
   settingsTextBlock: {
     flex: 1
   },
+  signOutSettingsButton: {
+    borderColor: "#dbe7dd",
+    borderRadius: 12,
+    borderTopWidth: 1,
+    marginTop: 16,
+    paddingTop: 16
+  },
+  signOutSettingsText: {
+    color: "#a8550b",
+    fontSize: 14,
+    fontWeight: "700",
+    textAlign: "center"
+  },
   summaryGrid: {
     flexDirection: "row",
     gap: 16,
@@ -822,6 +915,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 24,
     marginTop: 8
+  },
+  emptyRouteCard: {
+    backgroundColor: "#ffffff",
+    borderColor: "#dbe7dd",
+    borderRadius: 18,
+    borderWidth: 1,
+    marginTop: 16,
+    padding: 16
   },
   formBlock: {
     gap: 12,

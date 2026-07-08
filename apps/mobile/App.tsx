@@ -5,6 +5,7 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import {
   restoreFieldSession,
   signInFieldUser,
+  signInWithCredentials,
   signOutFieldUser,
   type FieldSession
 } from "./src/data/fieldSessionService";
@@ -24,6 +25,7 @@ function FieldApp() {
   const [session, setSession] = useState<FieldSession | null>(null);
   const [bootstrapping, setBootstrapping] = useState(true);
   const [signingIn, setSigningIn] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -39,7 +41,21 @@ function FieldApp() {
     })();
   }, []);
 
-  async function handleSignIn(role: FieldSession["role"]) {
+  async function handleSignInWithCredentials(credentials: { email: string; password: string }) {
+    setSigningIn(true);
+    setError(null);
+
+    try {
+      const nextSession = await signInWithCredentials(credentials.email, credentials.password);
+      setSession(nextSession);
+    } catch (signInError) {
+      setError(signInError instanceof Error ? signInError.message : "Unable to sign in");
+    } finally {
+      setSigningIn(false);
+    }
+  }
+
+  async function handleDemoSignIn(role: FieldSession["role"]) {
     setSigningIn(true);
     setError(null);
 
@@ -52,10 +68,17 @@ function FieldApp() {
       setSigningIn(false);
     }
   }
+
   async function handleSignOut() {
-    await signOutFieldUser();
-    setSession(null);
-    setError(null);
+    setSigningOut(true);
+
+    try {
+      await signOutFieldUser();
+      setSession(null);
+      setError(null);
+    } finally {
+      setSigningOut(false);
+    }
   }
 
   if (bootstrapping) {
@@ -70,9 +93,14 @@ function FieldApp() {
 
   if (!session) {
     return (
-      <SafeAreaView style={styles.shell}>
+      <SafeAreaView edges={["left", "right"]} style={styles.shell}>
         <StatusBar style="dark" />
-        <SignInScreen error={error} loading={signingIn} onSignIn={(role) => void handleSignIn(role)} />
+        <SignInScreen
+          error={error}
+          loading={signingIn}
+          onDemoSignIn={(role) => void handleDemoSignIn(role)}
+          onSignIn={(credentials) => void handleSignInWithCredentials(credentials)}
+        />
       </SafeAreaView>
     );
   }
@@ -81,11 +109,14 @@ function FieldApp() {
     <SafeAreaView style={styles.shell} edges={["top", "left", "right"]}>
       <StatusBar style="dark" />
       <View style={styles.topBar}>
-        <Text style={styles.topBarLabel}>
-          {session.role === "driver" ? "Driver workspace" : "Collection agent workspace"} · {session.mode}
-        </Text>
-        <Pressable onPress={() => void handleSignOut()}>
-          <Text style={styles.signOut}>Switch role</Text>
+        <View style={styles.topBarIdentity}>
+          <Text style={styles.topBarName}>{session.fullName}</Text>
+          <Text style={styles.topBarLabel}>
+            {session.role === "driver" ? "Driver" : "Collection agent"} · {session.mode}
+          </Text>
+        </View>
+        <Pressable disabled={signingOut} onPress={() => void handleSignOut()} style={styles.signOutButton}>
+          <Text style={styles.signOut}>{signingOut ? "Signing out..." : "Sign out"}</Text>
         </Pressable>
       </View>
       <View style={styles.workspace}>
@@ -94,7 +125,11 @@ function FieldApp() {
             <Text style={styles.connectionNoticeText}>{session.connectionNotice}</Text>
           </View>
         ) : null}
-        {session.role === "driver" ? <DriverApp session={session} /> : <AgentApp session={session} />}
+        {session.role === "driver" ? (
+          <DriverApp onSignOut={() => void handleSignOut()} session={session} />
+        ) : (
+          <AgentApp onSignOut={() => void handleSignOut()} session={session} />
+        )}
       </View>
     </SafeAreaView>
   );
@@ -137,15 +172,29 @@ const styles = StyleSheet.create({
     borderBottomColor: "#dbe7dd",
     borderBottomWidth: 1,
     flexDirection: "row",
+    gap: 12,
     justifyContent: "space-between",
     paddingHorizontal: 24,
-    paddingVertical: 10
+    paddingVertical: 12
+  },
+  topBarIdentity: {
+    flex: 1,
+    minWidth: 0
+  },
+  topBarName: {
+    color: "#102017",
+    fontSize: 16,
+    fontWeight: "800"
   },
   topBarLabel: {
     color: "#637466",
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "700",
+    marginTop: 2,
     textTransform: "uppercase"
+  },
+  signOutButton: {
+    paddingVertical: 4
   },
   signOut: {
     color: "#1a7f45",

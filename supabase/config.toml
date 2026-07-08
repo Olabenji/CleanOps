@@ -24,5 +24,15 @@ additional_redirect_urls = ["http://localhost:5173"]
 jwt_expiry = 3600
 enable_refresh_token_rotation = true
 
+[auth.email]
+enable_signup = true
+
+[inbucket]
+enabled = true
+port = 54324
+
+[functions.staff-auth]
+verify_jwt = true
+
 [storage]
 enabled = true

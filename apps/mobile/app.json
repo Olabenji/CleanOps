@@ -12,6 +12,7 @@
     },
     "android": {
       "package": "com.nexttogodliness.cleanops",
+      "softwareKeyboardLayoutMode": "resize",
       "usesCleartextTraffic": true
     },
     "extra": {

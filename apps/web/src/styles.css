@@ -819,6 +819,22 @@ h1 {
   color: #ffffff;
 }
 
+.checkbox-row {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.admin-row-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.admin-credentials-card p {
+  margin: 0 0 10px;
+}
+
 .admin-modal-backdrop {
   align-items: center;
   background: rgba(16, 32, 23, 0.45);

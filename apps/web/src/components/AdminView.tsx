@@ -3,7 +3,9 @@ import type {
   CustomerLedgerItem,
   CustomerOnboardingInput,
   CustomerType,
+  StaffLoginProvisionInput,
   StaffOnboardingInput,
+  StaffOnboardingResult,
   TruckOnboardingInput,
   TruckStatus,
   UserRole
@@ -31,8 +33,19 @@ const adminSections: Array<{ id: AdminSection; label: string }> = [
 ];
 
 const adminStaffRoles: UserRole[] = ["driver", "collection_agent", "operations_supervisor"];
+const staffRolesWithLogin = new Set<UserRole>(adminStaffRoles);
 const adminCustomerTypes: CustomerType[] = ["residential", "small_business", "restaurant", "estate"];
 const adminTruckStatuses: TruckStatus[] = ["operational", "standby", "workshop"];
+
+function suggestStaffLoginEmail(fullName: string) {
+  const slug = fullName
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, ".")
+    .replace(/^\.+|\.+$/g, "");
+
+  return slug ? `${slug}@cleanops.local` : "";
+}
 
 function formatKobo(amountKobo: number) {
   return `₦${(amountKobo / 100).toLocaleString("en-NG")}`;
@@ -62,14 +75,18 @@ export default function AdminView({
   onOnboardCustomer,
   onOnboardStaff,
   onOnboardTruck,
+  onProvisionStaffLogin,
+  onRequestStaffPasswordReset,
   onSetCustomerServiceStatus,
   onSetStaffActive,
   onSetTruckActive
 }: {
   adminData: AdminMasterData;
   onOnboardCustomer: (input: CustomerOnboardingInput) => Promise<void>;
-  onOnboardStaff: (input: StaffOnboardingInput) => Promise<void>;
+  onOnboardStaff: (input: StaffOnboardingInput) => Promise<StaffOnboardingResult>;
   onOnboardTruck: (input: TruckOnboardingInput) => Promise<void>;
+  onProvisionStaffLogin: (input: StaffLoginProvisionInput) => Promise<StaffOnboardingResult>;
+  onRequestStaffPasswordReset: (staffId: string) => Promise<{ sent: true; loginEmail: string; staffName: string }>;
   onSetCustomerServiceStatus: (customerId: string, serviceStatus: CustomerLedgerItem["serviceStatus"]) => Promise<void>;
   onSetStaffActive: (staffId: string, active: boolean) => Promise<void>;
   onSetTruckActive: (truckId: string, active: boolean) => Promise<void>;
@@ -81,8 +98,15 @@ export default function AdminView({
     fullName: "",
     monthlySalaryNaira: "",
     phone: "",
-    role: "driver" as UserRole
+    role: "driver" as UserRole,
+    loginEmail: "",
+    provisionLogin: true
   });
+  const [staffCredentials, setStaffCredentials] = useState<StaffOnboardingResult | null>(null);
+  const [provisionStaffId, setProvisionStaffId] = useState<string | null>(null);
+  const [provisionEmail, setProvisionEmail] = useState("");
+  const [provisionFormError, setProvisionFormError] = useState<string | null>(null);
+  const [staffLoginActionErrors, setStaffLoginActionErrors] = useState<Record<string, string>>({});
   const [truckForm, setTruckForm] = useState({
     make: "",
     model: "",
@@ -162,17 +186,75 @@ export default function AdminView({
     setStaffFormError(null);
 
     try {
-      await onOnboardStaff({
+      const result = await onOnboardStaff({
         fullName: staffForm.fullName,
         monthlySalaryKobo: Math.round(Number(staffForm.monthlySalaryNaira || 0) * 100),
         phone: staffForm.phone,
-        role: staffForm.role
+        role: staffForm.role,
+        loginEmail: staffForm.provisionLogin ? staffForm.loginEmail : undefined,
+        provisionLogin: staffForm.provisionLogin
       });
-      setStaffForm({ fullName: "", monthlySalaryNaira: "", phone: "", role: "driver" });
+      setStaffForm({
+        fullName: "",
+        monthlySalaryNaira: "",
+        phone: "",
+        role: "driver",
+        loginEmail: "",
+        provisionLogin: true
+      });
       closeModal();
+      if (result.loginProvisioned && result.temporaryPassword && result.loginEmail) {
+        setStaffCredentials(result);
+      }
     } catch (error) {
       setStaffFormError(error instanceof Error ? error.message : "Unable to onboard staff member");
     }
+  }
+
+  async function submitProvisionLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!provisionStaffId) {
+      return;
+    }
+
+    setProvisionFormError(null);
+
+    try {
+      const result = await onProvisionStaffLogin({
+        staffId: provisionStaffId,
+        loginEmail: provisionEmail
+      });
+      setProvisionStaffId(null);
+      setProvisionEmail("");
+      if (result.loginProvisioned && result.temporaryPassword && result.loginEmail) {
+        setStaffCredentials(result);
+      }
+    } catch (error) {
+      setProvisionFormError(error instanceof Error ? error.message : "Unable to create staff login");
+    }
+  }
+
+  async function handlePasswordReset(staffId: string) {
+    setStaffLoginActionErrors((current) => {
+      const next = { ...current };
+      delete next[staffId];
+      return next;
+    });
+
+    try {
+      await onRequestStaffPasswordReset(staffId);
+    } catch (error) {
+      setStaffLoginActionErrors((current) => ({
+        ...current,
+        [staffId]: error instanceof Error ? error.message : "Unable to send password reset email"
+      }));
+    }
+  }
+
+  function openProvisionLogin(staffId: string, fullName: string) {
+    setProvisionStaffId(staffId);
+    setProvisionEmail(suggestStaffLoginEmail(fullName));
+    setProvisionFormError(null);
   }
 
   async function submitTruck(event: FormEvent<HTMLFormElement>) {
@@ -371,13 +453,34 @@ export default function AdminView({
                     <span>
                       {staff.phone} · {staff.role.replace("_", " ")} · {formatKobo(staff.monthlySalaryKobo)}
                     </span>
-                    <small>{staff.hasLoginProfile ? "Login linked" : "No login profile yet"}</small>
+                    <small>
+                      {staff.hasLoginProfile
+                        ? staff.loginEmail
+                          ? `Login: ${staff.loginEmail}`
+                          : "Login linked"
+                        : "No login profile yet"}
+                    </small>
+                    {staffLoginActionErrors[staff.id] ? (
+                      <p className="inline-error">{staffLoginActionErrors[staff.id]}</p>
+                    ) : null}
                     {staffStatusErrors[staff.id] ? <p className="inline-error">{staffStatusErrors[staff.id]}</p> : null}
                   </div>
                   <span className={`pill ${staff.active ? "" : "danger"}`}>{staff.active ? "active" : "inactive"}</span>
-                  <button onClick={() => void toggleStaffActive(staff.id, !staff.active)} type="button">
-                    {staff.active ? "Deactivate" : "Reactivate"}
-                  </button>
+                  <div className="button-row admin-row-actions">
+                    {!staff.hasLoginProfile && staffRolesWithLogin.has(staff.role) ? (
+                      <button onClick={() => openProvisionLogin(staff.id, staff.fullName)} type="button">
+                        Create login
+                      </button>
+                    ) : null}
+                    {staff.hasLoginProfile ? (
+                      <button onClick={() => void handlePasswordReset(staff.id)} type="button">
+                        Send reset email
+                      </button>
+                    ) : null}
+                    <button onClick={() => void toggleStaffActive(staff.id, !staff.active)} type="button">
+                      {staff.active ? "Deactivate" : "Reactivate"}
+                    </button>
+                  </div>
                 </div>
               ))
             )}
@@ -597,7 +700,19 @@ export default function AdminView({
           <label>
             Full name
             <input
-              onChange={(event) => setStaffForm((current) => ({ ...current, fullName: event.target.value }))}
+              onChange={(event) =>
+                setStaffForm((current) => {
+                  const fullName = event.target.value;
+                  return {
+                    ...current,
+                    fullName,
+                    loginEmail:
+                      current.loginEmail && current.loginEmail !== suggestStaffLoginEmail(current.fullName)
+                        ? current.loginEmail
+                        : suggestStaffLoginEmail(fullName)
+                  };
+                })
+              }
               required
               value={staffForm.fullName}
             />
@@ -613,7 +728,14 @@ export default function AdminView({
           <label>
             Role
             <select
-              onChange={(event) => setStaffForm((current) => ({ ...current, role: event.target.value as UserRole }))}
+              onChange={(event) => {
+                const role = event.target.value as UserRole;
+                setStaffForm((current) => ({
+                  ...current,
+                  role,
+                  provisionLogin: staffRolesWithLogin.has(role)
+                }));
+              }}
               value={staffForm.role}
             >
               {adminStaffRoles.map((role) => (
@@ -632,6 +754,32 @@ export default function AdminView({
               value={staffForm.monthlySalaryNaira}
             />
           </label>
+          {staffRolesWithLogin.has(staffForm.role) ? (
+            <>
+              <label className="checkbox-row">
+                <input
+                  checked={staffForm.provisionLogin}
+                  onChange={(event) =>
+                    setStaffForm((current) => ({ ...current, provisionLogin: event.target.checked }))
+                  }
+                  type="checkbox"
+                />
+                Create mobile/web login now
+              </label>
+              {staffForm.provisionLogin ? (
+                <label>
+                  Login email
+                  <input
+                    onChange={(event) => setStaffForm((current) => ({ ...current, loginEmail: event.target.value }))}
+                    placeholder="name@cleanops.local"
+                    required
+                    type="email"
+                    value={staffForm.loginEmail}
+                  />
+                </label>
+              ) : null}
+            </>
+          ) : null}
           {staffFormError ? <p className="inline-error">{staffFormError}</p> : null}
           <div className="button-row">
             <button className="primary-button" type="submit">
@@ -807,6 +955,71 @@ export default function AdminView({
           <div className="button-row">
             <button className="primary-button" type="submit">
               Add customer
+            </button>
+          </div>
+        </form>
+      </AdminModal>
+
+      <AdminModal
+        onClose={() => setStaffCredentials(null)}
+        open={Boolean(staffCredentials)}
+        subtitle="Share these credentials securely with the staff member. The temporary password is shown once."
+        title="Staff login created"
+      >
+        {staffCredentials ? (
+          <div className="entry-card admin-credentials-card">
+            <p>
+              <strong>Email:</strong> {staffCredentials.loginEmail}
+            </p>
+            <p>
+              <strong>Temporary password:</strong> {staffCredentials.temporaryPassword}
+            </p>
+            <p className="panel-subtitle">
+              Staff can sign in on mobile immediately. Use Send reset email later if they need a self-service password
+              change.
+            </p>
+            <div className="button-row">
+              <button
+                className="primary-button"
+                onClick={() =>
+                  void navigator.clipboard.writeText(
+                    `Email: ${staffCredentials.loginEmail}\nTemporary password: ${staffCredentials.temporaryPassword}`
+                  )
+                }
+                type="button"
+              >
+                Copy credentials
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </AdminModal>
+
+      <AdminModal
+        onClose={() => {
+          setProvisionStaffId(null);
+          setProvisionEmail("");
+          setProvisionFormError(null);
+        }}
+        open={Boolean(provisionStaffId)}
+        subtitle="Create a Supabase Auth login and link it to this staff record."
+        title="Create staff login"
+      >
+        <form className="entry-card admin-form admin-modal-form" onSubmit={(event) => void submitProvisionLogin(event)}>
+          <label>
+            Login email
+            <input
+              onChange={(event) => setProvisionEmail(event.target.value)}
+              placeholder="name@cleanops.local"
+              required
+              type="email"
+              value={provisionEmail}
+            />
+          </label>
+          {provisionFormError ? <p className="inline-error">{provisionFormError}</p> : null}
+          <div className="button-row">
+            <button className="primary-button" type="submit">
+              Create login
             </button>
           </div>
         </form>

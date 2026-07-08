@@ -1,6 +1,6 @@
 # CleanOps Status Report
 
-**As of:** 5 July 2026  
+**As of:** 9 July 2026  
 **Phase:** Phase 1 — Core Ops Pilot (Weeks 1–8 target)  
 **Workspace:** TypeScript monorepo (`apps/web`, `apps/mobile`, `packages/shared`, `supabase/`)
 
@@ -8,21 +8,23 @@
 
 ## Executive Summary
 
-CleanOps has a working **local pilot stack**: Supabase schema (21 migrations), operator web dashboard with five workflow tabs, a driver mobile app with live Supabase sync and offline queuing, and a **collection agent mobile workflow** with operator-side reconciliation on web.
+CleanOps has a working **local pilot stack**: Supabase schema (24 migrations), operator web dashboard with five workflow tabs, driver and collection-agent mobile apps with live Supabase sync and offline queuing, staff login provisioning from Admin, and operator-side agent collection reconciliation.
 
 **Rough completion against Phase 1 backlog:**
 
 | Area | Status |
 |------|--------|
-| Foundation (schema, shared types, local dev) | ~85% |
-| Operator web (dashboard, routes, payments, staff, admin) | ~75% |
-| Driver mobile | ~55% |
+| Foundation (schema, shared types, local dev) | ~90% |
+| Operator web (dashboard, routes, payments, staff, admin) | ~85% |
+| Driver mobile | ~60% |
 | Collection agent mobile | ~90% (WhatsApp/PDF receipts deferred) |
 | Resident mobile | 0% |
 | Integrations (Paystack, Twilio, Termii, push) | ~10% (stubs only) |
 | Quality (CI, tests, device QA) | ~5% |
 
 The system is **demo-ready for operator + driver + collection agent field testing** on one ward. It is **not production-ready** — no OTP auth, no payment webhooks wired, and no CI.
+
+**Sprints:** Sprint 1 (collection agent) and Sprint 2 (staff auth + mobile credential sign-in) are complete. Next: Sprint 3 (Paystack webhook).
 
 ---
 
@@ -34,10 +36,10 @@ The system is **demo-ready for operator + driver + collection agent field testin
 
 - npm workspaces monorepo with shared Zod schemas in `packages/shared`
 - PostgreSQL schema: operators, zones, staff, trucks, customers, routes, route stops, payments, attendance, incidents, fuel logs, dumpsite runs, maintenance events
-- 21 migrations (`0001`–`0021`) with RLS policies and role-aware RPCs
+- 24 migrations (`0001`–`0024`) with RLS policies and role-aware RPCs
 - Seed data for one pilot operator, zones, trucks, customers, routes, demo users (operator, driver, collection agent)
 - Local Supabase via Docker CLI; web env via Vite `envDir`
-- Pilot-mode fallbacks in web and mobile services when Supabase is not configured
+- Pilot-mode fallbacks in web and mobile services when Supabase is not configured (live sessions no longer silently substitute pilot routes)
 
 **Functional spec (delivered)**
 
@@ -46,12 +48,12 @@ The system is **demo-ready for operator + driver + collection agent field testin
 | Multi-tenant data model | All tenant tables carry `operator_id`; RLS scopes by authenticated profile |
 | Role enum | `operator_owner`, `operations_supervisor`, `driver`, `collection_agent`, `resident`, `platform_admin` |
 | Auth helpers | `current_operator_id()`, `current_app_role()` |
-| Shared validation | Zod schemas for all domain types (routes, payments, attendance, admin, incidents, agent collections) |
-| Demo credentials | `owner@cleanops.local`, `driver@cleanops.local`, `agent@cleanops.local` (seed) |
+| Shared validation | Zod schemas for routes, payments, attendance, admin, incidents, agent collections, staff login results |
+| Demo credentials | `owner@cleanops.local`, `driver@cleanops.local`, `agent@cleanops.local` (seed); Admin can provision more |
 
 **Pending**
 
-- Phone OTP authentication (email/password demo only)
+- Phone OTP authentication (email/password demo + Admin-provisioned staff)
 - Sentry error tracking
 - Strict environment validation at startup
 - CI pipeline (typecheck, migration checks)
@@ -169,27 +171,26 @@ The system is **demo-ready for operator + driver + collection agent field testin
 ### 6. Admin / Master Data (Web)
 
 **Location:** Admin tab (`AdminView` component)  
-**Backend:** `admin_master_data`, `onboard_staff_member`, `onboard_truck`, `onboard_customer`, `set_*_active` (migrations `0013`, `0020`)
+**Backend:** `admin_master_data`, `onboard_staff_member`, `onboard_truck`, `onboard_customer`, `set_*_active`, `provision_staff_member_login`, `get_staff_password_reset_target` (migrations `0013`, `0020`, `0022`–`0024`)
 
 **Functional spec (delivered)**
 
 | Capability | Detail |
 |------------|--------|
 | Sub-tabs | Staff, Trucks, Customers with per-tab filters |
-| Staff onboarding | Modal form: name, phone, role, monthly salary; list with active/inactive toggle |
+| Staff onboarding | Modal form with optional login email; auto-provisions Auth user + profile for field roles |
+| Staff login management | Create login for existing staff; send password reset email; one-time temp password modal |
 | Truck onboarding | Modal form: registration, zone, make/model/year, status; activate/deactivate |
 | Customer onboarding | Modal form: zone, address, type, monthly rate, service status; suspend/reactivate |
 | Zone reference | Read-only zone list for form dropdowns |
-| Login indicator | `hasLoginProfile` flag shows whether staff has a linked Supabase auth user |
+| Login indicator | `hasLoginProfile` + `loginEmail` on staff rows |
 | Inline errors | Per-form and per-row error messages (not global banner only) |
 
 **Pending**
 
 - Edit existing staff/truck/customer records (create-only today)
-- Provision Supabase auth users when onboarding staff/drivers
 - Zone CRUD (zones are seed-only)
-- Link `profile_id` on staff from admin UI
-- Collection-agent and supervisor-specific admin flows
+- Auto-disable Auth user when staff deactivated
 
 ---
 
@@ -202,22 +203,23 @@ The system is **demo-ready for operator + driver + collection agent field testin
 
 | Capability | Detail |
 |------------|--------|
-| Role router | Sign-in screen routes to Driver or Collection Agent workflow |
-| Driver sign-in | Demo email/password via Supabase Auth |
-| Assigned route | Fetches today's (or configured) route with stops |
+| Shared sign-in | Email/password for provisioned staff; demo accounts available; show/hide password; keyboard-safe scroll |
+| Role routing | Profile role opens Driver or Collection Agent workspace |
+| Assigned route | Fetches today's route with stops when driver is assigned |
+| Empty assignment | Live session with no route shows “Waiting for assignment” (no silent pilot stop list) |
 | Start shift | Transitions route to `in_progress` |
 | Stop actions | Complete or skip stops with optional note/reason |
 | Incident reporting | Type, optional stop, title, description; syncs to `incident_reports` |
 | Offline queue | Failed stop actions queued in AsyncStorage |
 | Incident offline queue | Failed incidents also persisted and retried |
 | Sync controls | Settings toggle for sync on/off; manual sync; last-sync timestamp |
-| Per-stop sync state | Visual indicator for pending/failed offline items |
+| Sign out | Top bar + settings; switch user returns to sign-in |
 | Safe area layout | `react-native-safe-area-context` |
-| Network resilience | LAN IP config, backend diagnostics, pilot fallback on timeout |
+| Network resilience | LAN IP config, backend diagnostics; pilot only when explicitly offline/pilot mode |
 
 **Pending**
 
-- Real login UI (phone OTP, not hardcoded demo sign-in)
+- Phone OTP auth
 - Dumpsite run logging (`dumpsite_runs` table exists, no UI/RPC)
 - Fuel log entry (`fuel_logs` table exists, no UI/RPC)
 - GPS capture on stop completion
@@ -237,7 +239,7 @@ The system is **demo-ready for operator + driver + collection agent field testin
 
 | Capability | Detail |
 |------------|--------|
-| Agent sign-in | Seed login `agent@cleanops.local`; role-based routing from sign-in screen |
+| Agent sign-in | Seed login or any Admin-provisioned agent account via email/password |
 | Customer search | Search by name, phone, or address |
 | Payment entry | Modal on customer select; channel selection; optional receipt reference |
 | Transaction history | Per-customer payment timeline in payment modal |
@@ -302,6 +304,8 @@ The system is **demo-ready for operator + driver + collection agent field testin
 | `monthly_staff_summary` | Payroll estimate |
 | `admin_master_data` | Admin lists |
 | `onboard_staff/truck/customer` | Master data creation |
+| `provision_staff_member_login` | Create Auth login for existing staff |
+| `get_staff_password_reset_target` | Operator-scoped email for password reset |
 | `set_staff/truck_active`, `set_customer_service_status` | Deactivation |
 
 ---
@@ -318,7 +322,7 @@ These are in `docs/roadmap.md` and `docs/backlog.md` but have **no implementatio
 | **Twilio WhatsApp** | 1 | `send-reminders` Edge Function stub only |
 | **Termii SMS** | 1 | Not started |
 | **Expo push notifications** | 1 | Not started |
-| **Phone OTP auth** | 1 | Not started |
+| **Phone OTP auth** | 1 | Not started (email/password + Admin provisioned staff in place) |
 | **Exportable reports** | 1 | P&L, collections, attendance, fleet cost exports |
 | **CI / automated testing** | 1 | No `.github/` workflows; no unit/smoke tests |
 | **Real-time sync** | 1+ | Supabase Realtime not wired |
@@ -344,31 +348,27 @@ Several tables have RLS policies but **no application layer**:
 
 Ordered by impact on Phase 1 go-live (*one PSP, one ward, three trucks, full staff team*):
 
-### 1. Admin: auth provisioning for new staff
-
-Onboarding creates `staff_members` rows but not login profiles. Wire `onboard_staff_member` (or a follow-up RPC) to create Supabase Auth users and link `profile_id`, so new drivers/agents can sign in without manual DB work.
-
-### 2. Paystack webhook hardening + deployment
+### 1. Paystack webhook hardening + deployment
 
 Add signature verification to `supabase/functions/paystack-webhook`, deploy locally/staging, and connect payment confirmation to ledger refresh on web.
 
-### 3. End-to-end pilot validation
+### 2. End-to-end pilot validation
 
-Run a full day simulation: plan tomorrow's routes on web → driver completes stops on device → agent records cash payment → operator verifies ledger and agent collections reconciliation → check attendance.
+Run a full day simulation: plan tomorrow's routes on web → assign driver to New Person (or seed driver) → complete stops on device → agent records cash payment → operator verifies ledger and agent collections → onboard staff with login → sign in on mobile.
 
-### 4. Driver field completeness
+### 3. Driver field completeness
 
 Add dumpsite and fuel log screens (tables and RLS already exist). These are on the Phase 1 backlog and needed for operational completeness.
 
-### 5. Quality gate before go-live
+### 4. Quality gate before go-live
 
 Add CI (`typecheck` + migration lint), smoke tests for sign-in / plan routes / record payment, and one real Android device QA pass for driver and agent offline sync.
 
-### 6. Admin edit flows
+### 5. Admin edit flows
 
 Allow updating existing staff, truck, and customer records (not just create + deactivate).
 
-### 7. Collection agent receipts (deferred)
+### 6. Collection agent receipts (deferred)
 
 WhatsApp/SMS and PDF receipt delivery after core pilot validation.
 
@@ -384,18 +384,21 @@ npm run dev:web         # http://localhost:5173
 npm run dev:mobile      # npx expo start -c; set LAN IP in apps/mobile/.env.local
 ```
 
+For staff password reset emails locally, open Inbucket / Mailpit at http://localhost:54324 after calling **Send reset email** in Admin.
+
 | Role | Credentials |
 |------|-------------|
 | Operator (web) | `owner@cleanops.local` / `cleanops-demo-password` |
 | Driver (mobile) | `driver@cleanops.local` / `cleanops-driver-password` |
 | Collection agent (mobile) | `agent@cleanops.local` / `cleanops-agent-password` |
+| Newly onboarded staff | Temp password shown once in Admin credentials modal |
 
 ---
 
 ## Summary
 
-CleanOps has a solid **operator command center** (dashboard, routes, payments with agent reconciliation, staff, admin) and **field apps** for drivers and collection agents with offline resilience. Sprint 1 (collection agent mobile + operator reconciliation) is complete except WhatsApp/PDF receipts.
+CleanOps has a solid **operator command center** (dashboard, routes, payments with agent reconciliation, staff, admin with staff login provisioning) and **field apps** for drivers and collection agents with offline resilience. Sprint 1 (collection agent) and Sprint 2 (staff auth provisioning, mobile credential sign-in, driver empty-assignment UX) are complete except WhatsApp/PDF receipts.
 
-The highest-leverage next builds are **staff auth provisioning**, **Paystack webhook**, and **end-to-end pilot validation** before expanding into fleet logging and resident mobile.
+The highest-leverage next builds are **Paystack webhook**, **end-to-end pilot validation**, and **driver field completeness** before expanding into resident mobile.
 
 See [build-plan.md](./build-plan.md) for sprint sequencing.

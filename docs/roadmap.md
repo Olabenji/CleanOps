@@ -4,12 +4,13 @@
 
 Target: Weeks 1-8
 
-- Supabase schema, auth, RLS, seed data, and app foundations.
-- Operator dashboard for daily metrics, routes, payments, staff, and alerts.
-- Driver mobile workflow for shift start, assigned route, stop marking, and incident reports.
-- Collection agent workflow for payment logging, receipt generation, and reconciliation.
-- Paystack payment confirmation webhook.
-- WhatsApp reminders and receipts through Twilio.
+- Supabase schema, auth, RLS, seed data, and app foundations. **(done)**
+- Operator dashboard for daily metrics, routes, payments, staff, and alerts. **(done)**
+- Driver mobile workflow for shift start, assigned route, stop marking, and incident reports. **(done — dumpsite/fuel pending)**
+- Collection agent workflow for payment logging, on-screen receipts, and reconciliation. **(done — WhatsApp/PDF deferred)**
+- Staff auth provisioning from Admin (login create + password reset). **(done)**
+- Paystack payment confirmation webhook. **(next — Sprint 3)**
+- WhatsApp reminders and receipts through Twilio. **(deferred)**
 
 Go-live trigger: one PSP operator live on one ward with three trucks and the full staff team.
 
@@ -38,3 +39,6 @@ Target: Weeks 15-22
 - LAWMA reporting API integration.
 
 Go-live trigger: second PSP operator onboarded.
+
+See [build-plan.md](./build-plan.md) and [status-report.md](./status-report.md) for current sprint status.
+
