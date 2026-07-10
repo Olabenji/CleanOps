@@ -101,7 +101,7 @@ The system is **demo-ready for operator + driver + collection agent field testin
 | Route list by date | Two-column layout: route list + detail/planner |
 | Plan from templates | `plan_daily_routes` clones recent route patterns onto a future date |
 | Route planning (scheduled only) | Change truck/driver; add/remove/reorder stops before shift starts |
-| Zone/truck guards | Truck must belong to route zone (migration `0012`) |
+| Zone/truck guards | Customer stops must match route zone. Trucks are floaters (home zone optional; migration `0030`) |
 | Operator stop corrections | Override stop status on active/completed routes |
 | Route cancellation | Operator can cancel; start/complete is field-only (driver mobile) |
 | Inline errors | Validation errors shown near planner controls, not only top banner |
@@ -112,7 +112,10 @@ The system is **demo-ready for operator + driver + collection agent field testin
 
 - Full schedule builder (recurring templates, loader assignment)
 - Loader staff assignment on routes (schema has `driver_id` only)
-- Route template management UI
+- Zone template save prompt after day-route edits (save to zone template vs temp template)
+- Auto-load zone route templates at start of day for operator + drivers
+- Driver login fallback to load previous/default template when operator has not planned
+- Route change popups + push notifications for affected drivers
 - Audit log for operator corrections
 - Route export / print
 - GPS / photo proof on stops

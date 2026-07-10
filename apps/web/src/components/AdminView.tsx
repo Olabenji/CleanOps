@@ -113,7 +113,7 @@ export default function AdminView({
     registrationNumber: "",
     status: "operational" as TruckStatus,
     year: "",
-    zoneId: defaultZoneId
+    zoneId: ""
   });
   const [customerForm, setCustomerForm] = useState({
     address: "",
@@ -268,7 +268,7 @@ export default function AdminView({
         registrationNumber: truckForm.registrationNumber,
         status: truckForm.status,
         year: truckForm.year ? Number(truckForm.year) : undefined,
-        zoneId: truckForm.zoneId
+        zoneId: truckForm.zoneId || null
       });
       setTruckForm({
         make: "",
@@ -276,7 +276,7 @@ export default function AdminView({
         registrationNumber: "",
         status: "operational",
         year: "",
-        zoneId: defaultZoneId
+        zoneId: ""
       });
       closeModal();
     } catch (error) {
@@ -792,18 +792,17 @@ export default function AdminView({
       <AdminModal
         onClose={closeModal}
         open={activeModal === "truck"}
-        subtitle="Register a fleet asset and assign it to an operating zone."
+        subtitle="Register a fleet asset. Home zone is optional — trucks can cover any route."
         title="Add truck"
       >
         <form className="entry-card admin-form admin-modal-form" onSubmit={(event) => void submitTruck(event)}>
           <label>
-            Zone
+            Home zone (optional)
             <select
               onChange={(event) => setTruckForm((current) => ({ ...current, zoneId: event.target.value }))}
-              required
               value={truckForm.zoneId}
             >
-              <option value="">Select zone</option>
+              <option value="">No home zone</option>
               {adminData.zones.map((zone) => (
                 <option key={zone.id} value={zone.id}>
                   {zone.name}

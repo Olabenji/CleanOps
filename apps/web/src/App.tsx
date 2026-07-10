@@ -1212,7 +1212,15 @@ function RoutesView({
   const availableCustomers = planningOptions.customers.filter(
     (customer) => customer.zoneId === selectedRoute?.zoneId && !customersAlreadyPlanned.has(customer.id)
   );
-  const availableTrucks = planningOptions.trucks.filter((truck) => truck.zoneId === selectedRoute?.zoneId);
+  // Floating fleet: any active truck can be assigned; soft-sort home-zone matches first.
+  const availableTrucks = [...planningOptions.trucks].sort((a, b) => {
+    const aHome = a.zoneId === selectedRoute?.zoneId ? 0 : 1;
+    const bHome = b.zoneId === selectedRoute?.zoneId ? 0 : 1;
+    if (aHome !== bHome) {
+      return aHome - bHome;
+    }
+    return a.label.localeCompare(b.label);
+  });
 
   return (
     <section className="workflow-grid routes-workflow">
@@ -1353,7 +1361,10 @@ function RoutesView({
               <div className="planner-panel" key={selectedRoute.id}>
                 <div>
                   <h3>Plan Assignment</h3>
-                  <p>Change driver or truck before field work starts. Select the route zone from the list on the left.</p>
+                  <p>
+                    Change driver or truck before field work starts. Trucks and drivers are floaters — any available unit
+                    can cover this zone. Home-zone trucks are listed first.
+                  </p>
                 </div>
                 <div className="planner-grid">
                   <label>

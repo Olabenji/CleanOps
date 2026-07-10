@@ -345,7 +345,8 @@ export const staffPasswordResetTargetSchema = z.object({
 });
 
 export const truckOnboardingInputSchema = z.object({
-  zoneId: z.string().uuid(),
+  /** Optional home/preferred zone — trucks float across routes. */
+  zoneId: z.string().uuid().optional().nullable(),
   registrationNumber: z.string().min(3),
   make: z.string().optional(),
   model: z.string().optional(),

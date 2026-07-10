@@ -377,6 +377,74 @@ async function run() {
   const noPilotIds = !JSON.stringify(dashAfter.body).includes("11111111-1111-4111-8111");
   record("No hardcoded pilot route IDs in live snapshot", noPilotIds);
 
+  // Floating trucks — cross-zone assignment must succeed (home zone is soft preference only)
+  {
+    const floatDate = (() => {
+      const d = new Date();
+      d.setDate(d.getDate() + 21);
+      return d.toISOString().slice(0, 10);
+    })();
+    const ZONE_A = "00000000-0000-4000-8000-000000000101";
+    const TRUCK_ZONE_A = "00000000-0000-4000-8000-000000000301";
+    const TRUCK_ZONE_C = "00000000-0000-4000-8000-000000000303";
+
+    await rpc(operatorToken, "plan_daily_routes", { input_scheduled_date: floatDate });
+    const floatDash = await rpc(operatorToken, "operator_dashboard_snapshot", { input_date: floatDate });
+    const floatRoutes = floatDash.body?.routes ?? [];
+    const zoneARoute = floatRoutes.find((r) => r.zoneName === "Zone A");
+    const zoneCRoute = floatRoutes.find((r) => r.zoneName === "Zone C");
+
+    const options = await rpc(operatorToken, "route_planning_options");
+    const truckIds = (options.body?.trucks ?? []).map((t) => t.id);
+    record(
+      "Planner lists trucks from all home zones",
+      options.ok && truckIds.includes(TRUCK_ZONE_A) && truckIds.includes(TRUCK_ZONE_C),
+      options.ok ? `${truckIds.length} trucks` : String(options.text).slice(0, 120)
+    );
+
+    if (zoneARoute?.id && zoneCRoute?.id) {
+      const cancelC = await rpc(operatorToken, "transition_route_status", {
+        input_route_id: zoneCRoute.id,
+        next_status: "cancelled"
+      });
+
+      if (!cancelC.ok) {
+        record(
+          "Floating truck: free Zone C truck for cross-zone test",
+          false,
+          String(cancelC.body?.message ?? cancelC.text).slice(0, 160)
+        );
+      } else {
+        const cross = await rpc(operatorToken, "update_route_plan_assignment", {
+          input_route_id: zoneARoute.id,
+          input_zone_id: ZONE_A,
+          input_truck_id: TRUCK_ZONE_C,
+          input_driver_id: null
+        });
+        record(
+          "Assign Zone C home truck to Zone A route",
+          cross.ok,
+          cross.ok
+            ? `date=${floatDate} truck=LAG-003-PSP`
+            : String(cross.body?.message ?? cross.text).slice(0, 160)
+        );
+
+        await rpc(operatorToken, "update_route_plan_assignment", {
+          input_route_id: zoneARoute.id,
+          input_zone_id: ZONE_A,
+          input_truck_id: TRUCK_ZONE_A,
+          input_driver_id: null
+        });
+      }
+    } else {
+      record(
+        "Assign Zone C home truck to Zone A route",
+        false,
+        `Missing float-date routes for ${floatDate} (A=${Boolean(zoneARoute)} C=${Boolean(zoneCRoute)})`
+      );
+    }
+  }
+
   printSummary();
 }
 

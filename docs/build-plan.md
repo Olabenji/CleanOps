@@ -172,18 +172,32 @@ Operator-initiated truck handoffs with driver confirmation for breakdowns, dumps
 
 ## Upcoming Sprints (ordered)
 
-### Sprint 6 — Admin edit flows
+### Sprint 6 — Floating trucks (fleet unhook from zones) — **complete**
 
+- Remove hard truck↔zone assignment guard; keep optional home zone for display/sort only
+- Planner lists all active operational/standby trucks (home-zone matches sorted first)
+- Admin truck onboarding: home zone optional
+- Regression: cross-zone truck assign in `test:pilot` (migration `0030`)
+
+### Sprint 7 — Zone templates & daily auto-load
+
+- Keep clone-from-prior-route as the default zone template source
+- After operator edits a day’s route, prompt: save to zone template vs create temp template
+- Auto-load zone templates at start of day for operator and drivers
+- Driver login fallback when today’s routes are missing (“Click OK to load default route”)
+- Route-change prompts / notifications for affected drivers (push may follow)
+
+### Sprint 8 — Admin edit flows
 
 - Edit existing staff, trucks, customers (not only create + deactivate)
 
-### Sprint 7 — Quality gate
+### Sprint 9 — Quality gate
 
 - CI: typecheck + migration lint
 - Smoke tests for sign-in, plan routes, record payment, truck handoff confirm
 - Android device QA for driver + agent offline sync
 
-### Sprint 8 — Resident mobile (Phase 2 start)
+### Sprint 10 — Resident mobile (Phase 2 start)
 
 - Registration, schedule, balance, Paystack payments, missed collection reports
 

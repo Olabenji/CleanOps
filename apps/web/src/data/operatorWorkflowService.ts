@@ -717,7 +717,7 @@ export async function onboardTruck(input: TruckOnboardingInput) {
   }
 
   const { error } = await supabase.rpc("onboard_truck", {
-    input_zone_id: parsed.zoneId,
+    input_zone_id: parsed.zoneId ?? null,
     input_registration_number: parsed.registrationNumber,
     input_make: parsed.make ?? null,
     input_model: parsed.model ?? null,
