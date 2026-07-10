@@ -13,7 +13,7 @@ CleanOps ships as a TypeScript monorepo with three main runtime surfaces:
 Business state belongs in PostgreSQL. Client apps call Supabase directly for scoped CRUD and RPCs protected by Row-Level Security. Sensitive or privileged operations belong in security-definer RPCs / Edge Functions:
 
 - Staff Auth user provisioning and password-reset targeting (RPCs in migrations `0022`–`0024`).
-- Paystack webhook verification and payment posting (Edge Function stub — Sprint 3).
+- Paystack webhook verification and payment posting (`paystack-webhook` Edge Function + `record_paystack_payment` RPC).
 - WhatsApp/SMS reminder dispatch (stub).
 - Monthly invoice generation (planned).
 - Supervisor-approved service suspension/resumption (RPCs delivered).

@@ -8,9 +8,11 @@ import {
   monthlyStaffSummarySchema,
   paymentLedgerItemSchema,
   paymentEntrySchema,
+  proposeRouteTruckHandoffInputSchema,
   routeDetailSchema,
   routePlanningOptionsSchema,
   routeStopStatuses,
+  routeTruckHandoffSchema,
   staffOnboardingInputSchema,
   staffOnboardingResultSchema,
   staffLoginProvisionInputSchema,
@@ -26,10 +28,12 @@ import {
   type OperatorAgentCollectionsSnapshot,
   type PaymentEntry,
   type PaymentLedgerItem,
+  type ProposeRouteTruckHandoffInput,
   type RouteDetail,
   type RoutePlanningOptions,
   type RouteStatus,
   type RouteStopStatus,
+  type RouteTruckHandoff,
   type StaffOnboardingInput,
   type StaffOnboardingResult,
   type StaffLoginProvisionInput,
@@ -457,6 +461,84 @@ export async function updateRoutePlanAssignment(
   return getRoutes(operationDate);
 }
 
+export async function getRouteTruckHandoffs(operationDate: string): Promise<RouteTruckHandoff[]> {
+  if (!supabase) {
+    return [];
+  }
+
+  const { data, error } = await supabase.rpc("route_truck_handoffs_for_date", {
+    input_date: operationDate
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return routeTruckHandoffSchema.array().parse(data ?? []);
+}
+
+export async function proposeRouteTruckHandoff(
+  input: ProposeRouteTruckHandoffInput
+): Promise<RouteTruckHandoff> {
+  const parsed = proposeRouteTruckHandoffInputSchema.parse(input);
+
+  if (!supabase) {
+    throw new Error("Truck handoffs require Supabase.");
+  }
+
+  const { data, error } = await supabase.rpc("propose_route_truck_handoff", {
+    input_route_id: parsed.routeId,
+    input_to_truck_id: parsed.toTruckId,
+    input_to_driver_id: parsed.toDriverId,
+    input_reason: parsed.reason,
+    input_notes: parsed.notes ?? null,
+    input_source_route_id: parsed.sourceRouteId ?? null,
+    input_source_outcome: parsed.sourceOutcome ?? null
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return routeTruckHandoffSchema.parse(data);
+}
+
+export async function cancelRouteTruckHandoff(handoffId: string): Promise<RouteTruckHandoff> {
+  if (!supabase) {
+    throw new Error("Truck handoffs require Supabase.");
+  }
+
+  const { data, error } = await supabase.rpc("cancel_route_truck_handoff", {
+    input_handoff_id: handoffId
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return routeTruckHandoffSchema.parse(data);
+}
+
+export async function rejectRouteTruckHandoff(
+  handoffId: string,
+  note?: string
+): Promise<RouteTruckHandoff> {
+  if (!supabase) {
+    throw new Error("Truck handoffs require Supabase.");
+  }
+
+  const { data, error } = await supabase.rpc("reject_route_truck_handoff", {
+    input_handoff_id: handoffId,
+    input_note: note ?? null
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return routeTruckHandoffSchema.parse(data);
+}
+
 export async function addRoutePlanStop(routeId: string, customerId: string, operationDate?: string): Promise<RouteDetail[]> {
   if (!supabase) {
     return filterPilotRoutesByDate(operationDate);
@@ -594,7 +676,8 @@ export async function requestStaffPasswordReset(staffId: string) {
   }
 
   const target = staffPasswordResetTargetSchema.parse(data);
-  const redirectTo = typeof window !== "undefined" ? window.location.origin : undefined;
+  const redirectTo =
+    typeof window !== "undefined" ? `${window.location.origin}${window.location.pathname}` : undefined;
 
   const { error: resetError } = await supabase.auth.resetPasswordForEmail(target.loginEmail, {
     redirectTo

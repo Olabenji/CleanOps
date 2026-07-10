@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-CleanOps has a working **local pilot stack**: Supabase schema (24 migrations), operator web dashboard with five workflow tabs, driver and collection-agent mobile apps with live Supabase sync and offline queuing, staff login provisioning from Admin, and operator-side agent collection reconciliation.
+CleanOps has a working **local pilot stack**: Supabase schema (26 migrations), operator web dashboard with five workflow tabs, driver and collection-agent mobile apps with live Supabase sync and offline queuing, staff login provisioning from Admin, operator-side agent collection reconciliation, Paystack webhook, and driver fuel/dumpsite field logging.
 
 **Rough completion against Phase 1 backlog:**
 
@@ -16,15 +16,15 @@ CleanOps has a working **local pilot stack**: Supabase schema (24 migrations), o
 |------|--------|
 | Foundation (schema, shared types, local dev) | ~90% |
 | Operator web (dashboard, routes, payments, staff, admin) | ~85% |
-| Driver mobile | ~60% |
+| Driver mobile | ~75% |
 | Collection agent mobile | ~90% (WhatsApp/PDF receipts deferred) |
 | Resident mobile | 0% |
-| Integrations (Paystack, Twilio, Termii, push) | ~10% (stubs only) |
-| Quality (CI, tests, device QA) | ~5% |
+| Integrations (Paystack, Twilio, Termii, push) | ~35% (Paystack webhook verified; checkout pending) |
+| Quality (CI, tests, device QA) | ~15% (shared Paystack unit tests; no CI yet) |
 
-The system is **demo-ready for operator + driver + collection agent field testing** on one ward. It is **not production-ready** — no OTP auth, no payment webhooks wired, and no CI.
+The system is **demo-ready for operator + driver + collection agent field testing** on one ward. It is **not production-ready** — no OTP auth, Paystack checkout is not initiated from apps yet (webhook is wired), and no CI.
 
-**Sprints:** Sprint 1 (collection agent) and Sprint 2 (staff auth + mobile credential sign-in) are complete. Next: Sprint 3 (Paystack webhook).
+**Sprints:** Sprint 1–5 complete (through truck reassignment & route takeover). Next: Sprint 6 (admin edit flows).
 
 ---
 
@@ -36,7 +36,7 @@ The system is **demo-ready for operator + driver + collection agent field testin
 
 - npm workspaces monorepo with shared Zod schemas in `packages/shared`
 - PostgreSQL schema: operators, zones, staff, trucks, customers, routes, route stops, payments, attendance, incidents, fuel logs, dumpsite runs, maintenance events
-- 24 migrations (`0001`–`0024`) with RLS policies and role-aware RPCs
+- 26 migrations (`0001`–`0026`) with RLS policies and role-aware RPCs
 - Seed data for one pilot operator, zones, trucks, customers, routes, demo users (operator, driver, collection agent)
 - Local Supabase via Docker CLI; web env via Vite `envDir`
 - Pilot-mode fallbacks in web and mobile services when Supabase is not configured (live sessions no longer silently substitute pilot routes)
@@ -57,9 +57,9 @@ The system is **demo-ready for operator + driver + collection agent field testin
 - Sentry error tracking
 - Strict environment validation at startup
 - CI pipeline (typecheck, migration checks)
-- Unit tests for shared schemas and webhook idempotency
+- Unit tests for broader shared schemas beyond Paystack helpers
 - Production deployment configuration
-- Edge Function signature verification (Paystack webhook has no signature check yet)
+- Paystack checkout initiation (webhook + RPC are ready; apps do not start charges yet)
 
 ---
 
@@ -122,7 +122,7 @@ The system is **demo-ready for operator + driver + collection agent field testin
 ### 4. Payment Ledger (Web)
 
 **Location:** Payments tab  
-**Backend:** `customer_ledger_snapshot`, `customer_payment_history`, `record_operator_payment`, `update_customer_account_status`, `operator_agent_collections_snapshot` (migrations `0005`, `0019`, `0021`)
+**Backend:** `customer_ledger_snapshot`, `customer_payment_history`, `record_operator_payment`, `record_paystack_payment`, `update_customer_account_status`, `operator_agent_collections_snapshot` (migrations `0005`, `0019`, `0021`, `0025`)
 
 **Functional spec (delivered)**
 
@@ -135,13 +135,14 @@ The system is **demo-ready for operator + driver + collection agent field testin
 | Two-column layout | Customer list + detail panel |
 | Agent collections | Sub-tab reconciles field agent cash by operations date; per-agent payment drill-down |
 | Auto-activation | Full monthly payment reactivates suspended customers (migration `0019`) |
+| Paystack webhook posting | Verified `charge.success` posts via Edge Function → `record_paystack_payment` |
+| Live ledger refresh | Payments tab auto-refreshes every 20 seconds while open |
 
 **Pending**
 
 - Paystack checkout initiation from web
-- Automated payment posting via webhook (stub exists, not deployed/verified)
-- Receipt generation (PDF/WhatsApp) — deferred
 - Dedicated transfer account handling
+- Receipt generation (PDF/WhatsApp) — deferred
 
 ---
 
@@ -197,7 +198,7 @@ The system is **demo-ready for operator + driver + collection agent field testin
 ### 7. Driver Mobile App
 
 **Location:** `apps/mobile` (Expo / React Native)  
-**Backend:** `driver_assigned_route`, `sync_driver_stop_action`, `transition_route_status`, `report_driver_incident` (migrations `0007`–`0009`)
+**Backend:** `driver_assigned_route`, `sync_driver_stop_action`, `transition_route_status`, `report_driver_incident`, `record_fuel_log`, `record_dumpsite_run`, `driver_dumpsite_run_for_route` (migrations `0007`–`0009`, `0026`)
 
 **Functional spec (delivered)**
 
@@ -209,6 +210,8 @@ The system is **demo-ready for operator + driver + collection agent field testin
 | Empty assignment | Live session with no route shows “Waiting for assignment” (no silent pilot stop list) |
 | Start shift | Transitions route to `in_progress` |
 | Stop actions | Complete or skip stops with optional note/reason |
+| Fuel log entry | Litres, cost, station name logged against assigned route truck |
+| Dumpsite run logging | Depart → arrive → cleared timestamps with optional tipping fee and notes |
 | Incident reporting | Type, optional stop, title, description; syncs to `incident_reports` |
 | Offline queue | Failed stop actions queued in AsyncStorage |
 | Incident offline queue | Failed incidents also persisted and retried |
@@ -220,8 +223,6 @@ The system is **demo-ready for operator + driver + collection agent field testin
 **Pending**
 
 - Phone OTP auth
-- Dumpsite run logging (`dumpsite_runs` table exists, no UI/RPC)
-- Fuel log entry (`fuel_logs` table exists, no UI/RPC)
 - GPS capture on stop completion
 - Photo proof / Storage upload
 - MMKV for faster durable queue (AsyncStorage in use; MMKV in deps but not wired)
@@ -289,10 +290,14 @@ The system is **demo-ready for operator + driver + collection agent field testin
 | `driver_assigned_route` | Driver's route for a date |
 | `sync_driver_stop_action` | Idempotent driver stop sync |
 | `report_driver_incident` | Driver incident creation |
+| `record_fuel_log` | Driver fuel purchase log |
+| `record_dumpsite_run` | Driver dumpsite depart/arrive/clear |
+| `driver_dumpsite_run_for_route` | Current dumpsite run for route |
 | `recent_incident_reports` | Dashboard incident feed |
 | `customer_ledger_snapshot` | Payment ledger |
 | `customer_payment_history` | Per-customer payments |
 | `record_operator_payment` | Manual payment entry |
+| `record_paystack_payment` | Idempotent Paystack webhook posting (service_role) |
 | `update_customer_account_status` | Suspend/reactivate |
 | `search_customers` | Agent customer lookup |
 | `record_agent_payment` | Idempotent agent payment with receipt |
@@ -317,8 +322,8 @@ These are in `docs/roadmap.md` and `docs/backlog.md` but have **no implementatio
 | Module | Phase | Notes |
 |--------|-------|-------|
 | **Resident mobile** | 2 | Registration, schedule, balance, payments, missed collection |
-| **Fleet operations UI** | 1–2 | `fuel_logs`, `dumpsite_runs`, `maintenance_events` tables exist; no web or mobile UI |
-| **Paystack integration** | 1 | Edge Function stub only; no checkout, no signature verification, not deployed |
+| **Fleet operations UI** | 1–2 | Driver mobile fuel/dumpsite done; operator web fleet views still pending |
+| **Paystack integration** | 1 | Webhook verified + RPC posted; checkout initialize still pending |
 | **Twilio WhatsApp** | 1 | `send-reminders` Edge Function stub only |
 | **Termii SMS** | 1 | Not started |
 | **Expo push notifications** | 1 | Not started |
@@ -338,8 +343,8 @@ These are in `docs/roadmap.md` and `docs/backlog.md` but have **no implementatio
 
 Several tables have RLS policies but **no application layer**:
 
-- `fuel_logs` — insert policy for drivers; no RPC or mobile screen
-- `dumpsite_runs` — read policy only; no RPC or mobile screen
+- `fuel_logs` — driver RPC + mobile UI delivered; no operator web view yet
+- `dumpsite_runs` — driver RPC + mobile UI delivered; no operator web view yet
 - `maintenance_events` — schema only; no fleet maintenance calendar
 
 ---
@@ -348,25 +353,25 @@ Several tables have RLS policies but **no application layer**:
 
 Ordered by impact on Phase 1 go-live (*one PSP, one ward, three trucks, full staff team*):
 
-### 1. Paystack webhook hardening + deployment
+### 1. End-to-end pilot validation
 
-Add signature verification to `supabase/functions/paystack-webhook`, deploy locally/staging, and connect payment confirmation to ledger refresh on web.
+Run a full day simulation including truck handoff: propose reassignment on Routes → confirm on driver mobile → verify truck/driver update.
 
-### 2. End-to-end pilot validation
+### 2. Admin edit flows
 
-Run a full day simulation: plan tomorrow's routes on web → assign driver to New Person (or seed driver) → complete stops on device → agent records cash payment → operator verifies ledger and agent collections → onboard staff with login → sign in on mobile.
+Allow updating existing staff, truck, and customer records (not just create + deactivate).
 
-### 3. Driver field completeness
-
-Add dumpsite and fuel log screens (tables and RLS already exist). These are on the Phase 1 backlog and needed for operational completeness.
-
-### 4. Quality gate before go-live
+### 3. Quality gate before go-live
 
 Add CI (`typecheck` + migration lint), smoke tests for sign-in / plan routes / record payment, and one real Android device QA pass for driver and agent offline sync.
 
-### 5. Admin edit flows
+### 4. Admin edit flows
 
 Allow updating existing staff, truck, and customer records (not just create + deactivate).
+
+### 5. Paystack checkout initiate (follow-on)
+
+Apps still need a Paystack initialize/checkout that attaches `metadata.operator_id` and `metadata.customer_id` before live resident payments.
 
 ### 6. Collection agent receipts (deferred)
 
@@ -379,12 +384,58 @@ WhatsApp/SMS and PDF receipt delivery after core pilot validation.
 ```bash
 npm install
 supabase start          # or supabase db reset for fresh seed
-supabase migration up   # apply any new migrations
+supabase migration up   # apply any new migrations (includes 0025 Paystack RPC)
 npm run dev:web         # http://localhost:5173
 npm run dev:mobile      # npx expo start -c; set LAN IP in apps/mobile/.env.local
 ```
 
 For staff password reset emails locally, open Inbucket / Mailpit at http://localhost:54324 after calling **Send reset email** in Admin.
+
+### Sprint 3 — Paystack webhook tests
+
+**1. Unit tests (no Docker required)**
+
+```bash
+npm test                # runs Vitest in packages/shared (signature + idempotency helpers)
+npm run typecheck
+```
+
+**2. Apply migration + serve the Edge Function**
+
+Create `.env.functions.local` (gitignored):
+
+```bash
+SUPABASE_URL=http://127.0.0.1:54321
+SUPABASE_SERVICE_ROLE_KEY=<from: supabase status -o env>
+PAYSTACK_SECRET_KEY=sk_test_local_cleanops
+```
+
+```bash
+supabase migration up
+supabase functions serve --env-file .env.functions.local --no-verify-jwt
+```
+
+**3. Signed webhook smoke (second terminal)**
+
+```bash
+# PowerShell
+$env:PAYSTACK_SECRET_KEY="sk_test_local_cleanops"
+npm run test:paystack:post          # one charge.success
+npm run test:paystack:idempotent    # same reference twice → alreadyPosted: true
+npm run test:paystack:sign          # print raw body + signature for curl
+```
+
+Default smoke target: Blue Gate Mini Mart (`…404`) with ₦15,000 (`AMOUNT_KOBO=1500000`). Override with `CUSTOMER_ID`, `AMOUNT_KOBO`, `REFERENCE`, `PAYSTACK_WEBHOOK_URL`.
+
+**4. Confirm on operator web**
+
+Sign in as `owner@cleanops.local`, open **Payments**. Within ~20 seconds the Paystack row should appear (or click **Refresh data**). Full-month payments should clear suspension on that customer.
+
+**5. Optional SQL check**
+
+```sql
+select * from public.payments where idempotency_key like 'paystack:%' order by paid_at desc limit 5;
+```
 
 | Role | Credentials |
 |------|-------------|
@@ -397,8 +448,8 @@ For staff password reset emails locally, open Inbucket / Mailpit at http://local
 
 ## Summary
 
-CleanOps has a solid **operator command center** (dashboard, routes, payments with agent reconciliation, staff, admin with staff login provisioning) and **field apps** for drivers and collection agents with offline resilience. Sprint 1 (collection agent) and Sprint 2 (staff auth provisioning, mobile credential sign-in, driver empty-assignment UX) are complete except WhatsApp/PDF receipts.
+CleanOps has a solid **operator command center** (dashboard, routes, payments with agent reconciliation, staff, admin with staff login provisioning) and **field apps** for drivers and collection agents with offline resilience. Sprint 1–4 are complete through driver fuel/dumpsite field logging.
 
-The highest-leverage next builds are **Paystack webhook**, **end-to-end pilot validation**, and **driver field completeness** before expanding into resident mobile.
+The highest-leverage next builds are **end-to-end pilot validation**, **driver field completeness**, and a **quality gate** before expanding into resident mobile / checkout initiate.
 
 See [build-plan.md](./build-plan.md) for sprint sequencing.

@@ -1,9 +1,19 @@
 import {
+  dumpsiteRunInputSchema,
+  dumpsiteRunRecordSchema,
+  fuelLogInputSchema,
+  fuelLogRecordSchema,
   incidentReportInputSchema,
   routeDetailSchema,
+  routeTruckHandoffSchema,
+  type DumpsiteRunInput,
+  type DumpsiteRunRecord,
+  type FuelLogInput,
+  type FuelLogRecord,
   type IncidentReportInput,
   type RouteDetail,
-  type RouteStatus
+  type RouteStatus,
+  type RouteTruckHandoff
 } from "@cleanops/shared";
 import { supabase } from "../lib/supabase";
 import { withTimeout } from "../lib/withTimeout";
@@ -157,4 +167,187 @@ export async function reportDriverIncident(input: IncidentReportInput) {
   }
 
   return data as { id: string; createdAt: string };
+}
+
+export async function fetchDumpsiteRunForRoute(routeId: string): Promise<DumpsiteRunRecord | null> {
+  if (!supabase) {
+    return null;
+  }
+
+  const { data: sessionData } = await supabase.auth.getSession();
+
+  if (!sessionData.session) {
+    throw new Error("Driver is not signed in to Supabase");
+  }
+
+  const { data, error } = await withTimeout(
+    supabase.rpc("driver_dumpsite_run_for_route", { input_route_id: routeId }),
+    REQUEST_TIMEOUT_MS,
+    "Timed out while loading dumpsite run"
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (data == null) {
+    return null;
+  }
+
+  return dumpsiteRunRecordSchema.parse(data);
+}
+
+export async function recordFuelLog(input: FuelLogInput): Promise<FuelLogRecord> {
+  const parsed = fuelLogInputSchema.parse(input);
+
+  if (!supabase) {
+    return fuelLogRecordSchema.parse({
+      id: "00000000-0000-4000-8000-000000000901",
+      routeId: parsed.routeId,
+      truckRegistration: "LAG-001-PSP",
+      litres: parsed.litres,
+      costKobo: parsed.costKobo,
+      stationName: parsed.stationName,
+      loggedAt: parsed.loggedAt ?? new Date().toISOString()
+    });
+  }
+
+  const { data: sessionData } = await supabase.auth.getSession();
+
+  if (!sessionData.session) {
+    throw new Error("Driver is not signed in to Supabase");
+  }
+
+  const { data, error } = await withTimeout(
+    supabase.rpc("record_fuel_log", {
+      input_route_id: parsed.routeId,
+      input_litres: parsed.litres,
+      input_cost_kobo: parsed.costKobo,
+      input_station_name: parsed.stationName,
+      input_logged_at: parsed.loggedAt ?? null
+    }),
+    REQUEST_TIMEOUT_MS,
+    "Timed out while recording fuel log"
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return fuelLogRecordSchema.parse(data);
+}
+
+export async function recordDumpsiteRun(input: DumpsiteRunInput): Promise<DumpsiteRunRecord> {
+  const parsed = dumpsiteRunInputSchema.parse(input);
+
+  if (!supabase) {
+    const now = new Date().toISOString();
+    return dumpsiteRunRecordSchema.parse({
+      id: "00000000-0000-4000-8000-000000000902",
+      routeId: parsed.routeId,
+      departedAt: parsed.phase === "depart" ? now : null,
+      arrivedAt: parsed.phase === "arrive" ? now : null,
+      clearedAt: parsed.phase === "clear" ? now : null,
+      tippingFeeKobo: parsed.tippingFeeKobo ?? 0,
+      notes: parsed.notes ?? null
+    });
+  }
+
+  const { data: sessionData } = await supabase.auth.getSession();
+
+  if (!sessionData.session) {
+    throw new Error("Driver is not signed in to Supabase");
+  }
+
+  const { data, error } = await withTimeout(
+    supabase.rpc("record_dumpsite_run", {
+      input_route_id: parsed.routeId,
+      input_phase: parsed.phase,
+      input_tipping_fee_kobo: parsed.tippingFeeKobo ?? null,
+      input_notes: parsed.notes ?? null
+    }),
+    REQUEST_TIMEOUT_MS,
+    "Timed out while recording dumpsite run"
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return dumpsiteRunRecordSchema.parse(data);
+}
+
+export async function fetchPendingHandoffs(): Promise<RouteTruckHandoff[]> {
+  if (!supabase) {
+    return [];
+  }
+
+  const { data: sessionData } = await supabase.auth.getSession();
+
+  if (!sessionData.session) {
+    throw new Error("Driver is not signed in to Supabase");
+  }
+
+  const { data, error } = await withTimeout(
+    supabase.rpc("pending_driver_handoffs"),
+    REQUEST_TIMEOUT_MS,
+    "Timed out while loading truck handoffs"
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return routeTruckHandoffSchema.array().parse(data ?? []);
+}
+
+export async function confirmTruckHandoff(handoffId: string): Promise<RouteTruckHandoff> {
+  if (!supabase) {
+    throw new Error("Truck handoffs require Supabase.");
+  }
+
+  const { data: sessionData } = await supabase.auth.getSession();
+
+  if (!sessionData.session) {
+    throw new Error("Driver is not signed in to Supabase");
+  }
+
+  const { data, error } = await withTimeout(
+    supabase.rpc("confirm_route_truck_handoff", { input_handoff_id: handoffId }),
+    REQUEST_TIMEOUT_MS,
+    "Timed out while confirming truck handoff"
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return routeTruckHandoffSchema.parse(data);
+}
+
+export async function rejectTruckHandoff(handoffId: string, note?: string): Promise<RouteTruckHandoff> {
+  if (!supabase) {
+    throw new Error("Truck handoffs require Supabase.");
+  }
+
+  const { data: sessionData } = await supabase.auth.getSession();
+
+  if (!sessionData.session) {
+    throw new Error("Driver is not signed in to Supabase");
+  }
+
+  const { data, error } = await withTimeout(
+    supabase.rpc("reject_route_truck_handoff", {
+      input_handoff_id: handoffId,
+      input_note: note ?? null
+    }),
+    REQUEST_TIMEOUT_MS,
+    "Timed out while rejecting truck handoff"
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return routeTruckHandoffSchema.parse(data);
 }

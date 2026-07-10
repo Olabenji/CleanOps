@@ -11,7 +11,8 @@ export const supabase = (() => {
   return createClient(env.supabaseUrl!, env.supabaseAnonKey!, {
     auth: {
       persistSession: true,
-      autoRefreshToken: true
+      autoRefreshToken: true,
+      detectSessionInUrl: true
     }
   });
 })();

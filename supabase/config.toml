@@ -34,5 +34,8 @@ port = 54324
 [functions.staff-auth]
 verify_jwt = true
 
+[functions.paystack-webhook]
+verify_jwt = false
+
 [storage]
 enabled = true

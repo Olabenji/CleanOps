@@ -1,6 +1,6 @@
 # CleanOps Build Plan
 
-**Last updated:** 9 July 2026  
+**Last updated:** 10 July 2026  
 **Reference:** [status-report.md](./status-report.md), [roadmap.md](./roadmap.md), [backlog.md](./backlog.md)
 
 ---
@@ -82,31 +82,108 @@ Operators can create staff logins from Admin without manual database work.
 
 ---
 
+## Sprint 3 — Paystack webhook — **complete**
+
+Paystack `charge.success` posts into the payments ledger with signature verification and operator-web refresh.
+
+### Delivered
+
+| Capability | Deliverable |
+|------------|-------------|
+| Signature verification | HMAC SHA-512 check of `x-paystack-signature` using `PAYSTACK_SECRET_KEY` |
+| Idempotent posting | `record_paystack_payment` RPC upserts on `paystack:{reference}` |
+| Service reconcile | Full-month Paystack payments auto-activate suspended customers |
+| JWT bypass | `[functions.paystack-webhook] verify_jwt = false` so Paystack can POST |
+| Ledger refresh | Payments tab polls ledger/dashboard every 20s; customer history reloads on new rows |
+| Shared helpers + unit tests | `@cleanops/shared` Paystack schemas, signature helpers, Vitest coverage |
+| Smoke script | `scripts/paystack-webhook-smoke.mjs` for local signed POST / idempotency |
+
+### Backend (migration `0025`)
+
+- `record_paystack_payment(operator_id, customer_id, amount_kobo, external_reference, paid_at)` — security definer, **service_role only**
+- Calls `reconcile_customer_service_after_payment` after post / replay
+
+### Deferred (post Sprint 3)
+
+- Paystack checkout initialize from web/mobile (webhook still requires `metadata.operator_id` + `metadata.customer_id`)
+- Dedicated virtual account / transfer handling
+- Supabase Realtime subscription (polling is sufficient for pilot)
+
+---
+
+## Sprint 4 — Driver field completeness — **complete**
+
+Drivers can log fuel purchases and dumpsite depart/arrive/clear timestamps from mobile against their assigned route.
+
+### Delivered
+
+| Capability | Deliverable |
+|------------|-------------|
+| Fuel log entry | `record_fuel_log` RPC + mobile form (litres, cost, station) |
+| Dumpsite run logging | `record_dumpsite_run` RPC with depart → arrive → clear phases |
+| Run state | `driver_dumpsite_run_for_route` loads current timestamps on driver screen |
+| Shared types | `fuelLogInputSchema`, `dumpsiteRunInputSchema`, record schemas in `@cleanops/shared` |
+| RLS | Driver-scoped INSERT/UPDATE policies on `dumpsite_runs` |
+
+### Backend (migration `0026`)
+
+- `record_fuel_log(route_id, litres, cost_kobo, station_name, logged_at?)`
+- `record_dumpsite_run(route_id, phase, tipping_fee_kobo?, notes?)`
+- `driver_dumpsite_run_for_route(route_id)` — latest open or completed run
+
+### Deferred (post Sprint 4)
+
+- GPS stamp on dumpsite events
+- Photo proof on stops
+- Operator web fleet fuel/dumpsite views
+
+---
+
+## Sprint 5 — Truck reassignment & route takeover — **complete**
+
+Operator-initiated truck handoffs with driver confirmation for breakdowns, dumpsite delays, unable-to-start, and cross-route borrows.
+
+### Delivered
+
+| Capability | Deliverable |
+|------------|-------------|
+| Propose handoff | Operator Routes → Reassign truck (reason, truck, driver, borrow outcome) |
+| Driver confirm | Mobile banner with Confirm / Decline; no silent assignment change |
+| Dual confirmation | Mid-route different drivers: incoming + outgoing must confirm |
+| Cross-route borrow | Source route left unassigned or cancelled on confirm |
+| Breakdown | Original truck status → `workshop` when reason is breakdown |
+| Expiry | Pending handoffs expire after 30 minutes |
+| History | Per-route handoff history on operator Routes panel |
+
+### Backend (migration `0028`)
+
+- Table `route_truck_handoffs` + enums for status / reason / source outcome
+- `routes.truck_id` nullable (needs-truck after borrow)
+- RPCs: `propose_route_truck_handoff`, `confirm_route_truck_handoff`, `reject_route_truck_handoff`, `cancel_route_truck_handoff`, `pending_driver_handoffs`, `route_truck_handoffs_for_date`
+- `driver_assigned_route` tolerates missing truck
+
+### Deferred (post Sprint 5)
+
+- Push notifications for pending handoffs
+- Operator force-confirm after timeout
+- Dashboard alert strip for open handoffs (Routes panel covers pilot)
+
+---
+
 ## Upcoming Sprints (ordered)
 
-### Sprint 3 — Paystack webhook
+### Sprint 6 — Admin edit flows
 
-- Signature verification on `paystack-webhook` Edge Function
-- Idempotent payment posting
-- Ledger refresh on operator web
-
-### Sprint 4 — Driver field completeness
-
-- Dumpsite run logging (`dumpsite_runs` table)
-- Fuel log entry (`fuel_logs` table)
-- GPS / photo proof on stops (stretch)
-
-### Sprint 5 — Admin edit flows
 
 - Edit existing staff, trucks, customers (not only create + deactivate)
 
-### Sprint 6 — Quality gate
+### Sprint 7 — Quality gate
 
 - CI: typecheck + migration lint
-- Smoke tests for sign-in, plan routes, record payment
+- Smoke tests for sign-in, plan routes, record payment, truck handoff confirm
 - Android device QA for driver + agent offline sync
 
-### Sprint 7 — Resident mobile (Phase 2 start)
+### Sprint 8 — Resident mobile (Phase 2 start)
 
 - Registration, schedule, balance, Paystack payments, missed collection reports
 

@@ -55,6 +55,102 @@ export const truckStatuses = [
   "workshop"
 ] as const;
 
+export const dumpsiteRunPhases = ["depart", "arrive", "clear"] as const;
+
+export const routeTruckHandoffStatuses = [
+  "awaiting_confirmation",
+  "confirmed",
+  "rejected",
+  "cancelled",
+  "expired"
+] as const;
+
+export const routeTruckHandoffReasons = [
+  "breakdown",
+  "dumpsite_delay",
+  "unable_to_start",
+  "cross_route_support",
+  "other"
+] as const;
+
+export const routeTruckHandoffSourceOutcomes = ["leave_unassigned", "cancel_route"] as const;
+
+export const fuelLogInputSchema = z.object({
+  routeId: z.string().uuid(),
+  litres: z.number().positive(),
+  costKobo: z.number().int().positive(),
+  stationName: z.string().min(2),
+  loggedAt: z.string().optional()
+});
+
+export const fuelLogRecordSchema = z.object({
+  id: z.string().uuid(),
+  routeId: z.string().uuid(),
+  truckRegistration: z.string(),
+  litres: z.number(),
+  costKobo: z.number().int().positive(),
+  stationName: z.string(),
+  loggedAt: z.string()
+});
+
+export const dumpsiteRunInputSchema = z.object({
+  routeId: z.string().uuid(),
+  phase: z.enum(dumpsiteRunPhases),
+  tippingFeeKobo: z.number().int().nonnegative().optional(),
+  notes: z.string().optional()
+});
+
+export const dumpsiteRunRecordSchema = z.object({
+  id: z.string().uuid(),
+  routeId: z.string().uuid(),
+  departedAt: z.string().nullable(),
+  arrivedAt: z.string().nullable(),
+  clearedAt: z.string().nullable(),
+  tippingFeeKobo: z.number().int().nonnegative(),
+  notes: z.string().nullable()
+});
+
+export const routeTruckHandoffSchema = z.object({
+  id: z.string().uuid(),
+  routeId: z.string().uuid(),
+  routeZoneName: z.string(),
+  routeStatus: z.enum(routeStatuses),
+  scheduledDate: z.string(),
+  pendingStops: z.number().int().nonnegative(),
+  fromTruckId: z.string().uuid().nullable(),
+  fromTruckRegistration: z.string().nullable(),
+  toTruckId: z.string().uuid(),
+  toTruckRegistration: z.string(),
+  fromDriverId: z.string().uuid().nullable(),
+  fromDriverName: z.string().nullable(),
+  toDriverId: z.string().uuid(),
+  toDriverName: z.string().nullable(),
+  sourceRouteId: z.string().uuid().nullable(),
+  sourceRouteZoneName: z.string().nullable(),
+  sourceOutcome: z.enum(routeTruckHandoffSourceOutcomes).nullable(),
+  reason: z.enum(routeTruckHandoffReasons),
+  notes: z.string().nullable(),
+  status: z.enum(routeTruckHandoffStatuses),
+  requiresOutgoingConfirmation: z.boolean(),
+  incomingConfirmed: z.boolean(),
+  outgoingConfirmed: z.boolean(),
+  expiresAt: z.string(),
+  createdAt: z.string(),
+  confirmedAt: z.string().nullable(),
+  rejectedAt: z.string().nullable(),
+  cancelledAt: z.string().nullable()
+});
+
+export const proposeRouteTruckHandoffInputSchema = z.object({
+  routeId: z.string().uuid(),
+  toTruckId: z.string().uuid(),
+  toDriverId: z.string().uuid(),
+  reason: z.enum(routeTruckHandoffReasons),
+  notes: z.string().optional(),
+  sourceRouteId: z.string().uuid().optional(),
+  sourceOutcome: z.enum(routeTruckHandoffSourceOutcomes).optional()
+});
+
 export const staffMemberSchema = z.object({
   id: z.string().uuid(),
   operatorId: z.string().uuid(),
@@ -423,6 +519,16 @@ export const operatorDashboardSchema = z.object({
   alerts: z.array(z.string())
 });
 
+export type DumpsiteRunPhase = (typeof dumpsiteRunPhases)[number];
+export type FuelLogInput = z.infer<typeof fuelLogInputSchema>;
+export type FuelLogRecord = z.infer<typeof fuelLogRecordSchema>;
+export type DumpsiteRunInput = z.infer<typeof dumpsiteRunInputSchema>;
+export type DumpsiteRunRecord = z.infer<typeof dumpsiteRunRecordSchema>;
+export type RouteTruckHandoffStatus = (typeof routeTruckHandoffStatuses)[number];
+export type RouteTruckHandoffReason = (typeof routeTruckHandoffReasons)[number];
+export type RouteTruckHandoffSourceOutcome = (typeof routeTruckHandoffSourceOutcomes)[number];
+export type RouteTruckHandoff = z.infer<typeof routeTruckHandoffSchema>;
+export type ProposeRouteTruckHandoffInput = z.infer<typeof proposeRouteTruckHandoffInputSchema>;
 export type UserRole = (typeof userRoles)[number];
 export type CustomerType = (typeof customerTypes)[number];
 export type PaymentChannel = (typeof paymentChannels)[number];
@@ -470,3 +576,17 @@ export type MonthlyStaffSummary = z.infer<typeof monthlyStaffSummarySchema>;
 export type StaffAttendanceSummary = z.infer<typeof staffAttendanceSummarySchema>;
 export type FleetSummary = z.infer<typeof fleetSummarySchema>;
 export type OperatorDashboard = z.infer<typeof operatorDashboardSchema>;
+
+export {
+  computePaystackSignature,
+  paystackChargeMetadataSchema,
+  paystackChargeSuccessDataSchema,
+  paystackIdempotencyKey,
+  paystackWebhookEventSchema,
+  verifyPaystackSignature
+} from "./paystack";
+export type {
+  PaystackChargeMetadata,
+  PaystackChargeSuccessData,
+  PaystackWebhookEvent
+} from "./paystack";

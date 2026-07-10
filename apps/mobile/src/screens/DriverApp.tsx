@@ -14,15 +14,23 @@ import {
 import {
   incidentTypes,
   type DriverStopAction,
+  type DumpsiteRunRecord,
   type IncidentReportInput,
   type IncidentType,
   type RouteDetail,
   type RouteStop,
-  type RouteStopStatus
+  type RouteStopStatus,
+  type RouteTruckHandoff
 } from "@cleanops/shared";
 import { createStopAction, pilotDriver, pilotDriverRoute } from "../data/driverPilot";
 import {
+  confirmTruckHandoff,
   fetchAssignedRoute,
+  fetchDumpsiteRunForRoute,
+  fetchPendingHandoffs,
+  recordDumpsiteRun,
+  recordFuelLog,
+  rejectTruckHandoff,
   reportDriverIncident,
   syncStopAction,
   transitionAssignedRoute
@@ -48,6 +56,23 @@ const incidentTypeLabels: Record<IncidentType, string> = {
   safety_concern: "Safety concern",
   other: "Other"
 };
+
+function parseNairaToKobo(value: string): number | null {
+  const parsed = Number.parseFloat(value.replace(/,/g, "").trim());
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+
+  return Math.round(parsed * 100);
+}
+
+function formatKobo(amountKobo: number) {
+  return new Intl.NumberFormat("en-NG", {
+    currency: "NGN",
+    maximumFractionDigits: 0,
+    style: "currency"
+  }).format(amountKobo / 100);
+}
 
 function updateStop(route: RouteDetail, stopId: string, status: RouteStopStatus, note?: string, skipReason?: string) {
   const nextStops = route.stops.map((stop) =>
@@ -90,6 +115,18 @@ export default function DriverApp({ session, onSignOut }: { session: FieldSessio
   const [syncEnabled, setSyncEnabled] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [incidentFormOpen, setIncidentFormOpen] = useState(false);
+  const [fuelFormOpen, setFuelFormOpen] = useState(false);
+  const [dumpsiteFormOpen, setDumpsiteFormOpen] = useState(false);
+  const [fuelLitres, setFuelLitres] = useState("");
+  const [fuelCostNaira, setFuelCostNaira] = useState("");
+  const [fuelStation, setFuelStation] = useState("");
+  const [dumpsiteNotes, setDumpsiteNotes] = useState("");
+  const [dumpsiteTippingNaira, setDumpsiteTippingNaira] = useState("");
+  const [dumpsiteRun, setDumpsiteRun] = useState<DumpsiteRunRecord | null>(null);
+  const [pendingHandoffs, setPendingHandoffs] = useState<RouteTruckHandoff[]>([]);
+  const [handoffActionId, setHandoffActionId] = useState<string | null>(null);
+  const [submittingFuel, setSubmittingFuel] = useState(false);
+  const [submittingDumpsitePhase, setSubmittingDumpsitePhase] = useState<string | null>(null);
   const [submittingIncident, setSubmittingIncident] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -182,9 +219,22 @@ export default function DriverApp({ session, onSignOut }: { session: FieldSessio
       setRoute(assignedRoute);
       setShiftStarted(assignedRoute.status === "in_progress" || Boolean(assignedRoute.startedAt));
       setMessage(`Signed in as ${session.fullName} (supabase)`);
+      await refreshDumpsiteRun(assignedRoute.id);
+      setPendingHandoffs(await fetchPendingHandoffs());
     } catch (error) {
       setRoute(null);
       setShiftStarted(false);
+      setDumpsiteRun(null);
+      try {
+        setPendingHandoffs(await fetchPendingHandoffs());
+      } catch (handoffError) {
+        setPendingHandoffs([]);
+        setMessage(
+          `${error instanceof Error ? error.message : "No route assigned today."} Handoff check failed: ${
+            handoffError instanceof Error ? handoffError.message : "unknown error"
+          }`
+        );
+      }
       setMessage(
         error instanceof Error
           ? error.message
@@ -274,6 +324,128 @@ export default function DriverApp({ session, onSignOut }: { session: FieldSessio
       setMessage(`Queued offline: ${errorMessage}`);
     } finally {
       setSyncingStopIds((current) => ({ ...current, [stop.id]: false }));
+    }
+  }
+
+  async function refreshDumpsiteRun(routeId: string) {
+    try {
+      const run = await fetchDumpsiteRunForRoute(routeId);
+      setDumpsiteRun(run);
+    } catch {
+      setDumpsiteRun(null);
+    }
+  }
+
+  async function handleHandoffConfirm(handoffId: string) {
+    setHandoffActionId(handoffId);
+    try {
+      const result = await confirmTruckHandoff(handoffId);
+      setPendingHandoffs(await fetchPendingHandoffs());
+      await bootstrapDriver(true);
+      setMessage(
+        result.status === "confirmed"
+          ? `Handoff confirmed. Now on ${result.toTruckRegistration}.`
+          : "Confirmation recorded. Waiting for the other driver."
+      );
+    } catch (error) {
+      Alert.alert("Unable to confirm handoff", error instanceof Error ? error.message : "Unknown error");
+    } finally {
+      setHandoffActionId(null);
+    }
+  }
+
+  async function handleHandoffReject(handoffId: string) {
+    setHandoffActionId(handoffId);
+    try {
+      await rejectTruckHandoff(handoffId, "Declined from driver app");
+      setPendingHandoffs(await fetchPendingHandoffs());
+      setMessage("Handoff declined. Route assignment unchanged.");
+    } catch (error) {
+      Alert.alert("Unable to decline handoff", error instanceof Error ? error.message : "Unknown error");
+    } finally {
+      setHandoffActionId(null);
+    }
+  }
+
+  async function handleFuelSubmit() {
+    if (!route) {
+      Alert.alert("No route assigned", "Fuel logs must be linked to your assigned route.");
+      return;
+    }
+
+    const litres = Number.parseFloat(fuelLitres.trim());
+    const costKobo = parseNairaToKobo(fuelCostNaira);
+    const stationName = fuelStation.trim();
+
+    if (!Number.isFinite(litres) || litres <= 0) {
+      Alert.alert("Fuel details required", "Enter litres purchased.");
+      return;
+    }
+
+    if (costKobo === null) {
+      Alert.alert("Fuel details required", "Enter total cost in naira.");
+      return;
+    }
+
+    if (stationName.length < 2) {
+      Alert.alert("Fuel details required", "Enter the station name.");
+      return;
+    }
+
+    setSubmittingFuel(true);
+
+    try {
+      const record = await recordFuelLog({
+        routeId: route.id,
+        litres,
+        costKobo,
+        stationName
+      });
+      setFuelLitres("");
+      setFuelCostNaira("");
+      setFuelStation("");
+      setFuelFormOpen(false);
+      setMessage(`Fuel logged: ${record.litres}L at ${record.stationName} (${formatKobo(record.costKobo)}).`);
+    } catch (error) {
+      Alert.alert("Unable to log fuel", error instanceof Error ? error.message : "Unknown error");
+    } finally {
+      setSubmittingFuel(false);
+    }
+  }
+
+  async function handleDumpsitePhase(phase: "depart" | "arrive" | "clear") {
+    if (!route) {
+      Alert.alert("No route assigned", "Dumpsite runs must be linked to your assigned route.");
+      return;
+    }
+
+    const tippingFeeKobo = phase === "clear" ? parseNairaToKobo(dumpsiteTippingNaira) ?? 0 : undefined;
+
+    setSubmittingDumpsitePhase(phase);
+
+    try {
+      const record = await recordDumpsiteRun({
+        routeId: route.id,
+        phase,
+        tippingFeeKobo,
+        notes: dumpsiteNotes.trim() || undefined
+      });
+      setDumpsiteRun(record);
+      if (phase === "clear") {
+        setDumpsiteNotes("");
+        setDumpsiteTippingNaira("");
+      }
+      setMessage(
+        phase === "depart"
+          ? "Departed for dumpsite."
+          : phase === "arrive"
+            ? "Arrived at dumpsite."
+            : "Dumpsite clearance recorded."
+      );
+    } catch (error) {
+      Alert.alert("Unable to record dumpsite run", error instanceof Error ? error.message : "Unknown error");
+    } finally {
+      setSubmittingDumpsitePhase(null);
     }
   }
 
@@ -458,6 +630,15 @@ export default function DriverApp({ session, onSignOut }: { session: FieldSessio
               {session.mode === "supabase" ? "Connected to Supabase" : "Pilot mode active"}
             </Text>
           </View>
+          {pendingHandoffs.map((handoff) => (
+            <HandoffCard
+              key={handoff.id}
+              handoff={handoff}
+              busy={handoffActionId === handoff.id}
+              onAccept={() => void handleHandoffConfirm(handoff.id)}
+              onDecline={() => void handleHandoffReject(handoff.id)}
+            />
+          ))}
           <View style={styles.emptyRouteCard}>
             <Text style={styles.cardTitle}>Waiting for assignment</Text>
             <Text style={styles.cardCopy}>
@@ -500,6 +681,16 @@ export default function DriverApp({ session, onSignOut }: { session: FieldSessio
             {session.mode === "supabase" ? "Connected to Supabase" : "Pilot mode active"}
           </Text>
         </View>
+
+        {pendingHandoffs.map((handoff) => (
+          <HandoffCard
+            key={handoff.id}
+            handoff={handoff}
+            busy={handoffActionId === handoff.id}
+            onAccept={() => void handleHandoffConfirm(handoff.id)}
+            onDecline={() => void handleHandoffReject(handoff.id)}
+          />
+        ))}
 
         <Pressable onPress={() => setSettingsOpen((current) => !current)} style={styles.settingsButton}>
           <Text style={styles.settingsButtonText}>{settingsOpen ? "Hide app settings" : "App settings"}</Text>
@@ -566,6 +757,156 @@ export default function DriverApp({ session, onSignOut }: { session: FieldSessio
             >
               <Text style={styles.secondaryButtonText}>{queueSyncing ? "Syncing queue..." : "Sync queue"}</Text>
             </Pressable>
+          ) : null}
+        </View>
+
+        <Text style={styles.sectionTitle}>Fleet logging</Text>
+        <View style={styles.card}>
+          <Pressable onPress={() => setFuelFormOpen((current) => !current)} style={styles.secondaryButton}>
+            <Text style={styles.secondaryButtonText}>
+              {fuelFormOpen ? "Hide fuel log form" : "Log fuel purchase"}
+            </Text>
+          </Pressable>
+
+          {fuelFormOpen ? (
+            <View style={styles.formBlock}>
+              <Text style={styles.summaryLabel}>Litres purchased</Text>
+              <TextInput
+                keyboardType="decimal-pad"
+                onChangeText={setFuelLitres}
+                placeholder="45"
+                style={styles.input}
+                value={fuelLitres}
+              />
+              <Text style={styles.summaryLabel}>Total cost in naira</Text>
+              <TextInput
+                keyboardType="decimal-pad"
+                onChangeText={setFuelCostNaira}
+                placeholder="35000"
+                style={styles.input}
+                value={fuelCostNaira}
+              />
+              <Text style={styles.summaryLabel}>Station name</Text>
+              <TextInput
+                onChangeText={setFuelStation}
+                placeholder="Mobil Surulere"
+                style={styles.input}
+                value={fuelStation}
+              />
+              <Pressable
+                disabled={submittingFuel}
+                onPress={() => void handleFuelSubmit()}
+                style={[styles.primaryButton, submittingFuel && styles.disabledButton]}
+              >
+                <Text style={styles.primaryButtonText}>{submittingFuel ? "Saving..." : "Save fuel log"}</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+          <Pressable
+            onPress={() => setDumpsiteFormOpen((current) => !current)}
+            style={[styles.secondaryButton, { marginTop: 12 }]}
+          >
+            <Text style={styles.secondaryButtonText}>
+              {dumpsiteFormOpen ? "Hide dumpsite run" : "Log dumpsite run"}
+            </Text>
+          </Pressable>
+
+          {dumpsiteFormOpen ? (
+            <View style={styles.formBlock}>
+              <Text style={styles.summaryCopy}>
+                Record depart → arrive → cleared timestamps for today&apos;s route.
+              </Text>
+              {dumpsiteRun?.departedAt ? (
+                <Text style={styles.stopMeta}>Departed: {new Date(dumpsiteRun.departedAt).toLocaleString()}</Text>
+              ) : null}
+              {dumpsiteRun?.arrivedAt ? (
+                <Text style={styles.stopMeta}>Arrived: {new Date(dumpsiteRun.arrivedAt).toLocaleString()}</Text>
+              ) : null}
+              {dumpsiteRun?.clearedAt ? (
+                <Text style={styles.stopMeta}>Cleared: {new Date(dumpsiteRun.clearedAt).toLocaleString()}</Text>
+              ) : null}
+
+              <View style={styles.actionRow}>
+                <Pressable
+                  disabled={Boolean(dumpsiteRun?.departedAt) || submittingDumpsitePhase !== null}
+                  onPress={() => void handleDumpsitePhase("depart")}
+                  style={[
+                    styles.secondaryButton,
+                    (Boolean(dumpsiteRun?.departedAt) || submittingDumpsitePhase !== null) && styles.disabledButton
+                  ]}
+                >
+                  <Text style={styles.secondaryButtonText}>
+                    {submittingDumpsitePhase === "depart" ? "Saving..." : "Depart"}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  disabled={
+                    !dumpsiteRun?.departedAt ||
+                    Boolean(dumpsiteRun?.arrivedAt) ||
+                    submittingDumpsitePhase !== null
+                  }
+                  onPress={() => void handleDumpsitePhase("arrive")}
+                  style={[
+                    styles.secondaryButton,
+                    (!dumpsiteRun?.departedAt ||
+                      Boolean(dumpsiteRun?.arrivedAt) ||
+                      submittingDumpsitePhase !== null) &&
+                      styles.disabledButton
+                  ]}
+                >
+                  <Text style={styles.secondaryButtonText}>
+                    {submittingDumpsitePhase === "arrive" ? "Saving..." : "Arrive"}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  disabled={
+                    !dumpsiteRun?.arrivedAt ||
+                    Boolean(dumpsiteRun?.clearedAt) ||
+                    submittingDumpsitePhase !== null
+                  }
+                  onPress={() => void handleDumpsitePhase("clear")}
+                  style={[
+                    styles.secondaryButton,
+                    (!dumpsiteRun?.arrivedAt ||
+                      Boolean(dumpsiteRun?.clearedAt) ||
+                      submittingDumpsitePhase !== null) &&
+                      styles.disabledButton
+                  ]}
+                >
+                  <Text style={styles.secondaryButtonText}>
+                    {submittingDumpsitePhase === "clear" ? "Saving..." : "Cleared"}
+                  </Text>
+                </Pressable>
+              </View>
+
+              {!dumpsiteRun?.clearedAt ? (
+                <>
+                  <Text style={styles.summaryLabel}>Notes (optional)</Text>
+                  <TextInput
+                    multiline
+                    onChangeText={setDumpsiteNotes}
+                    placeholder="Queue time, site name, truck issue..."
+                    style={[styles.input, styles.multilineInput]}
+                    value={dumpsiteNotes}
+                  />
+                  {dumpsiteRun?.arrivedAt && !dumpsiteRun.clearedAt ? (
+                    <>
+                      <Text style={styles.summaryLabel}>Tipping fee in naira (optional)</Text>
+                      <TextInput
+                        keyboardType="decimal-pad"
+                        onChangeText={setDumpsiteTippingNaira}
+                        placeholder="5000"
+                        style={styles.input}
+                        value={dumpsiteTippingNaira}
+                      />
+                    </>
+                  ) : null}
+                </>
+              ) : dumpsiteRun.tippingFeeKobo > 0 ? (
+                <Text style={styles.stopMeta}>Tipping fee: {formatKobo(dumpsiteRun.tippingFeeKobo)}</Text>
+              ) : null}
+            </View>
           ) : null}
         </View>
 
@@ -774,6 +1115,46 @@ export default function DriverApp({ session, onSignOut }: { session: FieldSessio
   );
 }
 
+function HandoffCard({
+  handoff,
+  busy,
+  onAccept,
+  onDecline
+}: {
+  handoff: RouteTruckHandoff;
+  busy: boolean;
+  onAccept: () => void;
+  onDecline: () => void;
+}) {
+  const body = handoff.requiresOutgoingConfirmation
+    ? `${handoff.fromTruckRegistration ?? "Current truck"} → ${handoff.toTruckRegistration} on ${handoff.routeZoneName}. ${handoff.pendingStops} stop(s) left. Incoming ${handoff.incomingConfirmed ? "confirmed" : "pending"}; outgoing ${handoff.outgoingConfirmed ? "confirmed" : "pending"}.`
+    : `Operator assigned ${handoff.toTruckRegistration} to ${handoff.routeZoneName} (${handoff.pendingStops} stop(s) left). Reason: ${handoff.reason.replace(/_/g, " ")}.`;
+
+  return (
+    <View style={styles.handoffCard}>
+      <Text style={styles.cardTitle}>Truck handoff</Text>
+      <Text style={styles.cardCopy}>{body}</Text>
+      <Text style={styles.summaryCopy}>Expires {new Date(handoff.expiresAt).toLocaleTimeString()}</Text>
+      <View style={styles.actionRow}>
+        <Pressable
+          disabled={busy}
+          onPress={onAccept}
+          style={[styles.primaryButton, busy && styles.disabledButton]}
+        >
+          <Text style={styles.primaryButtonText}>{busy ? "Saving..." : "Confirm"}</Text>
+        </Pressable>
+        <Pressable
+          disabled={busy}
+          onPress={onDecline}
+          style={[styles.secondaryButton, busy && styles.disabledButton]}
+        >
+          <Text style={styles.secondaryButtonText}>Decline</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   safeArea: {
     backgroundColor: "#f3f7f1",
@@ -785,6 +1166,15 @@ const styles = StyleSheet.create({
   container: {
     padding: 24,
     paddingTop: 16
+  },
+  handoffCard: {
+    backgroundColor: "#fff8e8",
+    borderColor: "#f0d48a",
+    borderRadius: 18,
+    borderWidth: 1,
+    gap: 8,
+    marginBottom: 16,
+    padding: 16
   },
   eyebrow: {
     color: "#1a7f45",

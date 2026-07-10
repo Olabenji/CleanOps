@@ -38,6 +38,82 @@ textarea {
   padding: 36px;
 }
 
+.handoff-panel {
+  margin-top: 20px;
+}
+
+.handoff-pending-card,
+.handoff-borrow-note {
+  background: #fff8e8;
+  border: 1px solid #f0d48a;
+  border-radius: 16px;
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 14px;
+}
+
+.handoff-pending-card span,
+.handoff-borrow-note p {
+  color: #4b5f52;
+  line-height: 1.5;
+}
+
+.handoff-form {
+  margin-top: 12px;
+}
+
+.handoff-history {
+  margin-top: 16px;
+}
+
+.handoff-history h4 {
+  margin: 0 0 8px;
+}
+
+.secondary-button {
+  background: #eef6ef;
+  border: 1px solid #cfe0d3;
+  border-radius: 999px;
+  color: #1a7f45;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 10px 16px;
+}
+
+.recovery-card .recovery-form {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.recovery-form label {
+  color: #4b5f52;
+  display: grid;
+  font-size: 0.92rem;
+  font-weight: 600;
+  gap: 8px;
+}
+
+.recovery-form input {
+  border: 1px solid #cfe0d3;
+  border-radius: 12px;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  width: 100%;
+}
+
+.password-field {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr auto;
+}
+
+.password-toggle {
+  padding: 10px 12px;
+}
+
 .hero {
   max-width: 780px;
 }

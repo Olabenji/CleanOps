@@ -13,7 +13,12 @@
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "test:pilot": "node scripts/pilot-validation.mjs",
+    "test:pilot:cleanup": "node scripts/pilot-validation.mjs --cleanup",
+    "test:paystack:sign": "node scripts/paystack-webhook-smoke.mjs sign",
+    "test:paystack:post": "node scripts/paystack-webhook-smoke.mjs post",
+    "test:paystack:idempotent": "node scripts/paystack-webhook-smoke.mjs post-duplicate"
   },
   "engines": {
     "node": ">=22.0.0",

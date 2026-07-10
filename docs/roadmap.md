@@ -9,7 +9,8 @@ Target: Weeks 1-8
 - Driver mobile workflow for shift start, assigned route, stop marking, and incident reports. **(done — dumpsite/fuel pending)**
 - Collection agent workflow for payment logging, on-screen receipts, and reconciliation. **(done — WhatsApp/PDF deferred)**
 - Staff auth provisioning from Admin (login create + password reset). **(done)**
-- Paystack payment confirmation webhook. **(next — Sprint 3)**
+- Paystack payment confirmation webhook. **(done — Sprint 3)**
+- Truck reassignment / route takeover (operator initiate, driver confirm). **(done — Sprint 5)**
 - WhatsApp reminders and receipts through Twilio. **(deferred)**
 
 Go-live trigger: one PSP operator live on one ward with three trucks and the full staff team.

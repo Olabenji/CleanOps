@@ -49,6 +49,121 @@ export async function signOutOperator() {
   await supabase.auth.signOut();
 }
 
+const RECOVERY_PENDING_KEY = "cleanops_password_recovery_pending";
+
+export function markPasswordRecoveryPending() {
+  if (typeof window !== "undefined") {
+    sessionStorage.setItem(RECOVERY_PENDING_KEY, "1");
+  }
+}
+
+export function isPasswordRecoveryPending() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return sessionStorage.getItem(RECOVERY_PENDING_KEY) === "1";
+}
+
+export function clearPasswordRecoveryPending() {
+  if (typeof window !== "undefined") {
+    sessionStorage.removeItem(RECOVERY_PENDING_KEY);
+  }
+}
+
+export function isPasswordRecoveryLanding(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  if (hashParams.get("type") === "recovery") {
+    return true;
+  }
+
+  const queryParams = new URLSearchParams(window.location.search);
+  return queryParams.get("type") === "recovery";
+}
+
+export function clearPasswordRecoveryUrl() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const cleanUrl = `${window.location.origin}${window.location.pathname}`;
+  window.history.replaceState({}, document.title, cleanUrl);
+}
+
+export async function completePasswordRecovery(newPassword: string): Promise<string> {
+  if (!supabase) {
+    throw new Error("Password recovery requires Supabase.");
+  }
+
+  if (newPassword.length < 8) {
+    throw new Error("Password must be at least 8 characters.");
+  }
+
+  const { data, error } = await supabase.auth.updateUser({ password: newPassword });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const email = data.user?.email;
+  if (!email) {
+    throw new Error("Unable to confirm account after password update.");
+  }
+
+  clearPasswordRecoveryUrl();
+  clearPasswordRecoveryPending();
+  await supabase.auth.signOut();
+
+  return email;
+}
+
+export function subscribeToPasswordRecovery(onRecovery: (email: string) => void) {
+  if (!supabase) {
+    return () => {};
+  }
+
+  const { data } = supabase.auth.onAuthStateChange((event, session) => {
+    if (event === "PASSWORD_RECOVERY" && session?.user.email) {
+      markPasswordRecoveryPending();
+      onRecovery(session.user.email);
+    }
+  });
+
+  return () => {
+    data.subscription.unsubscribe();
+  };
+}
+
+export async function resolvePasswordRecoveryEmail(): Promise<string | null> {
+  if (!supabase) {
+    return null;
+  }
+
+  if (isPasswordRecoveryLanding()) {
+    markPasswordRecoveryPending();
+  }
+
+  if (!isPasswordRecoveryPending() && !isPasswordRecoveryLanding()) {
+    return null;
+  }
+
+  const { data, error } = await supabase.auth.getSession();
+
+  if (error || !data.session?.user.email) {
+    return null;
+  }
+
+  return data.session.user.email;
+}
+
+export async function getPasswordRecoveryContext(): Promise<string | null> {
+  return resolvePasswordRecoveryEmail();
+}
+
 async function loadProfile(userId: string): Promise<AuthState> {
   if (!supabase) {
     return {

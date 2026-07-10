@@ -10,10 +10,12 @@ import type {
   PaymentChannel,
   PaymentEntry,
   PaymentLedgerItem,
+  ProposeRouteTruckHandoffInput,
   RouteDetail,
   RoutePlanningOptions,
   RouteStatus,
   RouteStopStatus,
+  RouteTruckHandoff,
   StaffOnboardingInput,
   StaffOnboardingResult,
   StaffLoginProvisionInput,
@@ -36,20 +38,26 @@ import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import AdminView from "./components/AdminView";
 import AgentCollectionsView from "./components/AgentCollectionsView";
+import PasswordRecoveryScreen from "./components/PasswordRecoveryScreen";
+import TruckHandoffPanel from "./components/TruckHandoffPanel";
 import {
   getCurrentOperatorProfile,
+  getPasswordRecoveryContext,
   signInOperator,
   signOutOperator,
+  subscribeToPasswordRecovery,
   type AuthState
 } from "./data/authService";
 import { getOperatorDashboard } from "./data/dashboardService";
 import {
   addRoutePlanStop,
+  cancelRouteTruckHandoff,
   getAdminMasterData,
   getCustomerLedger,
   getCustomerPaymentHistory,
   getMonthlyStaffSummary,
   getPaymentLedger,
+  getRouteTruckHandoffs,
   planDailyRoutes,
   getRecentIncidentReports,
   getRoutePlanningOptions,
@@ -58,6 +66,7 @@ import {
   moveRoutePlanStop,
   onboardCustomer,
   onboardStaffMember,
+  proposeRouteTruckHandoff,
   provisionStaffMemberLogin,
   requestStaffPasswordReset,
   onboardTruck,
@@ -109,6 +118,7 @@ const operatorPaymentChannels: PaymentChannel[] = [
 
 const todayIso = new Date().toISOString().slice(0, 10);
 const LIVE_POLL_MS = 45_000;
+const PAYMENTS_POLL_MS = 20_000;
 
 const emptyPlanningOptions: RoutePlanningOptions = {
   zones: [],
@@ -132,6 +142,7 @@ export function App() {
   const [auth, setAuth] = useState<AuthState | null>(null);
   const [dashboard, setDashboard] = useState<OperatorDashboard | null>(null);
   const [routes, setRoutes] = useState<RouteDetail[]>([]);
+  const [routeHandoffs, setRouteHandoffs] = useState<RouteTruckHandoff[]>([]);
   const [payments, setPayments] = useState<PaymentLedgerItem[]>([]);
   const [incidents, setIncidents] = useState<IncidentReport[]>([]);
   const [customerLedger, setCustomerLedger] = useState<CustomerLedgerItem[]>([]);
@@ -150,6 +161,23 @@ export function App() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [recoveryEmail, setRecoveryEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    return subscribeToPasswordRecovery((email) => {
+      setRecoveryEmail(email);
+      setLoading(false);
+    });
+  }, []);
+
+  useEffect(() => {
+    void getPasswordRecoveryContext().then((email) => {
+      if (email) {
+        setRecoveryEmail(email);
+        setLoading(false);
+      }
+    });
+  }, []);
 
   useEffect(() => {
     void bootstrap();
@@ -218,11 +246,73 @@ export function App() {
     };
   }, [auth, activeView, operationDate, todayIso]);
 
+  useEffect(() => {
+    if (!auth || activeView !== "payments") {
+      return;
+    }
+
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    async function refreshPaymentsLedger() {
+      try {
+        const [paymentData, ledgerData, dashboardData] = await Promise.all([
+          getPaymentLedger(),
+          getCustomerLedger(),
+          getOperatorDashboard(operationDate)
+        ]);
+        setPayments(paymentData);
+        setCustomerLedger(ledgerData);
+        setDashboard(dashboardData);
+      } catch {
+        // Keep the last good ledger snapshot during background refresh failures.
+      }
+    }
+
+    function startPolling() {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
+
+      intervalId = setInterval(() => {
+        void refreshPaymentsLedger();
+      }, PAYMENTS_POLL_MS);
+    }
+
+    function handleVisibilityChange() {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+
+      if (document.visibilityState === "visible") {
+        void refreshPaymentsLedger();
+        startPolling();
+      }
+    }
+
+    void refreshPaymentsLedger();
+    startPolling();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [auth, activeView, operationDate]);
+
   async function bootstrap() {
     setLoading(true);
     setError(null);
 
     try {
+      const recovery = await getPasswordRecoveryContext();
+      if (recovery) {
+        setRecoveryEmail(recovery);
+        return;
+      }
+
       const currentAuth = await getCurrentOperatorProfile();
 
       if (currentAuth) {
@@ -236,10 +326,18 @@ export function App() {
     }
   }
 
+  function handleRecoveryComplete() {
+    setRecoveryEmail(null);
+    setAuth(null);
+    setError(null);
+    setStatusMessage("Password updated. Sign in with your new password.");
+  }
+
   async function loadWorkspace(targetDate = operationDate) {
     const [
       dashboardData,
       routesData,
+      handoffData,
       paymentData,
       ledgerData,
       staffData,
@@ -250,6 +348,7 @@ export function App() {
     ] = await Promise.all([
       getOperatorDashboard(targetDate),
       getRoutes(targetDate),
+      getRouteTruckHandoffs(targetDate),
       getPaymentLedger(),
       getCustomerLedger(),
       getStaffAttendance(targetDate),
@@ -261,6 +360,7 @@ export function App() {
 
     setDashboard(dashboardData);
     setRoutes(routesData);
+    setRouteHandoffs(handoffData);
     setPayments(paymentData);
     setCustomerLedger(ledgerData);
     setAdminData(nextAdminData);
@@ -523,6 +623,29 @@ export function App() {
     }
   }
 
+  async function handleProposeTruckHandoff(input: ProposeRouteTruckHandoffInput) {
+    setStatusMessage(null);
+    setError(null);
+    setRouteInlineError(null);
+    await proposeRouteTruckHandoff(input);
+    const [nextRoutes, nextHandoffs] = await Promise.all([
+      getRoutes(operationDate),
+      getRouteTruckHandoffs(operationDate)
+    ]);
+    await refreshRoutesForSelectedDate(nextRoutes);
+    setRouteHandoffs(nextHandoffs);
+    setStatusMessage("Truck handoff sent for driver confirmation.");
+  }
+
+  async function handleCancelTruckHandoff(handoffId: string) {
+    setStatusMessage(null);
+    setError(null);
+    setRouteInlineError(null);
+    await cancelRouteTruckHandoff(handoffId);
+    setRouteHandoffs(await getRouteTruckHandoffs(operationDate));
+    setStatusMessage("Truck handoff cancelled.");
+  }
+
   async function handleAddRoutePlanStop(routeId: string, customerId: string) {
     setStatusMessage(null);
     setError(null);
@@ -658,12 +781,16 @@ export function App() {
     setStatusMessage(`Customer marked ${serviceStatus}.`);
   }
 
-  if (loading) {
+  if (loading && !recoveryEmail) {
     return <main className="app-shell">Loading CleanOps command centre...</main>;
   }
 
+  if (recoveryEmail) {
+    return <PasswordRecoveryScreen email={recoveryEmail} onComplete={handleRecoveryComplete} />;
+  }
+
   if (!auth) {
-    return <LoginScreen error={error} onDemoSignIn={handleDemoSignIn} />;
+    return <LoginScreen error={error} onDemoSignIn={handleDemoSignIn} statusMessage={statusMessage} />;
   }
 
   const selectedRoute = routes.find((routeItem) => routeItem.id === selectedRouteId) ?? routes[0];
@@ -684,6 +811,11 @@ export function App() {
           <p>View daily route, attendance, payment, and incident state. Plan future routes from recent templates.</p>
           {operationDate === todayIso && (activeView === "dashboard" || activeView === "routes") ? (
             <p className="live-refresh-hint">Dashboard and routes auto-refresh every 45 seconds while this tab is open.</p>
+          ) : null}
+          {activeView === "payments" ? (
+            <p className="live-refresh-hint">
+              Payment ledger auto-refresh every 20 seconds so Paystack webhooks show without a manual reload.
+            </p>
           ) : null}
         </div>
         <div className="date-control-actions">
@@ -726,14 +858,17 @@ export function App() {
       {activeView === "routes" ? (
         <RoutesView
           routes={routes}
+          routeHandoffs={routeHandoffs}
           selectedRoute={selectedRoute}
           operationDate={operationDate}
           planningOptions={planningOptions}
           routeInlineError={routeInlineError}
           todayIso={todayIso}
           onAddRouteStop={handleAddRoutePlanStop}
+          onCancelTruckHandoff={handleCancelTruckHandoff}
           onMoveRouteStop={handleMoveRoutePlanStop}
           onPlanDailyRoutes={handlePlanDailyRoutes}
+          onProposeTruckHandoff={handleProposeTruckHandoff}
           onRemoveRouteStop={handleRemoveRoutePlanStop}
           onSelectRoute={setSelectedRouteId}
           onUpdateRoutePlanAssignment={handleUpdateRoutePlanAssignment}
@@ -782,10 +917,12 @@ export function App() {
 
 function LoginScreen({
   error,
-  onDemoSignIn
+  onDemoSignIn,
+  statusMessage
 }: {
   error: string | null;
   onDemoSignIn: () => void;
+  statusMessage?: string | null;
 }) {
   return (
     <main className="app-shell login-shell">
@@ -796,6 +933,7 @@ function LoginScreen({
           Use the seeded local demo owner to exercise operator routes, payment ledger,
           and attendance workflows.
         </p>
+        {statusMessage ? <p className="notice">{statusMessage}</p> : null}
         {error ? <p className="notice error">{error}</p> : null}
         <div className="credential-box">
           <span>{demoCredentials.email}</span>
@@ -1022,14 +1160,17 @@ function DashboardView({
 
 function RoutesView({
   routes,
+  routeHandoffs,
   selectedRoute,
   operationDate,
   planningOptions,
   routeInlineError,
   todayIso,
   onAddRouteStop,
+  onCancelTruckHandoff,
   onMoveRouteStop,
   onPlanDailyRoutes,
+  onProposeTruckHandoff,
   onRemoveRouteStop,
   onSelectRoute,
   onUpdateRoutePlanAssignment,
@@ -1037,14 +1178,17 @@ function RoutesView({
   onUpdateStop
 }: {
   routes: RouteDetail[];
+  routeHandoffs: RouteTruckHandoff[];
   selectedRoute?: RouteDetail;
   operationDate: string;
   planningOptions: RoutePlanningOptions;
   routeInlineError: RouteInlineError;
   todayIso: string;
   onAddRouteStop: (routeId: string, customerId: string) => void;
+  onCancelTruckHandoff: (handoffId: string) => Promise<void>;
   onMoveRouteStop: (stopId: string, direction: "up" | "down") => void;
   onPlanDailyRoutes: () => void;
+  onProposeTruckHandoff: (input: ProposeRouteTruckHandoffInput) => Promise<void>;
   onRemoveRouteStop: (stopId: string) => void;
   onSelectRoute: (routeId: string) => void;
   onUpdateRoutePlanAssignment: (routeId: string, zoneId: string, truckId: string, driverId: string | null) => void;
@@ -1065,7 +1209,9 @@ function RoutesView({
   const routeFinalized = selectedRoute?.status === "completed" || selectedRoute?.status === "cancelled";
   const routePlanEditable = selectedRoute?.status === "scheduled" && !selectedRoute.startedAt && !selectedRoute.completedAt;
   const customersAlreadyPlanned = new Set(selectedRoute?.stops.map((stop) => stop.customerId).filter(Boolean));
-  const availableCustomers = planningOptions.customers.filter((customer) => !customersAlreadyPlanned.has(customer.id));
+  const availableCustomers = planningOptions.customers.filter(
+    (customer) => customer.zoneId === selectedRoute?.zoneId && !customersAlreadyPlanned.has(customer.id)
+  );
   const availableTrucks = planningOptions.trucks.filter((truck) => truck.zoneId === selectedRoute?.zoneId);
 
   return (
@@ -1105,8 +1251,15 @@ function RoutesView({
               >
                 <strong>{routeItem.zoneName}</strong>
                 <span>
-                  {routeItem.completedStops}/{routeItem.totalStops} stops · {routeItem.status.replace("_", " ")}
+                  {routeItem.truckRegistration} · {routeItem.completedStops}/{routeItem.totalStops} stops ·{" "}
+                  {routeItem.status.replace("_", " ")}
                 </span>
+                {!routeItem.truckId ? <span className="pill danger">Needs truck</span> : null}
+                {routeHandoffs.some(
+                  (handoff) => handoff.routeId === routeItem.id && handoff.status === "awaiting_confirmation"
+                ) ? (
+                  <span className="pill">Handoff pending</span>
+                ) : null}
               </button>
             ))
           )}
@@ -1183,9 +1336,18 @@ function RoutesView({
               ) : null}
             </div>
             <p className="panel-subtitle">
-              Route start and completion are field actions. Operators can cancel a route or correct individual
-              stops when driver updates fail to transmit.
+              Route start and completion are field actions. Operators can cancel a route, reassign trucks with driver
+              confirmation, or correct individual stops when driver updates fail to transmit.
             </p>
+
+            <TruckHandoffPanel
+              handoffs={routeHandoffs}
+              planningOptions={planningOptions}
+              routes={routes}
+              selectedRoute={selectedRoute}
+              onCancel={onCancelTruckHandoff}
+              onPropose={onProposeTruckHandoff}
+            />
 
             {routePlanEditable ? (
               <div className="planner-panel" key={selectedRoute.id}>
@@ -1431,7 +1593,12 @@ function PaymentsView({
     }
 
     void getCustomerPaymentHistory(selectedCustomer.customerId).then(setHistory);
-  }, [selectedCustomer?.customerId]);
+  }, [
+    selectedCustomer?.customerId,
+    selectedCustomer?.lastPaymentAt,
+    selectedCustomer?.paidThisMonthKobo,
+    payments
+  ]);
 
   const totalOutstanding = customerLedger.reduce((sum, customer) => sum + customer.outstandingKobo, 0);
   const suspendedCount = customerLedger.filter((customer) => customer.serviceStatus === "suspended").length;
