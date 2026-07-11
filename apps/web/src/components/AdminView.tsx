@@ -1,19 +1,26 @@
 import type {
+  AdminCustomer,
   AdminMasterData,
+  AdminStaff,
+  AdminTruck,
   CustomerLedgerItem,
   CustomerOnboardingInput,
   CustomerType,
+  CustomerUpdateInput,
   StaffLoginProvisionInput,
   StaffOnboardingInput,
   StaffOnboardingResult,
+  StaffUpdateInput,
   TruckOnboardingInput,
   TruckStatus,
+  TruckUpdateInput,
   UserRole
 } from "@cleanops/shared";
 import { Truck, Users, WalletCards } from "lucide-react";
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import AdminModal from "./AdminModal";
+import LicenceUploadDialog from "./LicenceUploadDialog";
 import {
   filterAdminCustomers,
   filterAdminStaff,
@@ -22,6 +29,7 @@ import {
   type StaffAdminFilters,
   type TruckAdminFilters
 } from "../lib/adminFilters";
+import { uploadDriverLicenceDocument } from "../data/profileService";
 
 type AdminSection = "staff" | "trucks" | "customers";
 type AdminModalKind = "staff" | "truck" | "customer";
@@ -32,8 +40,8 @@ const adminSections: Array<{ id: AdminSection; label: string }> = [
   { id: "customers", label: "Customers" }
 ];
 
-const adminStaffRoles: UserRole[] = ["driver", "collection_agent", "operations_supervisor"];
-const staffRolesWithLogin = new Set<UserRole>(adminStaffRoles);
+const adminStaffRoles: UserRole[] = ["driver", "loader", "collection_agent", "operations_supervisor"];
+const staffRolesWithLogin = new Set<UserRole>(["driver", "collection_agent", "operations_supervisor"]);
 const adminCustomerTypes: CustomerType[] = ["residential", "small_business", "restaurant", "estate"];
 const adminTruckStatuses: TruckStatus[] = ["operational", "standby", "workshop"];
 
@@ -49,6 +57,44 @@ function suggestStaffLoginEmail(fullName: string) {
 
 function formatKobo(amountKobo: number) {
   return `₦${(amountKobo / 100).toLocaleString("en-NG")}`;
+}
+
+function formatLicenceExpiry(isoDate: string | null | undefined) {
+  if (!isoDate) {
+    return null;
+  }
+
+  const parsed = new Date(`${isoDate.slice(0, 10)}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) {
+    return isoDate;
+  }
+
+  return parsed.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric"
+  });
+}
+
+function licenceExpiryTone(isoDate: string | null | undefined) {
+  if (!isoDate) {
+    return "muted";
+  }
+
+  const expiry = new Date(`${isoDate.slice(0, 10)}T12:00:00`);
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  const daysLeft = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (daysLeft < 0) {
+    return "danger";
+  }
+
+  if (daysLeft <= 60) {
+    return "warn";
+  }
+
+  return "ok";
 }
 
 function AdminFilterToolbar({
@@ -72,6 +118,7 @@ function AdminFilterToolbar({
 
 export default function AdminView({
   adminData,
+  operatorId,
   onOnboardCustomer,
   onOnboardStaff,
   onOnboardTruck,
@@ -79,9 +126,13 @@ export default function AdminView({
   onRequestStaffPasswordReset,
   onSetCustomerServiceStatus,
   onSetStaffActive,
-  onSetTruckActive
+  onSetTruckActive,
+  onUpdateCustomer,
+  onUpdateStaff,
+  onUpdateTruck
 }: {
   adminData: AdminMasterData;
+  operatorId: string | null;
   onOnboardCustomer: (input: CustomerOnboardingInput) => Promise<void>;
   onOnboardStaff: (input: StaffOnboardingInput) => Promise<StaffOnboardingResult>;
   onOnboardTruck: (input: TruckOnboardingInput) => Promise<void>;
@@ -90,17 +141,28 @@ export default function AdminView({
   onSetCustomerServiceStatus: (customerId: string, serviceStatus: CustomerLedgerItem["serviceStatus"]) => Promise<void>;
   onSetStaffActive: (staffId: string, active: boolean) => Promise<void>;
   onSetTruckActive: (truckId: string, active: boolean) => Promise<void>;
+  onUpdateCustomer: (input: CustomerUpdateInput) => Promise<void>;
+  onUpdateStaff: (input: StaffUpdateInput) => Promise<void>;
+  onUpdateTruck: (input: TruckUpdateInput) => Promise<void>;
 }) {
   const defaultZoneId = adminData.zones[0]?.id ?? "";
   const [activeAdminSection, setActiveAdminSection] = useState<AdminSection>("staff");
   const [activeModal, setActiveModal] = useState<AdminModalKind | null>(null);
+  const [editingStaffId, setEditingStaffId] = useState<string | null>(null);
+  const [editingTruckId, setEditingTruckId] = useState<string | null>(null);
+  const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null);
+  const [licencePreviewUrl, setLicencePreviewUrl] = useState<string | null>(null);
+  const [licenceUploadStaff, setLicenceUploadStaff] = useState<AdminStaff | null>(null);
+  const [licenceUploadError, setLicenceUploadError] = useState<string | null>(null);
   const [staffForm, setStaffForm] = useState({
     fullName: "",
     monthlySalaryNaira: "",
     phone: "",
     role: "driver" as UserRole,
     loginEmail: "",
-    provisionLogin: true
+    provisionLogin: true,
+    licenceExpiresOn: "",
+    licenceImageUrl: ""
   });
   const [staffCredentials, setStaffCredentials] = useState<StaffOnboardingResult | null>(null);
   const [provisionStaffId, setProvisionStaffId] = useState<string | null>(null);
@@ -170,15 +232,109 @@ export default function AdminView({
     setCustomerForm((current) => ({ ...current, zoneId: current.zoneId || defaultZoneId }));
   }, [defaultZoneId]);
 
-  function openModal(kind: AdminModalKind) {
-    setActiveModal(kind);
+  function openCreateModal(kind: AdminModalKind) {
+    setEditingStaffId(null);
+    setEditingTruckId(null);
+    setEditingCustomerId(null);
     setStaffFormError(null);
     setTruckFormError(null);
     setCustomerFormError(null);
+
+    if (kind === "staff") {
+      setStaffForm({
+        fullName: "",
+        monthlySalaryNaira: "",
+        phone: "",
+        role: "driver",
+        loginEmail: "",
+        provisionLogin: true,
+        licenceExpiresOn: "",
+        licenceImageUrl: "/driver-licences/placeholder.svg"
+      });
+    }
+
+    if (kind === "truck") {
+      setTruckForm({
+        make: "",
+        model: "",
+        registrationNumber: "",
+        status: "operational",
+        year: "",
+        zoneId: ""
+      });
+    }
+
+    if (kind === "customer") {
+      setCustomerForm({
+        address: "",
+        customerType: "residential",
+        displayName: "",
+        monthlyRateNaira: "",
+        phone: "",
+        serviceStatus: "active",
+        zoneId: defaultZoneId
+      });
+    }
+
+    setActiveModal(kind);
+  }
+
+  function openEditStaff(staff: AdminStaff) {
+    setEditingStaffId(staff.id);
+    setEditingTruckId(null);
+    setEditingCustomerId(null);
+    setStaffFormError(null);
+    setStaffForm({
+      fullName: staff.fullName,
+      monthlySalaryNaira: String(staff.monthlySalaryKobo / 100),
+      phone: staff.phone,
+      role: staff.role,
+      loginEmail: staff.loginEmail ?? "",
+      provisionLogin: false,
+      licenceExpiresOn: staff.licenceExpiresOn?.slice(0, 10) ?? "",
+      licenceImageUrl: staff.licenceImageUrl ?? ""
+    });
+    setActiveModal("staff");
+  }
+
+  function openEditTruck(truck: AdminTruck) {
+    setEditingTruckId(truck.id);
+    setEditingStaffId(null);
+    setEditingCustomerId(null);
+    setTruckFormError(null);
+    setTruckForm({
+      make: truck.make ?? "",
+      model: truck.model ?? "",
+      registrationNumber: truck.registrationNumber,
+      status: truck.status,
+      year: truck.year ? String(truck.year) : "",
+      zoneId: truck.zoneId ?? ""
+    });
+    setActiveModal("truck");
+  }
+
+  function openEditCustomer(customer: AdminCustomer) {
+    setEditingCustomerId(customer.id);
+    setEditingStaffId(null);
+    setEditingTruckId(null);
+    setCustomerFormError(null);
+    setCustomerForm({
+      address: customer.address,
+      customerType: customer.customerType,
+      displayName: customer.displayName,
+      monthlyRateNaira: String(customer.monthlyRateKobo / 100),
+      phone: customer.phone ?? "",
+      serviceStatus: customer.serviceStatus,
+      zoneId: customer.zoneId
+    });
+    setActiveModal("customer");
   }
 
   function closeModal() {
     setActiveModal(null);
+    setEditingStaffId(null);
+    setEditingTruckId(null);
+    setEditingCustomerId(null);
   }
 
   async function submitStaff(event: FormEvent<HTMLFormElement>) {
@@ -186,13 +342,29 @@ export default function AdminView({
     setStaffFormError(null);
 
     try {
+      if (editingStaffId) {
+        await onUpdateStaff({
+          staffId: editingStaffId,
+          fullName: staffForm.fullName,
+          monthlySalaryKobo: Math.round(Number(staffForm.monthlySalaryNaira || 0) * 100),
+          phone: staffForm.phone,
+          role: staffForm.role,
+          licenceExpiresOn: staffForm.role === "driver" ? staffForm.licenceExpiresOn || null : null,
+          licenceImageUrl: staffForm.role === "driver" ? staffForm.licenceImageUrl || null : null
+        });
+        closeModal();
+        return;
+      }
+
       const result = await onOnboardStaff({
         fullName: staffForm.fullName,
         monthlySalaryKobo: Math.round(Number(staffForm.monthlySalaryNaira || 0) * 100),
         phone: staffForm.phone,
         role: staffForm.role,
         loginEmail: staffForm.provisionLogin ? staffForm.loginEmail : undefined,
-        provisionLogin: staffForm.provisionLogin
+        provisionLogin: staffForm.provisionLogin,
+        licenceExpiresOn: staffForm.role === "driver" ? staffForm.licenceExpiresOn || null : null,
+        licenceImageUrl: staffForm.role === "driver" ? staffForm.licenceImageUrl || null : null
       });
       setStaffForm({
         fullName: "",
@@ -200,14 +372,22 @@ export default function AdminView({
         phone: "",
         role: "driver",
         loginEmail: "",
-        provisionLogin: true
+        provisionLogin: true,
+        licenceExpiresOn: "",
+        licenceImageUrl: "/driver-licences/placeholder.svg"
       });
       closeModal();
       if (result.loginProvisioned && result.temporaryPassword && result.loginEmail) {
         setStaffCredentials(result);
       }
     } catch (error) {
-      setStaffFormError(error instanceof Error ? error.message : "Unable to onboard staff member");
+      setStaffFormError(
+        error instanceof Error
+          ? error.message
+          : editingStaffId
+            ? "Unable to update staff member"
+            : "Unable to onboard staff member"
+      );
     }
   }
 
@@ -262,6 +442,20 @@ export default function AdminView({
     setTruckFormError(null);
 
     try {
+      if (editingTruckId) {
+        await onUpdateTruck({
+          truckId: editingTruckId,
+          make: truckForm.make || undefined,
+          model: truckForm.model || undefined,
+          registrationNumber: truckForm.registrationNumber,
+          status: truckForm.status,
+          year: truckForm.year ? Number(truckForm.year) : null,
+          zoneId: truckForm.zoneId || null
+        });
+        closeModal();
+        return;
+      }
+
       await onOnboardTruck({
         make: truckForm.make || undefined,
         model: truckForm.model || undefined,
@@ -280,7 +474,13 @@ export default function AdminView({
       });
       closeModal();
     } catch (error) {
-      setTruckFormError(error instanceof Error ? error.message : "Unable to onboard truck");
+      setTruckFormError(
+        error instanceof Error
+          ? error.message
+          : editingTruckId
+            ? "Unable to update truck"
+            : "Unable to onboard truck"
+      );
     }
   }
 
@@ -289,6 +489,20 @@ export default function AdminView({
     setCustomerFormError(null);
 
     try {
+      if (editingCustomerId) {
+        await onUpdateCustomer({
+          customerId: editingCustomerId,
+          address: customerForm.address,
+          customerType: customerForm.customerType,
+          displayName: customerForm.displayName,
+          monthlyRateKobo: Math.round(Number(customerForm.monthlyRateNaira || 0) * 100),
+          phone: customerForm.phone || undefined,
+          zoneId: customerForm.zoneId
+        });
+        closeModal();
+        return;
+      }
+
       await onOnboardCustomer({
         address: customerForm.address,
         customerType: customerForm.customerType,
@@ -309,7 +523,13 @@ export default function AdminView({
       });
       closeModal();
     } catch (error) {
-      setCustomerFormError(error instanceof Error ? error.message : "Unable to onboard customer");
+      setCustomerFormError(
+        error instanceof Error
+          ? error.message
+          : editingCustomerId
+            ? "Unable to update customer"
+            : "Unable to onboard customer"
+      );
     }
   }
 
@@ -398,7 +618,7 @@ export default function AdminView({
               <p className="panel-subtitle">Onboard field workers and deactivate records without losing history.</p>
             </div>
             <div className="panel-header-actions">
-              <button className="primary-button" onClick={() => openModal("staff")} type="button">
+              <button className="primary-button" onClick={() => openCreateModal("staff")} type="button">
                 Add staff
               </button>
               <Users aria-hidden="true" />
@@ -448,28 +668,59 @@ export default function AdminView({
             ) : (
               filteredStaff.map((staff) => (
                 <div className="admin-row" key={staff.id}>
-                  <div>
-                    <strong>{staff.fullName}</strong>
-                    <span>
-                      {staff.phone} · {staff.role.replace("_", " ")} · {formatKobo(staff.monthlySalaryKobo)}
-                    </span>
-                    <small>
-                      {staff.hasLoginProfile
-                        ? staff.loginEmail
-                          ? `Login: ${staff.loginEmail}`
-                          : "Login linked"
-                        : "No login profile yet"}
-                    </small>
-                    {staffLoginActionErrors[staff.id] ? (
-                      <p className="inline-error">{staffLoginActionErrors[staff.id]}</p>
+                  <div className="admin-row-main">
+                    {staff.role === "driver" && staff.licenceImageUrl ? (
+                      <button
+                        className="licence-thumb-button"
+                        onClick={() => setLicencePreviewUrl(staff.licenceImageUrl ?? null)}
+                        type="button"
+                        title="View driver licence"
+                      >
+                        <img alt="" className="licence-thumb" src={staff.licenceImageUrl} />
+                      </button>
                     ) : null}
-                    {staffStatusErrors[staff.id] ? <p className="inline-error">{staffStatusErrors[staff.id]}</p> : null}
+                    <div>
+                      <strong>{staff.fullName}</strong>
+                      <span>
+                        {staff.phone} · {staff.role.replace("_", " ")} · {formatKobo(staff.monthlySalaryKobo)}
+                      </span>
+                      <small>
+                        {staff.hasLoginProfile
+                          ? staff.loginEmail
+                            ? `Login: ${staff.loginEmail}`
+                            : "Login linked"
+                          : "No login profile yet"}
+                      </small>
+                      {staff.role === "driver" ? (
+                        <small className={`licence-expiry licence-expiry-${licenceExpiryTone(staff.licenceExpiresOn)}`}>
+                          Licence expires {formatLicenceExpiry(staff.licenceExpiresOn) ?? "not set"}
+                        </small>
+                      ) : null}
+                      {staffLoginActionErrors[staff.id] ? (
+                        <p className="inline-error">{staffLoginActionErrors[staff.id]}</p>
+                      ) : null}
+                      {staffStatusErrors[staff.id] ? <p className="inline-error">{staffStatusErrors[staff.id]}</p> : null}
+                    </div>
                   </div>
                   <span className={`pill ${staff.active ? "" : "danger"}`}>{staff.active ? "active" : "inactive"}</span>
                   <div className="button-row admin-row-actions">
+                    <button onClick={() => openEditStaff(staff)} type="button">
+                      Edit
+                    </button>
                     {!staff.hasLoginProfile && staffRolesWithLogin.has(staff.role) ? (
                       <button onClick={() => openProvisionLogin(staff.id, staff.fullName)} type="button">
                         Create login
+                      </button>
+                    ) : null}
+                    {staff.role === "driver" ? (
+                      <button
+                        onClick={() => {
+                          setLicenceUploadError(null);
+                          setLicenceUploadStaff(staff);
+                        }}
+                        type="button"
+                      >
+                        Upload licence
                       </button>
                     ) : null}
                     {staff.hasLoginProfile ? (
@@ -477,7 +728,11 @@ export default function AdminView({
                         Send reset email
                       </button>
                     ) : null}
-                    <button onClick={() => void toggleStaffActive(staff.id, !staff.active)} type="button">
+                    <button
+                      className={staff.active ? "danger-outline" : undefined}
+                      onClick={() => void toggleStaffActive(staff.id, !staff.active)}
+                      type="button"
+                    >
                       {staff.active ? "Deactivate" : "Reactivate"}
                     </button>
                   </div>
@@ -497,7 +752,7 @@ export default function AdminView({
               <p className="panel-subtitle">Register fleet assets and bind them to operating zones.</p>
             </div>
             <div className="panel-header-actions">
-              <button className="primary-button" onClick={() => openModal("truck")} type="button">
+              <button className="primary-button" onClick={() => openCreateModal("truck")} type="button">
                 Add truck
               </button>
               <Truck aria-hidden="true" />
@@ -570,9 +825,18 @@ export default function AdminView({
                     {truckStatusErrors[truck.id] ? <p className="inline-error">{truckStatusErrors[truck.id]}</p> : null}
                   </div>
                   <span className={`pill ${truck.active ? "" : "danger"}`}>{truck.active ? "active" : "inactive"}</span>
-                  <button onClick={() => void toggleTruckActive(truck.id, !truck.active)} type="button">
-                    {truck.active ? "Deactivate" : "Reactivate"}
-                  </button>
+                  <div className="button-row admin-row-actions">
+                    <button onClick={() => openEditTruck(truck)} type="button">
+                      Edit
+                    </button>
+                    <button
+                      className={truck.active ? "danger-outline" : undefined}
+                      onClick={() => void toggleTruckActive(truck.id, !truck.active)}
+                      type="button"
+                    >
+                      {truck.active ? "Deactivate" : "Reactivate"}
+                    </button>
+                  </div>
                 </div>
               ))
             )}
@@ -589,7 +853,7 @@ export default function AdminView({
               <p className="panel-subtitle">Create customer accounts used by billing, route planning, and stop lists.</p>
             </div>
             <div className="panel-header-actions">
-              <button className="primary-button" onClick={() => openModal("customer")} type="button">
+              <button className="primary-button" onClick={() => openCreateModal("customer")} type="button">
                 Add customer
               </button>
               <WalletCards aria-hidden="true" />
@@ -672,17 +936,22 @@ export default function AdminView({
                   <span className={`pill ${customer.serviceStatus === "suspended" ? "danger" : ""}`}>
                     {customer.serviceStatus}
                   </span>
-                  <button
-                    onClick={() =>
-                      void toggleCustomerStatus(
-                        customer.id,
-                        customer.serviceStatus === "active" ? "suspended" : "active"
-                      )
-                    }
-                    type="button"
-                  >
-                    {customer.serviceStatus === "active" ? "Suspend" : "Reactivate"}
-                  </button>
+                  <div className="button-row admin-row-actions">
+                    <button onClick={() => openEditCustomer(customer)} type="button">
+                      Edit
+                    </button>
+                    <button
+                      onClick={() =>
+                        void toggleCustomerStatus(
+                          customer.id,
+                          customer.serviceStatus === "active" ? "suspended" : "active"
+                        )
+                      }
+                      type="button"
+                    >
+                      {customer.serviceStatus === "active" ? "Suspend" : "Reactivate"}
+                    </button>
+                  </div>
                 </div>
               ))
             )}
@@ -693,8 +962,12 @@ export default function AdminView({
       <AdminModal
         onClose={closeModal}
         open={activeModal === "staff"}
-        subtitle="Create a staff record for drivers, collection agents, or supervisors."
-        title="Add staff"
+        subtitle={
+          editingStaffId
+            ? "Update name, phone, role, or salary. Login email stays on Create login / Send reset email."
+            : "Create a staff record for drivers, loaders, collection agents, or supervisors."
+        }
+        title={editingStaffId ? "Edit staff" : "Add staff"}
       >
         <form className="entry-card admin-form admin-modal-form" onSubmit={(event) => void submitStaff(event)}>
           <label>
@@ -703,6 +976,9 @@ export default function AdminView({
               onChange={(event) =>
                 setStaffForm((current) => {
                   const fullName = event.target.value;
+                  if (editingStaffId) {
+                    return { ...current, fullName };
+                  }
                   return {
                     ...current,
                     fullName,
@@ -733,7 +1009,7 @@ export default function AdminView({
                 setStaffForm((current) => ({
                   ...current,
                   role,
-                  provisionLogin: staffRolesWithLogin.has(role)
+                  provisionLogin: editingStaffId ? false : staffRolesWithLogin.has(role)
                 }));
               }}
               value={staffForm.role}
@@ -754,7 +1030,43 @@ export default function AdminView({
               value={staffForm.monthlySalaryNaira}
             />
           </label>
-          {staffRolesWithLogin.has(staffForm.role) ? (
+          {staffForm.role === "driver" ? (
+            <>
+              <label>
+                Licence expiry
+                <input
+                  onChange={(event) =>
+                    setStaffForm((current) => ({ ...current, licenceExpiresOn: event.target.value }))
+                  }
+                  required
+                  type="date"
+                  value={staffForm.licenceExpiresOn}
+                />
+              </label>
+              {editingStaffId ? (
+                <p className="panel-subtitle">
+                  Use <strong>Upload licence</strong> on the staff row to attach a photo or PDF. Current card:{" "}
+                  {staffForm.licenceImageUrl || "none"}
+                </p>
+              ) : (
+                <p className="panel-subtitle">
+                  New drivers start with a placeholder card. After create, use Upload licence on the row to attach the
+                  real document.
+                </p>
+              )}
+              {staffForm.licenceImageUrl ? (
+                <button
+                  className="licence-preview-inline"
+                  onClick={() => setLicencePreviewUrl(staffForm.licenceImageUrl)}
+                  type="button"
+                >
+                  <img alt="Driver licence preview" src={staffForm.licenceImageUrl} />
+                  <span>Preview licence card</span>
+                </button>
+              ) : null}
+            </>
+          ) : null}
+          {!editingStaffId && staffRolesWithLogin.has(staffForm.role) ? (
             <>
               <label className="checkbox-row">
                 <input
@@ -783,7 +1095,7 @@ export default function AdminView({
           {staffFormError ? <p className="inline-error">{staffFormError}</p> : null}
           <div className="button-row">
             <button className="primary-button" type="submit">
-              Add staff
+              {editingStaffId ? "Save staff" : "Add staff"}
             </button>
           </div>
         </form>
@@ -792,8 +1104,12 @@ export default function AdminView({
       <AdminModal
         onClose={closeModal}
         open={activeModal === "truck"}
-        subtitle="Register a fleet asset. Home zone is optional — trucks can cover any route."
-        title="Add truck"
+        subtitle={
+          editingTruckId
+            ? "Update registration, home zone, vehicle details, or fleet status."
+            : "Register a fleet asset. Home zone is optional — trucks can cover any route."
+        }
+        title={editingTruckId ? "Edit truck" : "Add truck"}
       >
         <form className="entry-card admin-form admin-modal-form" onSubmit={(event) => void submitTruck(event)}>
           <label>
@@ -856,7 +1172,7 @@ export default function AdminView({
           {truckFormError ? <p className="inline-error">{truckFormError}</p> : null}
           <div className="button-row">
             <button className="primary-button" type="submit">
-              Add truck
+              {editingTruckId ? "Save truck" : "Add truck"}
             </button>
           </div>
         </form>
@@ -865,8 +1181,12 @@ export default function AdminView({
       <AdminModal
         onClose={closeModal}
         open={activeModal === "customer"}
-        subtitle="Create a customer account for billing, route planning, and collections."
-        title="Add customer"
+        subtitle={
+          editingCustomerId
+            ? "Update account details. Moving zone drops this customer from other-zone scheduled stops and templates."
+            : "Create a customer account for billing, route planning, and collections."
+        }
+        title={editingCustomerId ? "Edit customer" : "Add customer"}
       >
         <form
           className="entry-card admin-form customer-admin-form admin-modal-form"
@@ -935,28 +1255,79 @@ export default function AdminView({
               value={customerForm.monthlyRateNaira}
             />
           </label>
-          <label>
-            Service status
-            <select
-              onChange={(event) =>
-                setCustomerForm((current) => ({
-                  ...current,
-                  serviceStatus: event.target.value as CustomerLedgerItem["serviceStatus"]
-                }))
-              }
-              value={customerForm.serviceStatus}
-            >
-              <option value="active">active</option>
-              <option value="suspended">suspended</option>
-            </select>
-          </label>
+          {!editingCustomerId ? (
+            <label>
+              Service status
+              <select
+                onChange={(event) =>
+                  setCustomerForm((current) => ({
+                    ...current,
+                    serviceStatus: event.target.value as CustomerLedgerItem["serviceStatus"]
+                  }))
+                }
+                value={customerForm.serviceStatus}
+              >
+                <option value="active">active</option>
+                <option value="suspended">suspended</option>
+              </select>
+            </label>
+          ) : (
+            <p className="panel-subtitle">Use Suspend / Reactivate on the list to change service status.</p>
+          )}
           {customerFormError ? <p className="inline-error">{customerFormError}</p> : null}
           <div className="button-row">
             <button className="primary-button" type="submit">
-              Add customer
+              {editingCustomerId ? "Save customer" : "Add customer"}
             </button>
           </div>
         </form>
+      </AdminModal>
+
+      <LicenceUploadDialog
+        driverName={licenceUploadStaff?.fullName ?? "Driver"}
+        initialExpiresOn={licenceUploadStaff?.licenceExpiresOn?.slice(0, 10) ?? ""}
+        initialImageUrl={licenceUploadStaff?.licenceImageUrl ?? null}
+        onClose={() => setLicenceUploadStaff(null)}
+        onUpload={async ({ licenceExpiresOn, file }) => {
+          if (!licenceUploadStaff) {
+            throw new Error("No driver selected for licence upload.");
+          }
+
+          if (!operatorId) {
+            throw new Error("Operator context is required to upload licence documents.");
+          }
+
+          setLicenceUploadError(null);
+          const publicUrl = await uploadDriverLicenceDocument({
+            operatorId,
+            staffId: licenceUploadStaff.id,
+            file
+          });
+          await onUpdateStaff({
+            staffId: licenceUploadStaff.id,
+            fullName: licenceUploadStaff.fullName,
+            phone: licenceUploadStaff.phone,
+            role: licenceUploadStaff.role,
+            monthlySalaryKobo: licenceUploadStaff.monthlySalaryKobo,
+            licenceExpiresOn,
+            licenceImageUrl: publicUrl
+          });
+        }}
+        open={Boolean(licenceUploadStaff)}
+      />
+      {licenceUploadError ? <p className="inline-error">{licenceUploadError}</p> : null}
+
+      <AdminModal
+        onClose={() => setLicencePreviewUrl(null)}
+        open={Boolean(licencePreviewUrl)}
+        subtitle="Pilot mock card or uploaded document."
+        title="Driver licence"
+      >
+        {licencePreviewUrl ? (
+          <div className="licence-preview-card">
+            <img alt="Driver licence" src={licencePreviewUrl} />
+          </div>
+        ) : null}
       </AdminModal>
 
       <AdminModal

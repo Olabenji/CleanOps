@@ -4,6 +4,7 @@ export const userRoles = [
   "operator_owner",
   "operations_supervisor",
   "driver",
+  "loader",
   "collection_agent",
   "resident",
   "platform_admin"
@@ -70,8 +71,12 @@ export const routeTruckHandoffReasons = [
   "dumpsite_delay",
   "unable_to_start",
   "cross_route_support",
+  "driver_sick",
+  "driver_unavailable",
   "other"
 ] as const;
+
+export const routeReassignmentKinds = ["truck", "driver", "both"] as const;
 
 export const routeTruckHandoffSourceOutcomes = ["leave_unassigned", "cancel_route"] as const;
 
@@ -117,6 +122,7 @@ export const routeTruckHandoffSchema = z.object({
   routeStatus: z.enum(routeStatuses),
   scheduledDate: z.string(),
   pendingStops: z.number().int().nonnegative(),
+  changeKind: z.enum(routeReassignmentKinds).default("both"),
   fromTruckId: z.string().uuid().nullable(),
   fromTruckRegistration: z.string().nullable(),
   toTruckId: z.string().uuid(),
@@ -143,7 +149,8 @@ export const routeTruckHandoffSchema = z.object({
 
 export const proposeRouteTruckHandoffInputSchema = z.object({
   routeId: z.string().uuid(),
-  toTruckId: z.string().uuid(),
+  changeKind: z.enum(routeReassignmentKinds).default("both"),
+  toTruckId: z.string().uuid().optional(),
   toDriverId: z.string().uuid(),
   reason: z.enum(routeTruckHandoffReasons),
   notes: z.string().optional(),
@@ -167,6 +174,35 @@ export const operatorProfileSchema = z.object({
   fullName: z.string(),
   phone: z.string(),
   role: z.enum(userRoles)
+});
+
+export const updateOwnProfileInputSchema = z.object({
+  fullName: z.string().min(2),
+  phone: z.string().min(7)
+});
+
+export const ownAccountProfileSchema = z.object({
+  profileId: z.string().uuid(),
+  operatorId: z.string().uuid().nullable(),
+  fullName: z.string(),
+  phone: z.string(),
+  role: z.enum(userRoles),
+  staffId: z.string().uuid().nullable(),
+  licenceExpiresOn: z.string().nullable(),
+  licenceImageUrl: z.string().nullable()
+});
+
+export const setStaffLicenceInputSchema = z.object({
+  staffId: z.string().uuid(),
+  licenceExpiresOn: z.string().min(8),
+  licenceImageUrl: z.string().min(1)
+});
+
+export const staffLicenceResultSchema = z.object({
+  staffId: z.string().uuid(),
+  fullName: z.string(),
+  licenceExpiresOn: z.string().nullable(),
+  licenceImageUrl: z.string().nullable()
 });
 
 export const customerSchema = z.object({
@@ -283,7 +319,9 @@ export const adminStaffSchema = z.object({
   monthlySalaryKobo: z.number().int().nonnegative(),
   active: z.boolean(),
   hasLoginProfile: z.boolean(),
-  loginEmail: z.string().nullable()
+  loginEmail: z.string().nullable(),
+  licenceExpiresOn: z.string().nullable().optional(),
+  licenceImageUrl: z.string().nullable().optional()
 });
 
 export const adminTruckSchema = z.object({
@@ -323,7 +361,9 @@ export const staffOnboardingInputSchema = z.object({
   role: z.enum(userRoles),
   monthlySalaryKobo: z.number().int().nonnegative(),
   loginEmail: z.string().email().optional(),
-  provisionLogin: z.boolean().default(true)
+  provisionLogin: z.boolean().default(true),
+  licenceExpiresOn: z.string().optional().nullable(),
+  licenceImageUrl: z.string().optional().nullable()
 });
 
 export const staffOnboardingResultSchema = z.object({
@@ -362,6 +402,37 @@ export const customerOnboardingInputSchema = z.object({
   customerType: z.enum(customerTypes),
   monthlyRateKobo: z.number().int().nonnegative(),
   serviceStatus: z.enum(["active", "suspended"])
+});
+
+export const staffUpdateInputSchema = z.object({
+  staffId: z.string().uuid(),
+  fullName: z.string().min(2),
+  phone: z.string().min(7),
+  role: z.enum(userRoles),
+  monthlySalaryKobo: z.number().int().nonnegative(),
+  licenceExpiresOn: z.string().optional().nullable(),
+  licenceImageUrl: z.string().optional().nullable()
+});
+
+export const truckUpdateInputSchema = z.object({
+  truckId: z.string().uuid(),
+  /** Optional home/preferred zone — trucks float across routes. */
+  zoneId: z.string().uuid().optional().nullable(),
+  registrationNumber: z.string().min(3),
+  make: z.string().optional(),
+  model: z.string().optional(),
+  year: z.number().int().min(1980).max(2100).optional().nullable(),
+  status: z.enum(truckStatuses)
+});
+
+export const customerUpdateInputSchema = z.object({
+  customerId: z.string().uuid(),
+  zoneId: z.string().uuid(),
+  displayName: z.string().min(2),
+  phone: z.string().optional(),
+  address: z.string().min(5),
+  customerType: z.enum(customerTypes),
+  monthlyRateKobo: z.number().int().nonnegative()
 });
 
 export const paymentSummarySchema = z.object({
@@ -528,6 +599,7 @@ export type DumpsiteRunRecord = z.infer<typeof dumpsiteRunRecordSchema>;
 export type RouteTruckHandoffStatus = (typeof routeTruckHandoffStatuses)[number];
 export type RouteTruckHandoffReason = (typeof routeTruckHandoffReasons)[number];
 export type RouteTruckHandoffSourceOutcome = (typeof routeTruckHandoffSourceOutcomes)[number];
+export type RouteReassignmentKind = (typeof routeReassignmentKinds)[number];
 export type RouteTruckHandoff = z.infer<typeof routeTruckHandoffSchema>;
 export type ProposeRouteTruckHandoffInput = z.infer<typeof proposeRouteTruckHandoffInputSchema>;
 export type UserRole = (typeof userRoles)[number];
@@ -538,6 +610,10 @@ export type RouteStatus = (typeof routeStatuses)[number];
 export type TruckStatus = (typeof truckStatuses)[number];
 export type IncidentType = (typeof incidentTypes)[number];
 export type OperatorProfile = z.infer<typeof operatorProfileSchema>;
+export type UpdateOwnProfileInput = z.infer<typeof updateOwnProfileInputSchema>;
+export type OwnAccountProfile = z.infer<typeof ownAccountProfileSchema>;
+export type SetStaffLicenceInput = z.infer<typeof setStaffLicenceInputSchema>;
+export type StaffLicenceResult = z.infer<typeof staffLicenceResultSchema>;
 export type StaffMember = z.infer<typeof staffMemberSchema>;
 export type Customer = z.infer<typeof customerSchema>;
 export type DashboardMetric = z.infer<typeof dashboardMetricSchema>;
@@ -558,8 +634,111 @@ export type StaffOnboardingInput = z.infer<typeof staffOnboardingInputSchema>;
 export type StaffOnboardingResult = z.infer<typeof staffOnboardingResultSchema>;
 export type StaffLoginProvisionInput = z.infer<typeof staffLoginProvisionInputSchema>;
 export type StaffPasswordResetTarget = z.infer<typeof staffPasswordResetTargetSchema>;
+export const routeTemplateKinds = ["zone_default", "temporary"] as const;
+
+export const routeTemplateKindSchema = z.enum(routeTemplateKinds);
+
+export const saveRouteAsTemplateInputSchema = z.object({
+  routeId: z.string().uuid(),
+  kind: routeTemplateKindSchema,
+  name: z.string().min(1).max(120).optional()
+});
+
+export const saveRouteAsTemplateResultSchema = z.object({
+  id: z.string().uuid(),
+  kind: routeTemplateKindSchema,
+  zoneId: z.string().uuid(),
+  zoneName: z.string().nullable(),
+  stopCount: z.number().int().nonnegative()
+});
+
+export const ensureDailyRoutesResultSchema = z.object({
+  scheduledDate: z.string(),
+  alreadyLoaded: z.boolean(),
+  plannedCount: z.number().int().nonnegative(),
+  routeCount: z.number().int().nonnegative(),
+  hasAssignedRoute: z.boolean().optional()
+});
+
+export const driverTodayPlanningStatusSchema = z.object({
+  hasAssignedRoute: z.boolean(),
+  operatorRoutesExist: z.boolean(),
+  canLoadDefaults: z.boolean(),
+  isTemplateDefaultDriver: z.boolean().optional()
+});
+
+export const driverShiftJobTypes = [
+  "route_completed",
+  "cover_completed",
+  "reassignment_completed",
+  "cover_released"
+] as const;
+
+export const driverShiftJobSchema = z.object({
+  id: z.string(),
+  jobType: z.enum(driverShiftJobTypes),
+  routeId: z.string().uuid(),
+  zoneName: z.string(),
+  truckRegistration: z.string(),
+  status: z.enum(routeStatuses),
+  completedStops: z.number().int().nonnegative(),
+  totalStops: z.number().int().positive(),
+  startedAt: z.string().nullable(),
+  completedAt: z.string().nullable(),
+  changeKind: z.enum(routeReassignmentKinds).nullable().optional(),
+  reason: z.enum(routeTruckHandoffReasons).nullable().optional(),
+  fromDriverName: z.string().nullable().optional(),
+  toDriverName: z.string().nullable().optional(),
+  fromTruckRegistration: z.string().nullable().optional(),
+  toTruckRegistration: z.string().nullable().optional(),
+  headline: z.string(),
+  detail: z.string(),
+  sortAt: z.string().optional()
+});
+
+export const driverTodayShiftSummarySchema = z.object({
+  jobs: z.array(driverShiftJobSchema)
+});
+
+export const routeCoverSummarySchema = z.object({
+  handoffId: z.string().uuid(),
+  routeId: z.string().uuid(),
+  zoneName: z.string(),
+  routeStatus: z.enum(routeStatuses),
+  changeKind: z.enum(routeReassignmentKinds),
+  reason: z.enum(routeTruckHandoffReasons),
+  fromDriverName: z.string().nullable(),
+  toDriverName: z.string().nullable(),
+  fromTruckRegistration: z.string().nullable(),
+  toTruckRegistration: z.string().nullable(),
+  confirmedAt: z.string().nullable(),
+  headline: z.string()
+});
+
+export const driverRouteNoticeSchema = z.object({
+  id: z.string().uuid(),
+  routeId: z.string().uuid().nullable(),
+  noticeType: z.enum(["route_plan_changed", "routes_auto_loaded"]),
+  title: z.string(),
+  body: z.string(),
+  createdAt: z.string()
+});
+
+export type RouteTemplateKind = (typeof routeTemplateKinds)[number];
+export type SaveRouteAsTemplateInput = z.infer<typeof saveRouteAsTemplateInputSchema>;
+export type SaveRouteAsTemplateResult = z.infer<typeof saveRouteAsTemplateResultSchema>;
+export type EnsureDailyRoutesResult = z.infer<typeof ensureDailyRoutesResultSchema>;
+export type DriverTodayPlanningStatus = z.infer<typeof driverTodayPlanningStatusSchema>;
+export type DriverShiftJob = z.infer<typeof driverShiftJobSchema>;
+export type DriverTodayShiftSummary = z.infer<typeof driverTodayShiftSummarySchema>;
+export type RouteCoverSummary = z.infer<typeof routeCoverSummarySchema>;
+export type DriverRouteNotice = z.infer<typeof driverRouteNoticeSchema>;
+
 export type TruckOnboardingInput = z.infer<typeof truckOnboardingInputSchema>;
 export type CustomerOnboardingInput = z.infer<typeof customerOnboardingInputSchema>;
+export type StaffUpdateInput = z.infer<typeof staffUpdateInputSchema>;
+export type TruckUpdateInput = z.infer<typeof truckUpdateInputSchema>;
+export type CustomerUpdateInput = z.infer<typeof customerUpdateInputSchema>;
 export type PaymentSummary = z.infer<typeof paymentSummarySchema>;
 export type PaymentLedgerItem = z.infer<typeof paymentLedgerItemSchema>;
 export type CustomerLedgerItem = z.infer<typeof customerLedgerItemSchema>;

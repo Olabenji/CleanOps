@@ -1,6 +1,6 @@
 # CleanOps Build Plan
 
-**Last updated:** 10 July 2026  
+**Last updated:** 11 July 2026  
 **Reference:** [status-report.md](./status-report.md), [roadmap.md](./roadmap.md), [backlog.md](./backlog.md)
 
 ---
@@ -141,7 +141,7 @@ Drivers can log fuel purchases and dumpsite depart/arrive/clear timestamps from 
 
 ## Sprint 5 — Truck reassignment & route takeover — **complete**
 
-Operator-initiated truck handoffs with driver confirmation for breakdowns, dumpsite delays, unable-to-start, and cross-route borrows.
+Operator-initiated truck handoffs with driver confirmation for breakdowns, dumpsite delays, unable-to-start, and cross-route borrows. Extended for **driver cover** (sick / unavailable) via the same panel: Driver cover · Truck swap · Truck + driver (migrations `0039`–`0040`).
 
 ### Delivered
 
@@ -179,17 +179,22 @@ Operator-initiated truck handoffs with driver confirmation for breakdowns, dumps
 - Admin truck onboarding: home zone optional
 - Regression: cross-zone truck assign in `test:pilot` (migration `0030`)
 
-### Sprint 7 — Zone templates & daily auto-load
+### Sprint 7 — Zone templates & daily auto-load — **complete**
 
-- Keep clone-from-prior-route as the default zone template source
-- After operator edits a day’s route, prompt: save to zone template vs create temp template
-- Auto-load zone templates at start of day for operator and drivers
-- Driver login fallback when today’s routes are missing (“Click OK to load default route”)
-- Route-change prompts / notifications for affected drivers (push may follow)
+- Keep clone-from-prior-route as the default zone template source (bootstraps `route_templates`)
+- After operator edits a day’s route, pending banner (save zone / temp / discard); modal only on leave or sign-out
+- Auto-load zone templates at start of day for operator (`ensure_daily_routes_loaded`)
+- Driver login fallback when today’s routes are missing (`driver_ensure_daily_routes_loaded`) — **only for drivers named on a zone default template**
+- `driver_assigned_route` returns only the driver’s route for the selected date (no other-day soft fallback)
+- In-app route-change notices for affected drivers (`driver_route_notices`)
+- Migration `0031_zone_route_templates.sql` (+ `0032`/`0033` ambiguity fixes)
 
-### Sprint 8 — Admin edit flows
+### Sprint 8 — Admin edit flows — **complete**
 
 - Edit existing staff, trucks, customers (not only create + deactivate)
+- Migration `0042_admin_edit_master_data.sql`: `update_staff_member`, `update_truck`, `update_customer`
+- Staff edit syncs linked `profiles` name/phone/role; login email stays on provision/reset flows
+- Customer zone moves drop mismatched scheduled stops and template stops; blocked while on an in-progress route
 
 ### Sprint 9 — Quality gate
 

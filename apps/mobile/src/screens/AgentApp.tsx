@@ -29,6 +29,9 @@ import {
   saveAgentSyncEnabled
 } from "../data/agentOfflineQueueStore";
 import type { FieldSession } from "../data/fieldSessionService";
+import ProfileSettingsCard from "../components/ProfileSettingsCard";
+import AgentTabBar, { type AgentTabId } from "../components/AgentTabBar";
+import { colors } from "../theme";
 
 function formatNaira(amountKobo: number) {
   return `₦${(amountKobo / 100).toLocaleString("en-NG")}`;
@@ -55,7 +58,15 @@ function createPaymentAction(
   };
 }
 
-export default function AgentApp({ session, onSignOut }: { session: FieldSession; onSignOut: () => void }) {
+export default function AgentApp({
+  session,
+  onSignOut,
+  onSessionUpdated
+}: {
+  session: FieldSession;
+  onSignOut: () => void;
+  onSessionUpdated?: (next: Pick<FieldSession, "fullName" | "phone">) => void;
+}) {
   const [customers, setCustomers] = useState<CustomerLedgerItem[]>([]);
   const [paymentModalCustomerId, setPaymentModalCustomerId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -70,6 +81,10 @@ export default function AgentApp({ session, onSignOut }: { session: FieldSession
   const [syncEnabled, setSyncEnabled] = useState(true);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<AgentTabId>("collect");
+  const [historyDate, setHistoryDate] = useState(new Date().toISOString().slice(0, 10));
+  const [historySummary, setHistorySummary] = useState<AgentDailyCollectionSummary | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -297,6 +312,104 @@ export default function AgentApp({ session, onSignOut }: { session: FieldSession
     }
   }
 
+  useEffect(() => {
+    if (activeTab !== "history") {
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      setHistoryLoading(true);
+      try {
+        const next = await getAgentDailySummary(historyDate);
+        if (!cancelled) {
+          setHistorySummary(next);
+        }
+      } catch {
+        if (!cancelled) {
+          setHistorySummary(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setHistoryLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, historyDate]);
+
+  if (activeTab === "history") {
+    const dayOptions = [0, 1, 2, 3, 4, 5, 6].map((days) => {
+      const date = new Date();
+      date.setHours(12, 0, 0, 0);
+      date.setDate(date.getDate() - days);
+      return date.toISOString().slice(0, 10);
+    });
+
+    return (
+      <View style={styles.safeArea}>
+        <ScrollView contentContainerStyle={styles.container} style={styles.scrollView}>
+          <Text style={styles.eyebrow}>CLEANOPS AGENT</Text>
+          <Text style={styles.heading}>History</Text>
+          <Text style={styles.copy}>Daily collection totals by day.</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 8 }}>
+            {dayOptions.map((day) => (
+              <Pressable
+                key={day}
+                onPress={() => setHistoryDate(day)}
+                style={[styles.channelPill, historyDate === day && styles.channelPillActive, { marginRight: 8 }]}
+              >
+                <Text style={[styles.channelText, historyDate === day && styles.channelTextActive]}>
+                  {day === collectionDate
+                    ? "Today"
+                    : new Date(`${day}T12:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+          {historyLoading ? <Text style={styles.copy}>Loading...</Text> : null}
+          {historySummary ? (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Collected {formatNaira(historySummary.totalCollectedKobo)}</Text>
+              <Text style={styles.settingsCopy}>{historySummary.paymentCount} payments</Text>
+              {(historySummary.payments ?? []).map((payment) => (
+                <View key={payment.paymentId} style={styles.queueItem}>
+                  <Text style={styles.customerName}>
+                    {payment.customerName} · {formatNaira(payment.amountKobo)}
+                  </Text>
+                  <Text style={styles.customerMeta}>{new Date(payment.paidAt).toLocaleTimeString()}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </ScrollView>
+        <AgentTabBar activeTab={activeTab} onChange={setActiveTab} />
+      </View>
+    );
+  }
+
+  if (activeTab === "profile") {
+    return (
+      <View style={styles.safeArea}>
+        <ScrollView contentContainerStyle={styles.container} style={styles.scrollView}>
+          <Text style={styles.eyebrow}>CLEANOPS AGENT</Text>
+          <Text style={styles.heading}>Profile</Text>
+          <ProfileSettingsCard
+            onProfileUpdated={(next) => onSessionUpdated?.(next)}
+            session={session}
+          />
+          <Pressable onPress={onSignOut} style={styles.signOutSettingsButton}>
+            <Text style={styles.signOutSettingsText}>Sign out and switch user</Text>
+          </Pressable>
+        </ScrollView>
+        <AgentTabBar activeTab={activeTab} onChange={setActiveTab} />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.safeArea}>
       <ScrollView
@@ -312,9 +425,11 @@ export default function AgentApp({ session, onSignOut }: { session: FieldSession
         }
       >
         <StatusBar style="dark" />
-        <Text style={styles.eyebrow}>CleanOps Collection Agent</Text>
-        <Text style={styles.heading}>{session.fullName}</Text>
-        <Text style={styles.copy}>Collect payments, issue receipt references, and reconcile today&apos;s cash. Pull down to refresh.</Text>
+        <Text style={styles.eyebrow}>CLEANOPS AGENT</Text>
+        <Text style={styles.heading}>Collect</Text>
+        <Text style={styles.copy}>
+          {session.fullName} · Collect payments and reconcile today&apos;s cash.
+        </Text>
 
         <View style={styles.notice}>
           <Text style={styles.noticeText}>{loading ? "Loading..." : message}</Text>
@@ -322,7 +437,7 @@ export default function AgentApp({ session, onSignOut }: { session: FieldSession
         </View>
 
         <Pressable onPress={() => setSettingsOpen((current) => !current)} style={styles.settingsButton}>
-          <Text style={styles.settingsButtonText}>{settingsOpen ? "Hide app settings" : "App settings"}</Text>
+          <Text style={styles.settingsButtonText}>{settingsOpen ? "Hide sync settings" : "Sync settings"}</Text>
         </Pressable>
 
         {settingsOpen ? (
@@ -341,9 +456,6 @@ export default function AgentApp({ session, onSignOut }: { session: FieldSession
                 value={syncEnabled}
               />
             </View>
-            <Pressable onPress={onSignOut} style={styles.signOutSettingsButton}>
-              <Text style={styles.signOutSettingsText}>Sign out and switch user</Text>
-            </Pressable>
           </View>
         ) : null}
 
@@ -468,13 +580,14 @@ export default function AgentApp({ session, onSignOut }: { session: FieldSession
         submitting={submitting}
         visible={paymentModalCustomer !== null}
       />
+      <AgentTabBar activeTab={activeTab} onChange={setActiveTab} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: {
-    backgroundColor: "#f3f7f1",
+    backgroundColor: colors.bg,
     flex: 1
   },
   scrollView: {

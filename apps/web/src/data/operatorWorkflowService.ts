@@ -2,6 +2,7 @@ import {
   adminMasterDataSchema,
   attendanceOverrideSchema,
   customerOnboardingInputSchema,
+  customerUpdateInputSchema,
   customerLedgerItemSchema,
   incidentReportSchema,
   operatorAgentCollectionsSnapshotSchema,
@@ -13,32 +14,45 @@ import {
   routePlanningOptionsSchema,
   routeStopStatuses,
   routeTruckHandoffSchema,
+  routeCoverSummarySchema,
+  saveRouteAsTemplateInputSchema,
+  saveRouteAsTemplateResultSchema,
+  ensureDailyRoutesResultSchema,
   staffOnboardingInputSchema,
   staffOnboardingResultSchema,
   staffLoginProvisionInputSchema,
   staffPasswordResetTargetSchema,
   staffAttendanceRowSchema,
+  staffUpdateInputSchema,
   truckOnboardingInputSchema,
+  truckUpdateInputSchema,
   type AdminMasterData,
   type AttendanceOverride,
   type CustomerLedgerItem,
   type CustomerOnboardingInput,
+  type CustomerUpdateInput,
+  type EnsureDailyRoutesResult,
   type IncidentReport,
   type MonthlyStaffSummary,
   type OperatorAgentCollectionsSnapshot,
   type PaymentEntry,
   type PaymentLedgerItem,
   type ProposeRouteTruckHandoffInput,
+  type RouteCoverSummary,
   type RouteDetail,
   type RoutePlanningOptions,
   type RouteStatus,
   type RouteStopStatus,
   type RouteTruckHandoff,
+  type SaveRouteAsTemplateInput,
+  type SaveRouteAsTemplateResult,
   type StaffOnboardingInput,
   type StaffOnboardingResult,
   type StaffLoginProvisionInput,
   type StaffAttendanceRow,
-  type TruckOnboardingInput
+  type StaffUpdateInput,
+  type TruckOnboardingInput,
+  type TruckUpdateInput
 } from "@cleanops/shared";
 import { deriveRouteProgress } from "../lib/routeProgress";
 import { formatAppError } from "../lib/errors";
@@ -417,6 +431,47 @@ export async function planDailyRoutes(operationDate: string): Promise<number> {
   return Number(data ?? 0);
 }
 
+export async function ensureDailyRoutesLoaded(operationDate: string): Promise<EnsureDailyRoutesResult> {
+  if (!supabase) {
+    return {
+      scheduledDate: operationDate,
+      alreadyLoaded: true,
+      plannedCount: 0,
+      routeCount: 0
+    };
+  }
+
+  const { data, error } = await supabase.rpc("ensure_daily_routes_loaded", {
+    input_scheduled_date: operationDate
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return ensureDailyRoutesResultSchema.parse(data);
+}
+
+export async function saveRouteAsTemplate(input: SaveRouteAsTemplateInput): Promise<SaveRouteAsTemplateResult> {
+  const parsed = saveRouteAsTemplateInputSchema.parse(input);
+
+  if (!supabase) {
+    throw new Error("Saving route templates requires Supabase.");
+  }
+
+  const { data, error } = await supabase.rpc("save_route_as_template", {
+    input_route_id: parsed.routeId,
+    input_kind: parsed.kind,
+    input_name: parsed.name ?? null
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return saveRouteAsTemplateResultSchema.parse(data);
+}
+
 export async function getRoutePlanningOptions(): Promise<RoutePlanningOptions> {
   if (!supabase) {
     return {
@@ -477,13 +532,33 @@ export async function getRouteTruckHandoffs(operationDate: string): Promise<Rout
   return routeTruckHandoffSchema.array().parse(data ?? []);
 }
 
+export async function getRouteCoverSummaries(operationDate: string): Promise<RouteCoverSummary[]> {
+  if (!supabase) {
+    return [];
+  }
+
+  const { data, error } = await supabase.rpc("route_cover_summaries_for_date", {
+    input_date: operationDate
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return routeCoverSummarySchema.array().parse(data ?? []);
+}
+
 export async function proposeRouteTruckHandoff(
   input: ProposeRouteTruckHandoffInput
 ): Promise<RouteTruckHandoff> {
   const parsed = proposeRouteTruckHandoffInputSchema.parse(input);
 
   if (!supabase) {
-    throw new Error("Truck handoffs require Supabase.");
+    throw new Error("Route reassignments require Supabase.");
+  }
+
+  if (parsed.changeKind !== "driver" && !parsed.toTruckId) {
+    throw new Error("Replacement truck is required for this reassignment.");
   }
 
   const { data, error } = await supabase.rpc("propose_route_truck_handoff", {
@@ -493,7 +568,8 @@ export async function proposeRouteTruckHandoff(
     input_reason: parsed.reason,
     input_notes: parsed.notes ?? null,
     input_source_route_id: parsed.sourceRouteId ?? null,
-    input_source_outcome: parsed.sourceOutcome ?? null
+    input_source_outcome: parsed.sourceOutcome ?? null,
+    input_change_kind: parsed.changeKind
   });
 
   if (error) {
@@ -631,7 +707,9 @@ export async function onboardStaffMember(input: StaffOnboardingInput): Promise<S
     input_role: parsed.role,
     input_monthly_salary_kobo: parsed.monthlySalaryKobo,
     input_login_email: parsed.loginEmail ?? null,
-    input_provision_login: parsed.provisionLogin
+    input_provision_login: parsed.provisionLogin,
+    input_licence_expires_on: parsed.role === "driver" ? parsed.licenceExpiresOn ?? null : null,
+    input_licence_image_url: parsed.role === "driver" ? parsed.licenceImageUrl ?? null : null
   });
 
   if (error) {
@@ -709,6 +787,28 @@ export async function setStaffActive(staffId: string, active: boolean) {
   }
 }
 
+export async function updateStaffMember(input: StaffUpdateInput) {
+  const parsed = staffUpdateInputSchema.parse(input);
+
+  if (!supabase) {
+    return;
+  }
+
+  const { error } = await supabase.rpc("update_staff_member", {
+    input_staff_id: parsed.staffId,
+    input_full_name: parsed.fullName,
+    input_phone: parsed.phone,
+    input_role: parsed.role,
+    input_monthly_salary_kobo: parsed.monthlySalaryKobo,
+    input_licence_expires_on: parsed.role === "driver" ? parsed.licenceExpiresOn ?? null : null,
+    input_licence_image_url: parsed.role === "driver" ? parsed.licenceImageUrl ?? null : null
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 export async function onboardTruck(input: TruckOnboardingInput) {
   const parsed = truckOnboardingInputSchema.parse(input);
 
@@ -717,6 +817,28 @@ export async function onboardTruck(input: TruckOnboardingInput) {
   }
 
   const { error } = await supabase.rpc("onboard_truck", {
+    input_zone_id: parsed.zoneId ?? null,
+    input_registration_number: parsed.registrationNumber,
+    input_make: parsed.make ?? null,
+    input_model: parsed.model ?? null,
+    input_year: parsed.year ?? null,
+    input_status: parsed.status
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function updateTruck(input: TruckUpdateInput) {
+  const parsed = truckUpdateInputSchema.parse(input);
+
+  if (!supabase) {
+    return;
+  }
+
+  const { error } = await supabase.rpc("update_truck", {
+    input_truck_id: parsed.truckId,
     input_zone_id: parsed.zoneId ?? null,
     input_registration_number: parsed.registrationNumber,
     input_make: parsed.make ?? null,
@@ -760,6 +882,28 @@ export async function onboardCustomer(input: CustomerOnboardingInput) {
     input_customer_type: parsed.customerType,
     input_monthly_rate_kobo: parsed.monthlyRateKobo,
     input_service_status: parsed.serviceStatus
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function updateCustomer(input: CustomerUpdateInput) {
+  const parsed = customerUpdateInputSchema.parse(input);
+
+  if (!supabase) {
+    return;
+  }
+
+  const { error } = await supabase.rpc("update_customer", {
+    input_customer_id: parsed.customerId,
+    input_zone_id: parsed.zoneId,
+    input_display_name: parsed.displayName,
+    input_phone: parsed.phone ?? null,
+    input_address: parsed.address,
+    input_customer_type: parsed.customerType,
+    input_monthly_rate_kobo: parsed.monthlyRateKobo
   });
 
   if (error) {

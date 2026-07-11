@@ -166,18 +166,24 @@ export let pilotStaffAttendance: StaffAttendanceRow[] = [
   "Fleet Officer",
   "Admin Officer",
   "Relief Loader"
-].map((fullName, index) => ({
-  staffMemberId: `00000000-0000-4000-8000-${String(201 + index).padStart(12, "0")}`,
-  fullName,
-  phone: `+23480000002${String(index + 1).padStart(2, "0")}`,
-  role: index < 3 || index === 6 || index >= 7 ? "driver" : index < 6 ? "collection_agent" : "operations_supervisor",
-  monthlySalaryKobo: index < 3 || index === 6 ? 18000000 : index < 6 ? 14000000 : 9000000,
-  checkedInAt: index < 14 ? new Date().toISOString() : null,
-  supervisorOverride: false,
-  status: index < 14 ? "checked_in" : "absent",
-  absenceReason: index >= 14 ? "Awaiting supervisor review" : null,
-  attendanceNote: null
-}));
+].map((fullName, index) => {
+  const isDriver = ["Adewale Johnson", "Chinedu Okafor", "Musa Balogun", "Samuel Ibitoye"].includes(fullName);
+  const isLoader = fullName.startsWith("Loader Team") || fullName === "Relief Loader";
+  const isAgent = ["Kunle Martins", "Blessing Nwosu"].includes(fullName);
+
+  return {
+    staffMemberId: `00000000-0000-4000-8000-${String(201 + index).padStart(12, "0")}`,
+    fullName,
+    phone: `+23480000002${String(index + 1).padStart(2, "0")}`,
+    role: isDriver ? "driver" : isLoader ? "loader" : isAgent ? "collection_agent" : "operations_supervisor",
+    monthlySalaryKobo: isDriver ? 18000000 : isAgent ? 14000000 : isLoader ? 9000000 : 16000000,
+    checkedInAt: index < 14 ? new Date().toISOString() : null,
+    supervisorOverride: false,
+    status: index < 14 ? "checked_in" : "absent",
+    absenceReason: index >= 14 ? "Awaiting supervisor review" : null,
+    attendanceNote: null
+  };
+});
 
 export function applyPilotAttendanceOverride(override: AttendanceOverride): StaffAttendanceRow[] {
   pilotStaffAttendance = pilotStaffAttendance.map((staff) =>

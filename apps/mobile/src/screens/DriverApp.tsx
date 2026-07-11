@@ -13,6 +13,8 @@ import {
 } from "react-native";
 import {
   incidentTypes,
+  type DriverRouteNotice,
+  type DriverShiftJob,
   type DriverStopAction,
   type DumpsiteRunRecord,
   type IncidentReportInput,
@@ -24,10 +26,15 @@ import {
 } from "@cleanops/shared";
 import { createStopAction, pilotDriver, pilotDriverRoute } from "../data/driverPilot";
 import {
+  acknowledgeRouteNotice,
   confirmTruckHandoff,
+  driverEnsureDailyRoutesLoaded,
   fetchAssignedRoute,
+  fetchDriverTodayPlanningStatus,
+  fetchDriverTodayShiftSummary,
   fetchDumpsiteRunForRoute,
   fetchPendingHandoffs,
+  fetchPendingRouteNotices,
   recordDumpsiteRun,
   recordFuelLog,
   rejectTruckHandoff,
@@ -36,6 +43,10 @@ import {
   transitionAssignedRoute
 } from "../data/driverService";
 import type { FieldSession } from "../data/fieldSessionService";
+import ProfileSettingsCard from "../components/ProfileSettingsCard";
+import DriverTabBar, { type DriverTabId } from "../components/DriverTabBar";
+import DriverHistoryScreen from "./DriverHistoryScreen";
+import { colors } from "../theme";
 import {
   loadIncidentQueue,
   loadLastSyncAt,
@@ -95,7 +106,15 @@ function updateStop(route: RouteDetail, stopId: string, status: RouteStopStatus,
   };
 }
 
-export default function DriverApp({ session, onSignOut }: { session: FieldSession; onSignOut: () => void }) {
+export default function DriverApp({
+  session,
+  onSignOut,
+  onSessionUpdated
+}: {
+  session: FieldSession;
+  onSignOut: () => void;
+  onSessionUpdated?: (next: Pick<FieldSession, "fullName" | "phone">) => void;
+}) {
   const [route, setRoute] = useState<RouteDetail | null>(session.mode === "pilot" ? pilotDriverRoute : null);
   const [shiftStarted, setShiftStarted] = useState(
     session.mode === "pilot" ? Boolean(pilotDriverRoute.startedAt) : false
@@ -114,6 +133,7 @@ export default function DriverApp({ session, onSignOut }: { session: FieldSessio
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [syncEnabled, setSyncEnabled] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<DriverTabId>("today");
   const [incidentFormOpen, setIncidentFormOpen] = useState(false);
   const [fuelFormOpen, setFuelFormOpen] = useState(false);
   const [dumpsiteFormOpen, setDumpsiteFormOpen] = useState(false);
@@ -124,6 +144,10 @@ export default function DriverApp({ session, onSignOut }: { session: FieldSessio
   const [dumpsiteTippingNaira, setDumpsiteTippingNaira] = useState("");
   const [dumpsiteRun, setDumpsiteRun] = useState<DumpsiteRunRecord | null>(null);
   const [pendingHandoffs, setPendingHandoffs] = useState<RouteTruckHandoff[]>([]);
+  const [shiftJobs, setShiftJobs] = useState<DriverShiftJob[]>([]);
+  const [canLoadDefaults, setCanLoadDefaults] = useState(false);
+  const [loadingDefaults, setLoadingDefaults] = useState(false);
+  const [defaultPromptShown, setDefaultPromptShown] = useState(false);
   const [handoffActionId, setHandoffActionId] = useState<string | null>(null);
   const [submittingFuel, setSubmittingFuel] = useState(false);
   const [submittingDumpsitePhase, setSubmittingDumpsitePhase] = useState<string | null>(null);
@@ -199,6 +223,21 @@ export default function DriverApp({ session, onSignOut }: { session: FieldSessio
     );
   }
 
+  async function presentRouteNotices(notices: DriverRouteNotice[]) {
+    for (const notice of notices) {
+      await new Promise<void>((resolve) => {
+        Alert.alert(notice.title, notice.body, [
+          {
+            text: "OK",
+            onPress: () => {
+              void acknowledgeRouteNotice(notice.id).finally(() => resolve());
+            }
+          }
+        ]);
+      });
+    }
+  }
+
   async function bootstrapDriver(isRefresh = false) {
     if (!isRefresh) {
       setLoading(true);
@@ -207,6 +246,7 @@ export default function DriverApp({ session, onSignOut }: { session: FieldSessio
     if (session.mode === "pilot") {
       setRoute(pilotDriverRoute);
       setShiftStarted(Boolean(pilotDriverRoute.startedAt));
+      setCanLoadDefaults(false);
       setMessage(`Signed in as ${session.fullName} (pilot)`);
       if (!isRefresh) {
         setLoading(false);
@@ -216,24 +256,68 @@ export default function DriverApp({ session, onSignOut }: { session: FieldSessio
 
     try {
       const assignedRoute = await fetchAssignedRoute();
-      setRoute(assignedRoute);
-      setShiftStarted(assignedRoute.status === "in_progress" || Boolean(assignedRoute.startedAt));
-      setMessage(`Signed in as ${session.fullName} (supabase)`);
-      await refreshDumpsiteRun(assignedRoute.id);
-      setPendingHandoffs(await fetchPendingHandoffs());
+      if (assignedRoute) {
+        setRoute(assignedRoute);
+        setShiftStarted(assignedRoute.status === "in_progress" || Boolean(assignedRoute.startedAt));
+        setCanLoadDefaults(false);
+        setShiftJobs([]);
+        setMessage(`Signed in as ${session.fullName} (supabase)`);
+        await refreshDumpsiteRun(assignedRoute.id);
+        setPendingHandoffs(await fetchPendingHandoffs());
+        const notices = await fetchPendingRouteNotices();
+        if (notices.length > 0) {
+          await presentRouteNotices(notices);
+        }
+        return;
+      }
+
+      setRoute(null);
+      setShiftStarted(false);
+      setDumpsiteRun(null);
+      setPendingHandoffs(await fetchPendingHandoffs().catch(() => []));
+      const summary = await fetchDriverTodayShiftSummary().catch(() => ({ jobs: [] as DriverShiftJob[] }));
+      setShiftJobs(summary.jobs);
+
+      const planning = await fetchDriverTodayPlanningStatus();
+      setCanLoadDefaults(planning.canLoadDefaults);
+
+      if (summary.jobs.length > 0) {
+        const covers = summary.jobs.filter((job) => job.jobType === "cover_completed" || job.jobType === "reassignment_completed");
+        setMessage(
+          covers.length > 0
+            ? `Shift wrap-up: ${covers.length} cover/reassignment job${covers.length === 1 ? "" : "s"} completed today.`
+            : `Shift wrap-up: ${summary.jobs.length} finished item${summary.jobs.length === 1 ? "" : "s"} today.`
+        );
+      } else if (planning.canLoadDefaults) {
+        setMessage("Today's route is yet to be loaded by the operator.");
+        if (!defaultPromptShown) {
+          setDefaultPromptShown(true);
+          Alert.alert(
+            "Load default route?",
+            "Today's route is yet to be loaded in by the operator. Click OK to load default route to get you started.",
+            [
+              { text: "Not now", style: "cancel" },
+              {
+                text: "OK",
+                onPress: () => {
+                  void handleLoadDefaultRoutes();
+                }
+              }
+            ]
+          );
+        }
+      } else {
+        setMessage("No route assigned today. Ask an operator to assign you on Routes.");
+      }
     } catch (error) {
       setRoute(null);
       setShiftStarted(false);
       setDumpsiteRun(null);
+      setCanLoadDefaults(false);
       try {
         setPendingHandoffs(await fetchPendingHandoffs());
-      } catch (handoffError) {
+      } catch {
         setPendingHandoffs([]);
-        setMessage(
-          `${error instanceof Error ? error.message : "No route assigned today."} Handoff check failed: ${
-            handoffError instanceof Error ? handoffError.message : "unknown error"
-          }`
-        );
       }
       setMessage(
         error instanceof Error
@@ -244,6 +328,26 @@ export default function DriverApp({ session, onSignOut }: { session: FieldSessio
       if (!isRefresh) {
         setLoading(false);
       }
+    }
+  }
+
+  async function handleLoadDefaultRoutes() {
+    setLoadingDefaults(true);
+    try {
+      const result = await driverEnsureDailyRoutesLoaded();
+      setMessage(
+        result.plannedCount > 0
+          ? `Loaded ${result.plannedCount} default zone route${result.plannedCount === 1 ? "" : "s"}.`
+          : result.hasAssignedRoute
+            ? "Default routes were already available."
+            : "Default routes loaded, but you are not assigned yet. Ask the operator to assign you."
+      );
+      await bootstrapDriver(true);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to load default routes");
+      Alert.alert("Unable to load defaults", error instanceof Error ? error.message : "Unknown error");
+    } finally {
+      setLoadingDefaults(false);
     }
   }
 
@@ -262,7 +366,10 @@ export default function DriverApp({ session, onSignOut }: { session: FieldSessio
 
     try {
       await transitionAssignedRoute(route.id, "in_progress");
-      setRoute(await fetchAssignedRoute());
+      const nextRoute = await fetchAssignedRoute();
+      if (nextRoute) {
+        setRoute(nextRoute);
+      }
       setMessage("Shift started and synced.");
     } catch (error) {
       setMessage(error instanceof Error ? `Shift started locally: ${error.message}` : "Shift started locally");
@@ -299,7 +406,7 @@ export default function DriverApp({ session, onSignOut }: { session: FieldSessio
       const syncedAt = syncResult.syncedAt ?? new Date().toISOString();
       setLastSyncAt(syncedAt);
       await saveLastSyncAt(syncedAt);
-      setRoute(await fetchAssignedRoute());
+      setRoute(await fetchAssignedRoute() ?? route);
       setMessage("Stop update synced.");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown sync error";
@@ -576,7 +683,10 @@ export default function DriverApp({ session, onSignOut }: { session: FieldSessio
           setLastSyncAt(latestSyncAt);
           await saveLastSyncAt(latestSyncAt);
         }
-        setRoute(await fetchAssignedRoute());
+        const nextRoute = await fetchAssignedRoute();
+        if (nextRoute) {
+          setRoute(nextRoute);
+        }
       }
       setMessage(
         `${syncedIds.length}/${pendingActions.length} stop updates and ${syncedIncidentKeys.length}/${incidentQueue.length} incidents synced.`
@@ -603,6 +713,35 @@ export default function DriverApp({ session, onSignOut }: { session: FieldSessio
     }
   }
 
+  if (activeTab === "history") {
+    return (
+      <View style={styles.safeArea}>
+        <DriverHistoryScreen renderJob={(job) => <ShiftJobCard job={job} />} />
+        <DriverTabBar activeTab={activeTab} onChange={setActiveTab} />
+      </View>
+    );
+  }
+
+  if (activeTab === "profile") {
+    return (
+      <View style={styles.safeArea}>
+        <ScrollView contentContainerStyle={styles.container} style={styles.scrollView}>
+          <Text style={styles.eyebrow}>CLEANOPS DRIVER</Text>
+          <Text style={styles.heading}>Profile</Text>
+          <Text style={styles.copy}>Update your account and licence documents.</Text>
+          <ProfileSettingsCard
+            onProfileUpdated={(next) => onSessionUpdated?.(next)}
+            session={session}
+          />
+          <Pressable onPress={onSignOut} style={styles.signOutSettingsButton}>
+            <Text style={styles.signOutSettingsText}>Sign out and switch user</Text>
+          </Pressable>
+        </ScrollView>
+        <DriverTabBar activeTab={activeTab} onChange={setActiveTab} />
+      </View>
+    );
+  }
+
   if (!route) {
     return (
       <View style={styles.safeArea}>
@@ -619,17 +758,24 @@ export default function DriverApp({ session, onSignOut }: { session: FieldSessio
           }
         >
           <StatusBar style="dark" />
-          <Text style={styles.eyebrow}>CleanOps Driver</Text>
-          <Text style={styles.heading}>No route assigned</Text>
-          <Text style={styles.copy}>
-            {session?.fullName ?? pilotDriver.fullName} · Shift not started · Pull down to refresh
-          </Text>
-          <View style={styles.notice}>
-            <Text style={styles.noticeText}>{loading ? "Loading..." : message}</Text>
-            <Text style={styles.noticeSubtext}>
-              {session.mode === "supabase" ? "Connected to Supabase" : "Pilot mode active"}
-            </Text>
+          <View style={styles.todayHeader}>
+            <View style={styles.todayHeaderCopy}>
+              <Text style={styles.eyebrow}>CLEANOPS DRIVER</Text>
+              <Text style={styles.heading}>{shiftJobs.length > 0 ? "Shift wrap-up" : "No route assigned"}</Text>
+              <Text style={styles.copy}>
+                {session?.fullName ?? pilotDriver.fullName} ·{" "}
+                {shiftJobs.length > 0 ? "Today's field work" : "Shift not started"}
+              </Text>
+              <Text style={styles.noticeSubtext}>
+                {loading ? "Loading..." : message}
+                {session.mode === "supabase" ? " · Connected" : " · Pilot"}
+              </Text>
+            </View>
+            <Pressable onPress={() => setSettingsOpen((current) => !current)} style={styles.gearButton}>
+              <Text style={styles.gearGlyph}>⚙</Text>
+            </Pressable>
           </View>
+
           {pendingHandoffs.map((handoff) => (
             <HandoffCard
               key={handoff.id}
@@ -639,17 +785,66 @@ export default function DriverApp({ session, onSignOut }: { session: FieldSessio
               onDecline={() => void handleHandoffReject(handoff.id)}
             />
           ))}
-          <View style={styles.emptyRouteCard}>
-            <Text style={styles.cardTitle}>Waiting for assignment</Text>
-            <Text style={styles.cardCopy}>
-              You are signed in live, but no route is assigned to you for today. Ask the operator to set you as the
-              driver on a scheduled route, then pull down to refresh.
-            </Text>
-          </View>
+          {shiftJobs.map((job) => (
+            <ShiftJobCard key={job.id} job={job} />
+          ))}
+          {shiftJobs.length === 0 ? (
+            <View style={styles.emptyRouteCard}>
+              <Text style={styles.cardTitle}>
+                {canLoadDefaults ? "Today's route not loaded" : "Waiting for assignment"}
+              </Text>
+              <Text style={styles.cardCopy}>
+                {canLoadDefaults
+                  ? "The operator has not loaded today's zone templates yet. Load the default routes to get started, then pull to refresh."
+                  : "You are signed in live, but no route is assigned to you for today. Ask the operator to set you as the driver on a scheduled route, then pull down to refresh."}
+              </Text>
+              {canLoadDefaults ? (
+                <Pressable
+                  disabled={loadingDefaults}
+                  onPress={() => void handleLoadDefaultRoutes()}
+                  style={styles.primaryButton}
+                >
+                  <Text style={styles.primaryButtonText}>
+                    {loadingDefaults ? "Loading defaults…" : "Load default route"}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : (
+            <View style={styles.emptyRouteCard}>
+              <Text style={styles.cardTitle}>No active assignment</Text>
+              <Text style={styles.cardCopy}>
+                You have no open route right now. Completed cover jobs and handoffs for today are listed above.
+              </Text>
+            </View>
+          )}
+
+          {settingsOpen ? (
+            <View style={styles.settingsCard}>
+              <View style={styles.settingsRow}>
+                <View style={styles.settingsTextBlock}>
+                  <Text style={styles.cardTitle}>Offline queue and sync</Text>
+                  <Text style={styles.cardCopy}>
+                    {syncEnabled
+                      ? "Failed stop updates will be saved locally and retried later."
+                      : "Failed stop updates will not be queued."}
+                  </Text>
+                </View>
+                <Switch
+                  onValueChange={(value) => {
+                    void handleSyncSettingChange(value);
+                  }}
+                  value={syncEnabled}
+                />
+              </View>
+            </View>
+          ) : null}
+
           <Pressable onPress={onSignOut} style={styles.settingsButton}>
             <Text style={styles.settingsButtonText}>Sign out and switch user</Text>
           </Pressable>
         </ScrollView>
+        <DriverTabBar activeTab={activeTab} onChange={setActiveTab} />
       </View>
     );
   }
@@ -669,17 +864,22 @@ export default function DriverApp({ session, onSignOut }: { session: FieldSessio
         }
       >
         <StatusBar style="dark" />
-        <Text style={styles.eyebrow}>CleanOps Driver</Text>
-        <Text style={styles.heading}>{route.zoneName} collection run</Text>
-        <Text style={styles.copy}>
-          {(session?.fullName ?? pilotDriver.fullName)} · {route.truckRegistration} ·{" "}
-          {shiftStarted ? "Shift active" : "Shift not started"} · Pull down to refresh
-        </Text>
-        <View style={styles.notice}>
-          <Text style={styles.noticeText}>{loading ? "Loading..." : message}</Text>
-          <Text style={styles.noticeSubtext}>
-            {session.mode === "supabase" ? "Connected to Supabase" : "Pilot mode active"}
-          </Text>
+        <View style={styles.todayHeader}>
+          <View style={styles.todayHeaderCopy}>
+            <Text style={styles.eyebrow}>CLEANOPS DRIVER</Text>
+            <Text style={styles.heading}>{route.zoneName} collection run</Text>
+            <Text style={styles.copy}>
+              {session?.fullName ?? pilotDriver.fullName} · {route.truckRegistration} ·{" "}
+              {shiftStarted ? "Shift active" : "Shift not started"}
+            </Text>
+            <Text style={styles.noticeSubtext}>
+              {loading ? "Loading..." : message}
+              {session.mode === "supabase" ? " · Connected" : " · Pilot"}
+            </Text>
+          </View>
+          <Pressable onPress={() => setSettingsOpen((current) => !current)} style={styles.gearButton}>
+            <Text style={styles.gearGlyph}>⚙</Text>
+          </Pressable>
         </View>
 
         {pendingHandoffs.map((handoff) => (
@@ -692,19 +892,15 @@ export default function DriverApp({ session, onSignOut }: { session: FieldSessio
           />
         ))}
 
-        <Pressable onPress={() => setSettingsOpen((current) => !current)} style={styles.settingsButton}>
-          <Text style={styles.settingsButtonText}>{settingsOpen ? "Hide app settings" : "App settings"}</Text>
-        </Pressable>
-
         {settingsOpen ? (
           <View style={styles.settingsCard}>
             <View style={styles.settingsRow}>
               <View style={styles.settingsTextBlock}>
-                <Text style={styles.cardTitle}>Offline queue and sync status</Text>
+                <Text style={styles.cardTitle}>Offline queue and sync</Text>
                 <Text style={styles.cardCopy}>
                   {syncEnabled
                     ? "Failed stop updates will be saved locally and retried later."
-                    : "Failed stop updates will not be queued. Drivers will see a connectivity alert."}
+                    : "Failed stop updates will not be queued."}
                 </Text>
               </View>
               <Switch
@@ -714,9 +910,6 @@ export default function DriverApp({ session, onSignOut }: { session: FieldSessio
                 value={syncEnabled}
               />
             </View>
-            <Pressable onPress={onSignOut} style={styles.signOutSettingsButton}>
-              <Text style={styles.signOutSettingsText}>Sign out and switch user</Text>
-            </Pressable>
           </View>
         ) : null}
 
@@ -1111,6 +1304,28 @@ export default function DriverApp({ session, onSignOut }: { session: FieldSessio
           </>
         ) : null}
       </ScrollView>
+        <DriverTabBar activeTab={activeTab} onChange={setActiveTab} />
+    </View>
+  );
+}
+
+function ShiftJobCard({ job }: { job: DriverShiftJob }) {
+  const toneStyle =
+    job.jobType === "cover_released"
+      ? styles.shiftJobCardReleased
+      : job.jobType === "cover_completed" || job.jobType === "reassignment_completed"
+        ? styles.shiftJobCardCover
+        : styles.shiftJobCardDone;
+
+  return (
+    <View style={[styles.shiftJobCard, toneStyle]}>
+      <Text style={styles.cardTitle}>{job.headline}</Text>
+      <Text style={styles.cardCopy}>{job.detail}</Text>
+      <Text style={styles.summaryCopy}>
+        {job.truckRegistration} · {job.completedStops}/{job.totalStops} stops ·{" "}
+        {job.status.replace(/_/g, " ")}
+        {job.completedAt ? ` · Done ${new Date(job.completedAt).toLocaleTimeString()}` : ""}
+      </Text>
     </View>
   );
 }
@@ -1126,13 +1341,22 @@ function HandoffCard({
   onAccept: () => void;
   onDecline: () => void;
 }) {
-  const body = handoff.requiresOutgoingConfirmation
-    ? `${handoff.fromTruckRegistration ?? "Current truck"} → ${handoff.toTruckRegistration} on ${handoff.routeZoneName}. ${handoff.pendingStops} stop(s) left. Incoming ${handoff.incomingConfirmed ? "confirmed" : "pending"}; outgoing ${handoff.outgoingConfirmed ? "confirmed" : "pending"}.`
-    : `Operator assigned ${handoff.toTruckRegistration} to ${handoff.routeZoneName} (${handoff.pendingStops} stop(s) left). Reason: ${handoff.reason.replace(/_/g, " ")}.`;
+  const kind = handoff.changeKind ?? "both";
+  const title =
+    kind === "driver" ? "Driver cover request" : kind === "truck" ? "Truck handoff" : "Route reassignment";
+
+  const body =
+    kind === "driver"
+      ? `Take over from ${handoff.fromDriverName ?? "the current driver"} on ${handoff.routeZoneName} with ${handoff.toTruckRegistration}. ${handoff.pendingStops} stop(s) left. Reason: ${handoff.reason.replace(/_/g, " ")}.`
+      : kind === "truck"
+        ? `Truck changes ${handoff.fromTruckRegistration ?? "current"} → ${handoff.toTruckRegistration} on ${handoff.routeZoneName}. You remain the driver. ${handoff.pendingStops} stop(s) left.`
+        : handoff.requiresOutgoingConfirmation
+          ? `${handoff.fromTruckRegistration ?? "Current truck"} → ${handoff.toTruckRegistration} on ${handoff.routeZoneName}. ${handoff.pendingStops} stop(s) left. Incoming ${handoff.incomingConfirmed ? "confirmed" : "pending"}; outgoing ${handoff.outgoingConfirmed ? "confirmed" : "pending"}.`
+          : `Operator assigned ${handoff.toTruckRegistration} / ${handoff.toDriverName} to ${handoff.routeZoneName} (${handoff.pendingStops} stop(s) left). Reason: ${handoff.reason.replace(/_/g, " ")}.`;
 
   return (
     <View style={styles.handoffCard}>
-      <Text style={styles.cardTitle}>Truck handoff</Text>
+      <Text style={styles.cardTitle}>{title}</Text>
       <Text style={styles.cardCopy}>{body}</Text>
       <Text style={styles.summaryCopy}>Expires {new Date(handoff.expiresAt).toLocaleTimeString()}</Text>
       <View style={styles.actionRow}>
@@ -1157,15 +1381,42 @@ function HandoffCard({
 
 const styles = StyleSheet.create({
   safeArea: {
-    backgroundColor: "#f3f7f1",
+    backgroundColor: colors.bg,
     flex: 1
   },
   scrollView: {
     flex: 1
   },
   container: {
-    padding: 24,
-    paddingTop: 16
+    padding: 20,
+    paddingBottom: 28,
+    paddingTop: 12
+  },
+  todayHeader: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: 12,
+    justifyContent: "space-between",
+    marginBottom: 4
+  },
+  todayHeaderCopy: {
+    flex: 1,
+    gap: 4,
+    minWidth: 0
+  },
+  gearButton: {
+    alignItems: "center",
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 40,
+    justifyContent: "center",
+    width: 40
+  },
+  gearGlyph: {
+    color: colors.muted,
+    fontSize: 18
   },
   handoffCard: {
     backgroundColor: "#fff8e8",
@@ -1175,6 +1426,25 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 16,
     padding: 16
+  },
+  shiftJobCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    gap: 8,
+    marginBottom: 16,
+    padding: 16
+  },
+  shiftJobCardCover: {
+    backgroundColor: "#e8f7ee",
+    borderColor: "#9fd4b0"
+  },
+  shiftJobCardDone: {
+    backgroundColor: "#eef3f8",
+    borderColor: "#c5d4e4"
+  },
+  shiftJobCardReleased: {
+    backgroundColor: "#f7f1e8",
+    borderColor: "#e0c9a8"
   },
   eyebrow: {
     color: "#1a7f45",

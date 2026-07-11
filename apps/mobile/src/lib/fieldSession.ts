@@ -4,6 +4,7 @@ export type FieldRole = Extract<UserRole, "driver" | "collection_agent">;
 
 export type FieldSession = {
   fullName: string;
+  phone?: string;
   role: FieldRole;
   mode: "pilot" | "supabase";
   connectionNotice?: string;
@@ -14,9 +15,15 @@ export const pilotNames: Record<FieldRole, string> = {
   collection_agent: "Kunle Martins"
 };
 
+export const pilotPhones: Record<FieldRole, string> = {
+  driver: "+2348000000201",
+  collection_agent: "+2348000000205"
+};
+
 export function createPilotSession(role: FieldRole, connectionNotice?: string): FieldSession {
   return {
     fullName: pilotNames[role],
+    phone: pilotPhones[role],
     role,
     mode: "pilot",
     connectionNotice

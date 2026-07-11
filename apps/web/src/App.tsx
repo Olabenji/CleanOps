@@ -3,6 +3,7 @@ import type {
   AttendanceOverride,
   CustomerLedgerItem,
   CustomerOnboardingInput,
+  CustomerUpdateInput,
   IncidentReport,
   MonthlyStaffSummary,
   OperatorDashboard,
@@ -13,6 +14,7 @@ import type {
   ProposeRouteTruckHandoffInput,
   RouteDetail,
   RoutePlanningOptions,
+  RouteCoverSummary,
   RouteStatus,
   RouteStopStatus,
   RouteTruckHandoff,
@@ -20,7 +22,9 @@ import type {
   StaffOnboardingResult,
   StaffLoginProvisionInput,
   StaffAttendanceRow,
-  TruckOnboardingInput
+  StaffUpdateInput,
+  TruckOnboardingInput,
+  TruckUpdateInput
 } from "@cleanops/shared";
 import {
   AlertTriangle,
@@ -38,8 +42,12 @@ import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import AdminView from "./components/AdminView";
 import AgentCollectionsView from "./components/AgentCollectionsView";
+import OperatorSidebar from "./components/OperatorSidebar";
 import PasswordRecoveryScreen from "./components/PasswordRecoveryScreen";
+import ProfileModal from "./components/ProfileModal";
+import TemplateSavePrompt, { TemplatePendingBanner } from "./components/TemplateSavePrompt";
 import TruckHandoffPanel from "./components/TruckHandoffPanel";
+import WorkspaceHeader from "./components/WorkspaceHeader";
 import {
   getCurrentOperatorProfile,
   getPasswordRecoveryContext,
@@ -49,15 +57,18 @@ import {
   type AuthState
 } from "./data/authService";
 import { getOperatorDashboard } from "./data/dashboardService";
+import { updateOwnProfile } from "./data/profileService";
 import {
   addRoutePlanStop,
   cancelRouteTruckHandoff,
+  ensureDailyRoutesLoaded,
   getAdminMasterData,
   getCustomerLedger,
   getCustomerPaymentHistory,
   getMonthlyStaffSummary,
   getPaymentLedger,
   getRouteTruckHandoffs,
+  getRouteCoverSummaries,
   planDailyRoutes,
   getRecentIncidentReports,
   getRoutePlanningOptions,
@@ -73,20 +84,32 @@ import {
   recordAttendanceOverride,
   recordPayment,
   removeRoutePlanStop,
+  saveRouteAsTemplate,
   setCustomerServiceStatus,
   setStaffActive,
   setTruckActive,
   transitionRouteStatus,
+  updateCustomer,
   updateRoutePlanAssignment,
   updateCustomerAccountStatus,
-  updateRouteStopStatus
+  updateRouteStopStatus,
+  updateStaffMember,
+  updateTruck
 } from "./data/operatorWorkflowService";
 import { demoCredentials } from "./data/pilotWorkflows";
 import { formatAppError, parseAmountNairaToKobo } from "./lib/errors";
 import { deriveRouteProgress } from "./lib/routeProgress";
 
-const metricIcons = [Truck, WalletCards, Users, Wrench];
+const metricIcons = [Truck, WalletCards, Users, AlertTriangle];
 type View = "dashboard" | "routes" | "payments" | "staff" | "admin";
+
+const workspaceTitles: Record<View, string> = {
+  dashboard: "Operations overview",
+  routes: "Route operations",
+  payments: "Payments & ledger",
+  staff: "Staff attendance",
+  admin: "Admin master data"
+};
 type RouteInlineError = {
   area: "assignment" | "addStop" | "stopCorrection" | "routeAction";
   message: string;
@@ -134,6 +157,29 @@ const emptyAdminData: AdminMasterData = {
   customers: []
 };
 
+function initialsFromName(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) {
+    return "?";
+  }
+
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+
+  return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
+}
+
+function formatWorkspaceDateLabel(operationDate: string, todayIso: string) {
+  const formatted = new Date(`${operationDate}T12:00:00`).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric"
+  });
+
+  return operationDate === todayIso ? `Today · ${formatted}` : formatted;
+}
+
 function formatKobo(amountKobo: number) {
   return currencyFormatter.format(amountKobo / 100);
 }
@@ -143,6 +189,7 @@ export function App() {
   const [dashboard, setDashboard] = useState<OperatorDashboard | null>(null);
   const [routes, setRoutes] = useState<RouteDetail[]>([]);
   const [routeHandoffs, setRouteHandoffs] = useState<RouteTruckHandoff[]>([]);
+  const [routeCovers, setRouteCovers] = useState<RouteCoverSummary[]>([]);
   const [payments, setPayments] = useState<PaymentLedgerItem[]>([]);
   const [incidents, setIncidents] = useState<IncidentReport[]>([]);
   const [customerLedger, setCustomerLedger] = useState<CustomerLedgerItem[]>([]);
@@ -157,11 +204,20 @@ export function App() {
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<View>("dashboard");
   const [routeInlineError, setRouteInlineError] = useState<RouteInlineError>(null);
+  const [templatePendingRouteIds, setTemplatePendingRouteIds] = useState<string[]>([]);
+  const [templateTempName, setTemplateTempName] = useState("");
+  const [templateSaveBusy, setTemplateSaveBusy] = useState(false);
+  const [templateLeavePrompt, setTemplateLeavePrompt] = useState<null | {
+    reason: "signout" | "navigate" | "date";
+    nextView?: View;
+    nextDate?: string;
+  }>(null);
   const [loading, setLoading] = useState(true);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState<string | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   useEffect(() => {
     return subscribeToPasswordRecovery((email) => {
@@ -334,10 +390,27 @@ export function App() {
   }
 
   async function loadWorkspace(targetDate = operationDate) {
+    let routesData = await getRoutes(targetDate);
+
+    // Auto-load zone templates at start of day when nothing is planned yet.
+    if (targetDate === todayIso && routesData.length === 0) {
+      try {
+        const ensured = await ensureDailyRoutesLoaded(targetDate);
+        if (ensured.plannedCount > 0) {
+          routesData = await getRoutes(targetDate);
+          setStatusMessage(
+            `Auto-loaded ${ensured.plannedCount} zone route template${ensured.plannedCount === 1 ? "" : "s"} for today.`
+          );
+        }
+      } catch (autoLoadError) {
+        console.warn("Daily template auto-load skipped:", autoLoadError);
+      }
+    }
+
     const [
       dashboardData,
-      routesData,
       handoffData,
+      coverData,
       paymentData,
       ledgerData,
       staffData,
@@ -347,8 +420,8 @@ export function App() {
       nextAdminData
     ] = await Promise.all([
       getOperatorDashboard(targetDate),
-      getRoutes(targetDate),
       getRouteTruckHandoffs(targetDate),
+      getRouteCoverSummaries(targetDate),
       getPaymentLedger(),
       getCustomerLedger(),
       getStaffAttendance(targetDate),
@@ -361,6 +434,7 @@ export function App() {
     setDashboard(dashboardData);
     setRoutes(routesData);
     setRouteHandoffs(handoffData);
+    setRouteCovers(coverData);
     setPayments(paymentData);
     setCustomerLedger(ledgerData);
     setAdminData(nextAdminData);
@@ -370,6 +444,136 @@ export function App() {
     setIncidents(incidentData);
     setSelectedRouteId((current) => (routesData.some((route) => route.id === current) ? current : routesData[0]?.id ?? null));
     setSelectedCustomerId((current) => current ?? ledgerData[0]?.customerId ?? null);
+  }
+
+  function markTemplatePending(routeId: string) {
+    setTemplatePendingRouteIds((current) => (current.includes(routeId) ? current : [...current, routeId]));
+  }
+
+  function clearTemplatePending() {
+    setTemplatePendingRouteIds([]);
+    setTemplateTempName("");
+    setTemplateLeavePrompt(null);
+  }
+
+  async function handleSaveTemplate(kind: "zone_default" | "temporary", andContinue = false) {
+    if (templatePendingRouteIds.length === 0) {
+      return;
+    }
+
+    setTemplateSaveBusy(true);
+    setError(null);
+
+    try {
+      const results = [];
+      for (const routeId of templatePendingRouteIds) {
+        results.push(
+          await saveRouteAsTemplate({
+            routeId,
+            kind,
+            name: kind === "temporary" ? templateTempName || undefined : undefined
+          })
+        );
+      }
+
+      const leave = templateLeavePrompt;
+      clearTemplatePending();
+      setStatusMessage(
+        kind === "zone_default"
+          ? `Saved ${results.length} zone default template${results.length === 1 ? "" : "s"}.`
+          : `Saved ${results.length} temporary template${results.length === 1 ? "" : "s"}.`
+      );
+
+      if (andContinue && leave) {
+        await completeLeaveAction(leave);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to save route template");
+    } finally {
+      setTemplateSaveBusy(false);
+    }
+  }
+
+  async function completeLeaveAction(leave: {
+    reason: "signout" | "navigate" | "date";
+    nextView?: View;
+    nextDate?: string;
+  }) {
+    if (leave.reason === "signout") {
+      await performSignOut();
+      return;
+    }
+
+    if (leave.reason === "navigate" && leave.nextView) {
+      setActiveView(leave.nextView);
+      return;
+    }
+
+    if (leave.reason === "date" && leave.nextDate) {
+      await applyOperationDateChange(leave.nextDate);
+    }
+  }
+
+  async function handleDiscardTemplatePending(andContinue = false) {
+    const leave = templateLeavePrompt;
+    clearTemplatePending();
+    setStatusMessage("Discarded pending template updates. Day route plans are unchanged.");
+
+    if (andContinue && leave) {
+      await completeLeaveAction(leave);
+    }
+  }
+
+  function requestViewChange(nextView: View) {
+    if (nextView === activeView) {
+      return;
+    }
+
+    if (templatePendingRouteIds.length > 0) {
+      setTemplateLeavePrompt({ reason: "navigate", nextView });
+      return;
+    }
+
+    setActiveView(nextView);
+  }
+
+  async function handleSignOut() {
+    if (templatePendingRouteIds.length > 0) {
+      setTemplateLeavePrompt({ reason: "signout" });
+      return;
+    }
+
+    await performSignOut();
+  }
+
+  async function performSignOut() {
+    await signOutOperator();
+    setAuth(null);
+    setDashboard(null);
+    setRoutes([]);
+    setPayments([]);
+    setIncidents([]);
+    setCustomerLedger([]);
+    setAdminData(emptyAdminData);
+    setPlanningOptions(emptyPlanningOptions);
+    setSelectedCustomerId(null);
+    setStaffAttendance([]);
+    setMonthlyStaffSummary([]);
+    setSelectedRouteId(null);
+    clearTemplatePending();
+  }
+
+  async function applyOperationDateChange(nextDate: string) {
+    setOperationDate(nextDate);
+    setAttendanceDate(nextDate);
+    setError(null);
+    setRouteInlineError(null);
+
+    try {
+      await loadWorkspace(nextDate);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load selected operations date");
+    }
   }
 
   async function handleRefresh() {
@@ -401,22 +605,6 @@ export function App() {
     } finally {
       setLoading(false);
     }
-  }
-
-  async function handleSignOut() {
-    await signOutOperator();
-    setAuth(null);
-    setDashboard(null);
-    setRoutes([]);
-    setPayments([]);
-    setIncidents([]);
-    setCustomerLedger([]);
-    setAdminData(emptyAdminData);
-    setPlanningOptions(emptyPlanningOptions);
-    setSelectedCustomerId(null);
-    setStaffAttendance([]);
-    setMonthlyStaffSummary([]);
-    setSelectedRouteId(null);
   }
 
   async function handleStopStatus(
@@ -564,17 +752,17 @@ export function App() {
   }
 
   async function handleOperationDateChange(nextDate: string) {
-    setOperationDate(nextDate);
-    setAttendanceDate(nextDate);
-    setError(null);
-    setRouteInlineError(null);
-    setStatusMessage(null);
-
-    try {
-      await loadWorkspace(nextDate);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to load selected operations date");
+    if (nextDate === operationDate) {
+      return;
     }
+
+    if (templatePendingRouteIds.length > 0) {
+      setTemplateLeavePrompt({ reason: "date", nextDate });
+      return;
+    }
+
+    setStatusMessage(null);
+    await applyOperationDateChange(nextDate);
   }
 
   async function handlePlanDailyRoutes() {
@@ -615,6 +803,7 @@ export function App() {
       const nextRoutes = await updateRoutePlanAssignment(routeId, zoneId, truckId, driverId, operationDate);
       await refreshRoutesForSelectedDate(nextRoutes);
       setStatusMessage("Route plan assignment updated.");
+      markTemplatePending(routeId);
     } catch (err) {
       setRouteInlineError({
         area: "assignment",
@@ -628,13 +817,15 @@ export function App() {
     setError(null);
     setRouteInlineError(null);
     await proposeRouteTruckHandoff(input);
-    const [nextRoutes, nextHandoffs] = await Promise.all([
+    const [nextRoutes, nextHandoffs, nextCovers] = await Promise.all([
       getRoutes(operationDate),
-      getRouteTruckHandoffs(operationDate)
+      getRouteTruckHandoffs(operationDate),
+      getRouteCoverSummaries(operationDate)
     ]);
     await refreshRoutesForSelectedDate(nextRoutes);
     setRouteHandoffs(nextHandoffs);
-    setStatusMessage("Truck handoff sent for driver confirmation.");
+    setRouteCovers(nextCovers);
+    setStatusMessage("Reassignment sent for driver confirmation.");
   }
 
   async function handleCancelTruckHandoff(handoffId: string) {
@@ -642,8 +833,13 @@ export function App() {
     setError(null);
     setRouteInlineError(null);
     await cancelRouteTruckHandoff(handoffId);
-    setRouteHandoffs(await getRouteTruckHandoffs(operationDate));
-    setStatusMessage("Truck handoff cancelled.");
+    const [nextHandoffs, nextCovers] = await Promise.all([
+      getRouteTruckHandoffs(operationDate),
+      getRouteCoverSummaries(operationDate)
+    ]);
+    setRouteHandoffs(nextHandoffs);
+    setRouteCovers(nextCovers);
+    setStatusMessage("Reassignment cancelled.");
   }
 
   async function handleAddRoutePlanStop(routeId: string, customerId: string) {
@@ -655,6 +851,7 @@ export function App() {
       const nextRoutes = await addRoutePlanStop(routeId, customerId, operationDate);
       await refreshRoutesForSelectedDate(nextRoutes);
       setStatusMessage("Stop added to route plan.");
+      markTemplatePending(routeId);
     } catch (err) {
       setRouteInlineError({
         area: "addStop",
@@ -676,6 +873,9 @@ export function App() {
       const nextRoutes = await removeRoutePlanStop(stopId, operationDate);
       await refreshRoutesForSelectedDate(nextRoutes);
       setStatusMessage("Stop removed from route plan.");
+      if (selectedRouteId) {
+        markTemplatePending(selectedRouteId);
+      }
     } catch (err) {
       setRouteInlineError({
         area: "stopCorrection",
@@ -693,6 +893,9 @@ export function App() {
       const nextRoutes = await moveRoutePlanStop(stopId, direction, operationDate);
       await refreshRoutesForSelectedDate(nextRoutes);
       setStatusMessage("Stop order updated.");
+      if (selectedRouteId) {
+        markTemplatePending(selectedRouteId);
+      }
     } catch (err) {
       setRouteInlineError({
         area: "stopCorrection",
@@ -746,11 +949,25 @@ export function App() {
     setStatusMessage(active ? "Staff member reactivated." : "Staff member deactivated.");
   }
 
+  async function handleUpdateStaff(input: StaffUpdateInput) {
+    setStatusMessage(null);
+    await updateStaffMember(input);
+    await refreshAdminData();
+    setStatusMessage("Staff member updated.");
+  }
+
   async function handleOnboardTruck(input: TruckOnboardingInput) {
     setStatusMessage(null);
     await onboardTruck(input);
     await refreshAdminData();
     setStatusMessage("Truck onboarded.");
+  }
+
+  async function handleUpdateTruck(input: TruckUpdateInput) {
+    setStatusMessage(null);
+    await updateTruck(input);
+    await refreshAdminData();
+    setStatusMessage("Truck updated.");
   }
 
   async function handleSetTruckActive(truckId: string, active: boolean) {
@@ -767,6 +984,13 @@ export function App() {
     setStatusMessage("Customer onboarded.");
   }
 
+  async function handleUpdateCustomer(input: CustomerUpdateInput) {
+    setStatusMessage(null);
+    await updateCustomer(input);
+    await refreshAdminData();
+    setStatusMessage("Customer updated.");
+  }
+
   async function handleSetCustomerServiceStatus(
     customerId: string,
     serviceStatus: CustomerLedgerItem["serviceStatus"]
@@ -779,6 +1003,24 @@ export function App() {
     );
     await refreshAdminData();
     setStatusMessage(`Customer marked ${serviceStatus}.`);
+  }
+
+  async function handleUpdateOwnProfile(input: { fullName: string; phone: string }) {
+    setStatusMessage(null);
+    const updated = await updateOwnProfile(input);
+    setAuth((current) =>
+      current
+        ? {
+            ...current,
+            profile: {
+              ...current.profile,
+              fullName: updated.fullName,
+              phone: updated.phone
+            }
+          }
+        : current
+    );
+    setStatusMessage("Profile updated.");
   }
 
   if (loading && !recoveryEmail) {
@@ -796,69 +1038,82 @@ export function App() {
   const selectedRoute = routes.find((routeItem) => routeItem.id === selectedRouteId) ?? routes[0];
   const selectedCustomer =
     customerLedger.find((customer) => customer.customerId === selectedCustomerId) ?? customerLedger[0];
+  const pendingTemplateLabels = templatePendingRouteIds
+    .map((routeId) => routes.find((route) => route.id === routeId)?.zoneName)
+    .filter((label): label is string => Boolean(label));
 
   return (
-    <main className="app-shell">
-      <TopBar auth={auth} onSignOut={handleSignOut} />
+    <main className="app-shell app-shell-saas">
+      <OperatorSidebar
+        activeView={activeView}
+        fullName={auth.profile.fullName}
+        onOpenProfile={() => setProfileOpen(true)}
+        onSelectView={requestViewChange}
+        onSignOut={() => void handleSignOut()}
+        role={auth.profile.role}
+      />
+
+      <div className="workspace-main">
+        <WorkspaceHeader
+          dateLabel={formatWorkspaceDateLabel(operationDate, todayIso)}
+          onDateChange={(nextDate) => void handleOperationDateChange(nextDate)}
+          onRefresh={() => void handleRefresh()}
+          operationDate={operationDate}
+          refreshing={refreshing}
+          title={workspaceTitles[activeView]}
+        />
 
       {error ? <p className="notice error">{error}</p> : null}
       {statusMessage ? <p className="notice">{statusMessage}</p> : null}
 
-      <section className="date-control-panel" aria-label="Operations date control">
-        <div>
-          <p className="eyebrow">Operations Date</p>
-          <h2>{operationDate === todayIso ? "Today" : new Date(`${operationDate}T00:00:00`).toLocaleDateString()}</h2>
-          <p>View daily route, attendance, payment, and incident state. Plan future routes from recent templates.</p>
-          {operationDate === todayIso && (activeView === "dashboard" || activeView === "routes") ? (
-            <p className="live-refresh-hint">Dashboard and routes auto-refresh every 45 seconds while this tab is open.</p>
-          ) : null}
-          {activeView === "payments" ? (
-            <p className="live-refresh-hint">
-              Payment ledger auto-refresh every 20 seconds so Paystack webhooks show without a manual reload.
-            </p>
-          ) : null}
-        </div>
-        <div className="date-control-actions">
-          <label>
-            Select date
-            <input
-              onChange={(event) => void handleOperationDateChange(event.target.value)}
-              type="date"
-              value={operationDate}
-            />
-          </label>
-          <button
-            className="primary-button refresh-button"
-            disabled={refreshing}
-            onClick={() => void handleRefresh()}
-            type="button"
-          >
-            <RefreshCw aria-hidden="true" className={refreshing ? "spinning" : undefined} />
-            {refreshing ? "Refreshing..." : "Refresh data"}
-          </button>
-        </div>
-      </section>
+      <ProfileModal
+        initialFullName={auth.profile.fullName}
+        initialPhone={auth.profile.phone}
+        onClose={() => setProfileOpen(false)}
+        onSave={handleUpdateOwnProfile}
+        open={profileOpen}
+        roleLabel={auth.profile.role.replace("_", " ")}
+      />
 
-      <nav className="workspace-tabs" aria-label="Operator workflow sections">
-        {(["dashboard", "routes", "payments", "staff", "admin"] as View[]).map((view) => (
-          <button
-            className={activeView === view ? "active" : ""}
-            key={view}
-            onClick={() => setActiveView(view)}
-            type="button"
-          >
-            {view}
-          </button>
-        ))}
-      </nav>
+      <TemplatePendingBanner
+        busy={templateSaveBusy}
+        labels={pendingTemplateLabels}
+        tempName={templateTempName}
+        onDiscard={() => void handleDiscardTemplatePending(false)}
+        onTempNameChange={setTemplateTempName}
+        onSaveTemporary={() => void handleSaveTemplate("temporary", false)}
+        onSaveZoneDefault={() => void handleSaveTemplate("zone_default", false)}
+      />
+
+      <TemplateSavePrompt
+        busy={templateSaveBusy}
+        labels={pendingTemplateLabels}
+        leaveReason={templateLeavePrompt?.reason ?? "navigate"}
+        open={Boolean(templateLeavePrompt)}
+        tempName={templateTempName}
+        onDiscardAndContinue={() => void handleDiscardTemplatePending(true)}
+        onStay={() => setTemplateLeavePrompt(null)}
+        onTempNameChange={setTemplateTempName}
+        onSaveTemporary={() => void handleSaveTemplate("temporary", true)}
+        onSaveZoneDefault={() => void handleSaveTemplate("zone_default", true)}
+      />
 
       {activeView === "dashboard" && dashboard ? (
-        <DashboardView dashboard={dashboard} incidents={incidents} operationDate={operationDate} todayIso={todayIso} />
+        <DashboardView
+          adminStaff={adminData.staff}
+          dashboard={dashboard}
+          incidents={incidents}
+          onDeactivateStaff={(staffId) => void handleSetStaffActive(staffId, false)}
+          onEditStaff={() => requestViewChange("admin")}
+          operationDate={operationDate}
+          todayIso={todayIso}
+        />
       ) : null}
       {activeView === "routes" ? (
         <RoutesView
           routes={routes}
           routeHandoffs={routeHandoffs}
+          routeCovers={routeCovers}
           selectedRoute={selectedRoute}
           operationDate={operationDate}
           planningOptions={planningOptions}
@@ -901,6 +1156,7 @@ export function App() {
       {activeView === "admin" ? (
         <AdminView
           adminData={adminData}
+          operatorId={auth.profile.operatorId}
           onOnboardCustomer={handleOnboardCustomer}
           onOnboardStaff={handleOnboardStaff}
           onOnboardTruck={handleOnboardTruck}
@@ -909,8 +1165,12 @@ export function App() {
           onSetCustomerServiceStatus={handleSetCustomerServiceStatus}
           onSetStaffActive={handleSetStaffActive}
           onSetTruckActive={handleSetTruckActive}
+          onUpdateCustomer={handleUpdateCustomer}
+          onUpdateStaff={handleUpdateStaff}
+          onUpdateTruck={handleUpdateTruck}
         />
       ) : null}
+      </div>
     </main>
   );
 }
@@ -927,12 +1187,9 @@ function LoginScreen({
   return (
     <main className="app-shell login-shell">
       <section className="login-card">
-        <p className="eyebrow">CleanOps Operator Login</p>
-        <h1>Start the Phase 1 pilot workspace.</h1>
-        <p>
-          Use the seeded local demo owner to exercise operator routes, payment ledger,
-          and attendance workflows.
-        </p>
+        <p className="eyebrow">CleanOps</p>
+        <h1>Operator workspace</h1>
+        <p>Sign in to run routes, payments, attendance, and admin for your ward pilot.</p>
         {statusMessage ? <p className="notice">{statusMessage}</p> : null}
         {error ? <p className="notice error">{error}</p> : null}
         <div className="credential-box">
@@ -947,52 +1204,36 @@ function LoginScreen({
   );
 }
 
-function TopBar({
-  auth,
-  onSignOut
-}: {
-  auth: AuthState;
-  onSignOut: () => void;
-}) {
-  const profile: OperatorProfile = auth.profile;
-
-  return (
-    <header className="top-bar">
-      <div>
-        <p className="eyebrow">CleanOps Command Centre</p>
-        <h1>{profile.operatorName ?? "CleanOps Operator"}</h1>
-        <p>
-          {profile.fullName} · {profile.role.replace("_", " ")} · {auth.mode} mode
-        </p>
-      </div>
-      <button className="ghost-button" onClick={onSignOut} type="button">
-        <LogOut aria-hidden="true" />
-        Sign out
-      </button>
-    </header>
-  );
-}
-
 function DashboardView({
+  adminStaff,
   dashboard,
   incidents,
+  onDeactivateStaff,
+  onEditStaff,
   operationDate,
   todayIso
 }: {
+  adminStaff: AdminMasterData["staff"];
   dashboard: OperatorDashboard;
   incidents: IncidentReport[];
+  onDeactivateStaff: (staffId: string) => void;
+  onEditStaff: () => void;
   operationDate: string;
   todayIso: string;
 }) {
+  const fieldWorkers = adminStaff.filter((staff) => staff.active).slice(0, 8);
+  const openIncidents = incidents.filter((incident) => !incident.resolvedAt).length;
+
   return (
     <>
       <section className="metric-grid" aria-label="Operational metrics">
         {dashboard.metrics.map((metric, index) => {
           const Icon = metricIcons[index] ?? CheckCircle2;
+          const isIncidents = metric.label.toLowerCase().includes("incident");
 
           return (
-            <article className="metric-card" key={metric.label}>
-              <Icon aria-hidden="true" />
+            <article className={isIncidents && openIncidents > 0 ? "metric-card tone-danger" : "metric-card"} key={metric.label}>
+              <Icon aria-hidden="true" size={20} />
               <span>{metric.label}</span>
               <strong>{metric.value}</strong>
               <small>{metric.helper}</small>
@@ -1000,160 +1241,124 @@ function DashboardView({
           );
         })}
       </section>
-      <section className="dashboard-grid">
-        <article className="panel panel-wide">
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">Live Routes</p>
-              <h2>{operationDate === todayIso ? "Today's Collection Runs" : "Selected Date Collection Runs"}</h2>
-            </div>
-            <Clock aria-hidden="true" />
-          </div>
 
-          <div className="stack-list">
-            {dashboard.routes.map((route) => {
-              const progress = Math.round((route.completedStops / route.totalStops) * 100);
-
-              return (
-                <div className="route-row" key={route.id}>
-                  <div>
-                    <strong>{route.zoneName}</strong>
-                    <span>
-                      {route.truckRegistration} · {route.driverName}
-                    </span>
-                  </div>
-                  <div className="progress-group">
-                    <div className="progress-bar">
-                      <span style={{ width: `${progress}%` }} />
-                    </div>
-                    <small>
-                      {route.completedStops}/{route.totalStops} stops · {progress}%
-                    </small>
-                  </div>
-                  <span className={route.delayed ? "pill danger" : "pill"}>
-                    {route.delayed ? "Delayed" : route.status.replace("_", " ")}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </article>
-
-        <article className="panel">
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">Payments</p>
-              <h2>Recent Receipts</h2>
-            </div>
-            <WalletCards aria-hidden="true" />
-          </div>
-
-          <div className="stack-list">
-            {dashboard.recentPayments.map((payment) => (
-              <div className="stack-row" key={payment.id}>
-                <div>
-                  <strong>{payment.customerName}</strong>
-                  <span>{channelLabels[payment.channel]}</span>
-                </div>
-                <strong>{formatKobo(payment.amountKobo)}</strong>
+      <section className="saas-section" aria-label="Collection runs">
+        <h2 className="saas-section-title">
+          {operationDate === todayIso ? "Today's collection runs" : "Collection runs"}
+        </h2>
+        <div className="saas-list">
+          {dashboard.routes.length === 0 ? (
+            <div className="saas-row">
+              <div className="saas-row-copy">
+                <strong>No routes loaded</strong>
+                <span>Plan routes for this date from the Routes tab.</span>
               </div>
-            ))}
-          </div>
-        </article>
-
-        <article className="panel">
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">Staff</p>
-              <h2>Attendance</h2>
             </div>
-            <Users aria-hidden="true" />
-          </div>
-
-          <div className="attendance-card">
-            <strong>
-              {dashboard.staffAttendance.checkedIn}/{dashboard.staffAttendance.totalStaff}
-            </strong>
-            <span>checked in for today&apos;s shift</span>
-            <p>{dashboard.staffAttendance.absent} unresolved absence alerts.</p>
-          </div>
-        </article>
-
-        <article className="panel">
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">Fleet</p>
-              <h2>Maintenance Reserve</h2>
-            </div>
-            <Wrench aria-hidden="true" />
-          </div>
-
-          <div className="stack-list">
-            {dashboard.fleet.map((truck) => (
-              <div className="stack-row" key={truck.registrationNumber}>
-                <div>
-                  <strong>{truck.registrationNumber}</strong>
+          ) : (
+            dashboard.routes.map((route) => (
+              <div className="saas-row" key={route.id}>
+                <span className="avatar-chip lg" aria-hidden="true">
+                  {initialsFromName(route.driverName)}
+                </span>
+                <div className="saas-row-copy">
+                  <strong>
+                    {route.zoneName} · {route.driverName}
+                  </strong>
                   <span>
-                    {truck.zoneName} · {truck.status}
+                    {route.completedStops}/{route.totalStops} stops · {route.truckRegistration}
                   </span>
                 </div>
-                <strong>{formatKobo(truck.reserveRemainingKobo)}</strong>
+                <span className={`status-pill ${route.delayed ? "danger" : route.status}`}>
+                  {route.delayed ? "Delayed" : route.status.replace("_", " ")}
+                </span>
               </div>
-            ))}
-          </div>
-        </article>
+            ))
+          )}
+        </div>
+      </section>
 
-        <article className="panel alert-panel">
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">Alerts</p>
-              <h2>Action Required</h2>
+      <section className="saas-section" aria-label="Field workers">
+        <h2 className="saas-section-title">Field workers</h2>
+        <div className="saas-list">
+          {fieldWorkers.length === 0 ? (
+            <div className="saas-row">
+              <div className="saas-row-copy">
+                <strong>No active staff</strong>
+                <span>Onboard drivers and crew from Admin.</span>
+              </div>
             </div>
-            <AlertTriangle aria-hidden="true" />
-          </div>
-
-          <ul>
-            {dashboard.alerts.map((alert) => (
-              <li key={alert}>{alert}</li>
-            ))}
-          </ul>
-        </article>
-
-        <article className="panel panel-wide">
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">Incidents</p>
-              <h2>Recent Driver Reports</h2>
-            </div>
-            <AlertTriangle aria-hidden="true" />
-          </div>
-
-          <div className="stack-list">
-            {incidents.length === 0 ? (
-              <p className="panel-subtitle">No recent incidents reported.</p>
-            ) : (
-              incidents.map((incident) => (
-                <div
-                  className={`incident-row ${incident.resolvedAt ? "" : "incident-row-open"}`}
-                  key={incident.id}
-                >
-                  <div>
-                    <strong>{incident.title}</strong>
-                    <span>
-                      {incident.routeLabel ?? "Route"} · {incident.truckRegistration ?? "Truck"} ·{" "}
-                      {incident.reportedBy ?? "Unknown reporter"}
-                    </span>
-                    <p className="incident-description">{incident.description}</p>
-                  </div>
-                  <span className={incident.resolvedAt ? "pill" : "pill danger"}>
-                    {incident.resolvedAt ? "Resolved" : "Open"}
+          ) : (
+            fieldWorkers.map((staff) => (
+              <div className="saas-row" key={staff.id}>
+                <span className="avatar-chip lg" aria-hidden="true">
+                  {initialsFromName(staff.fullName)}
+                </span>
+                <div className="saas-row-copy">
+                  <strong>{staff.fullName}</strong>
+                  <span>
+                    {staff.role.replace("_", " ")} · {formatKobo(staff.monthlySalaryKobo)}
                   </span>
                 </div>
-              ))
-            )}
-          </div>
-        </article>
+                <div className="saas-row-actions">
+                  <button className="link-button" onClick={onEditStaff} type="button">
+                    Edit
+                  </button>
+                  <button className="danger-outline" onClick={() => onDeactivateStaff(staff.id)} type="button">
+                    Deactivate
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </section>
+
+      {(dashboard.alerts.length > 0 || incidents.length > 0) && (
+        <section className="dashboard-grid" aria-label="Secondary operations">
+          {dashboard.alerts.length > 0 ? (
+            <article className="panel alert-panel">
+              <div className="panel-header">
+                <div>
+                  <p className="eyebrow">Alerts</p>
+                  <h2>Action required</h2>
+                </div>
+                <AlertTriangle aria-hidden="true" />
+              </div>
+              <ul>
+                {dashboard.alerts.map((alert) => (
+                  <li key={alert}>{alert}</li>
+                ))}
+              </ul>
+            </article>
+          ) : null}
+          <article className="panel">
+            <div className="panel-header">
+              <div>
+                <p className="eyebrow">Incidents</p>
+                <h2>Recent reports</h2>
+              </div>
+              <AlertTriangle aria-hidden="true" />
+            </div>
+            <div className="stack-list">
+              {incidents.length === 0 ? (
+                <p className="panel-subtitle">No recent incidents.</p>
+              ) : (
+                incidents.slice(0, 5).map((incident) => (
+                  <div className={`incident-row ${incident.resolvedAt ? "" : "incident-row-open"}`} key={incident.id}>
+                    <div>
+                      <strong>{incident.title}</strong>
+                      <span>{incident.routeLabel ?? "Route"} · {incident.reportedBy ?? "Reporter"}</span>
+                    </div>
+                    <span className={incident.resolvedAt ? "status-pill completed" : "status-pill danger"}>
+                      {incident.resolvedAt ? "Resolved" : "Open"}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </article>
+        </section>
+      )}
     </>
   );
 }
@@ -1161,6 +1366,7 @@ function DashboardView({
 function RoutesView({
   routes,
   routeHandoffs,
+  routeCovers,
   selectedRoute,
   operationDate,
   planningOptions,
@@ -1179,6 +1385,7 @@ function RoutesView({
 }: {
   routes: RouteDetail[];
   routeHandoffs: RouteTruckHandoff[];
+  routeCovers: RouteCoverSummary[];
   selectedRoute?: RouteDetail;
   operationDate: string;
   planningOptions: RoutePlanningOptions;
@@ -1221,6 +1428,7 @@ function RoutesView({
     }
     return a.label.localeCompare(b.label);
   });
+  const selectedCover = routeCovers.find((cover) => cover.routeId === selectedRoute?.id);
 
   return (
     <section className="workflow-grid routes-workflow">
@@ -1240,9 +1448,28 @@ function RoutesView({
               : "No routes planned for this date yet."}
           </span>
           <button className="primary-button" onClick={onPlanDailyRoutes} type="button">
-            Plan selected date from templates
+            Plan selected date from zone templates
           </button>
         </div>
+        {routeCovers.length > 0 ? (
+          <div className="cover-board">
+            <strong>Confirmed covers / reassignments</strong>
+            {routeCovers.slice(0, 6).map((cover) => (
+              <button
+                className="cover-board-item"
+                key={cover.handoffId}
+                onClick={() => onSelectRoute(cover.routeId)}
+                type="button"
+              >
+                <span>{cover.headline}</span>
+                <small>
+                  {cover.routeStatus.replace("_", " ")}
+                  {cover.confirmedAt ? ` · ${new Date(cover.confirmedAt).toLocaleTimeString()}` : ""}
+                </small>
+              </button>
+            ))}
+          </div>
+        ) : null}
         <div className="stack-list">
           {routes.length === 0 ? (
             <p className="panel-subtitle">
@@ -1263,6 +1490,14 @@ function RoutesView({
                   {routeItem.status.replace("_", " ")}
                 </span>
                 {!routeItem.truckId ? <span className="pill danger">Needs truck</span> : null}
+                {routeCovers.some((cover) => cover.routeId === routeItem.id && cover.changeKind === "driver") ? (
+                  <span className="pill">Driver cover</span>
+                ) : null}
+                {routeCovers.some(
+                  (cover) => cover.routeId === routeItem.id && cover.changeKind !== "driver"
+                ) ? (
+                  <span className="pill">Reassigned</span>
+                ) : null}
                 {routeHandoffs.some(
                   (handoff) => handoff.routeId === routeItem.id && handoff.status === "awaiting_confirmation"
                 ) ? (
@@ -1284,6 +1519,9 @@ function RoutesView({
                 {selectedRoute.truckRegistration} · {selectedRoute.driverName} ·{" "}
                 {selectedRoute.status.replace("_", " ")}
               </p>
+            ) : null}
+            {selectedCover ? (
+              <p className="cover-detail-note">{selectedCover.headline}</p>
             ) : null}
           </div>
           <Truck aria-hidden="true" />

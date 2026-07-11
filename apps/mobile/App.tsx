@@ -106,19 +106,8 @@ function FieldApp() {
   }
 
   return (
-    <SafeAreaView style={styles.shell} edges={["top", "left", "right"]}>
+    <SafeAreaView style={styles.shell} edges={["top", "left", "right", "bottom"]}>
       <StatusBar style="dark" />
-      <View style={styles.topBar}>
-        <View style={styles.topBarIdentity}>
-          <Text style={styles.topBarName}>{session.fullName}</Text>
-          <Text style={styles.topBarLabel}>
-            {session.role === "driver" ? "Driver" : "Collection agent"} · {session.mode}
-          </Text>
-        </View>
-        <Pressable disabled={signingOut} onPress={() => void handleSignOut()} style={styles.signOutButton}>
-          <Text style={styles.signOut}>{signingOut ? "Signing out..." : "Sign out"}</Text>
-        </Pressable>
-      </View>
       <View style={styles.workspace}>
         {session.connectionNotice ? (
           <View style={styles.connectionNotice}>
@@ -126,9 +115,17 @@ function FieldApp() {
           </View>
         ) : null}
         {session.role === "driver" ? (
-          <DriverApp onSignOut={() => void handleSignOut()} session={session} />
+          <DriverApp
+            onSessionUpdated={(next) => setSession((current) => (current ? { ...current, ...next } : current))}
+            onSignOut={() => void handleSignOut()}
+            session={session}
+          />
         ) : (
-          <AgentApp onSignOut={() => void handleSignOut()} session={session} />
+          <AgentApp
+            onSessionUpdated={(next) => setSession((current) => (current ? { ...current, ...next } : current))}
+            onSignOut={() => void handleSignOut()}
+            session={session}
+          />
         )}
       </View>
     </SafeAreaView>
@@ -137,7 +134,7 @@ function FieldApp() {
 
 const styles = StyleSheet.create({
   shell: {
-    backgroundColor: "#f3f7f1",
+    backgroundColor: "#eef5ef",
     flex: 1
   },
   workspace: {

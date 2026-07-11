@@ -3,6 +3,7 @@ import {
   buildOfflineWorkspaceNotice,
   createPilotSession,
   pilotNames,
+  pilotPhones,
   type FieldSession
 } from "../lib/fieldSession";
 import { isUnreachableBackendError } from "../lib/networkErrors";
@@ -63,7 +64,7 @@ async function loadFieldSessionFromAuth(fallbackRole: FieldRole): Promise<FieldS
   const { data: profile, error: profileError } = await withTimeout(
     supabase
       .from("profiles")
-      .select("full_name, role")
+      .select("full_name, phone, role")
       .eq("id", sessionData.session.user.id)
       .maybeSingle(),
     SIGN_IN_TIMEOUT_MS,
@@ -86,6 +87,7 @@ async function loadFieldSessionFromAuth(fallbackRole: FieldRole): Promise<FieldS
 
   return {
     fullName: profile?.full_name ?? pilotNames[resolvedRole],
+    phone: profile?.phone ?? pilotPhones[resolvedRole],
     role: resolvedRole,
     mode: "supabase"
   };
@@ -179,7 +181,7 @@ export async function restoreFieldSession(): Promise<FieldSession | null> {
     const { data: profile, error } = await withTimeout(
       supabase
         .from("profiles")
-        .select("full_name, role")
+        .select("full_name, phone, role")
         .eq("id", sessionData.session.user.id)
         .maybeSingle(),
       RESTORE_TIMEOUT_MS,
@@ -198,6 +200,7 @@ export async function restoreFieldSession(): Promise<FieldSession | null> {
 
     return {
       fullName: profile.full_name,
+      phone: profile.phone,
       role,
       mode: "supabase"
     };

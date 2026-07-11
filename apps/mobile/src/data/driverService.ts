@@ -1,13 +1,21 @@
 import {
   dumpsiteRunInputSchema,
   dumpsiteRunRecordSchema,
+  driverRouteNoticeSchema,
+  driverTodayPlanningStatusSchema,
+  driverTodayShiftSummarySchema,
+  ensureDailyRoutesResultSchema,
   fuelLogInputSchema,
   fuelLogRecordSchema,
   incidentReportInputSchema,
   routeDetailSchema,
   routeTruckHandoffSchema,
+  type DriverRouteNotice,
+  type DriverTodayPlanningStatus,
+  type DriverTodayShiftSummary,
   type DumpsiteRunInput,
   type DumpsiteRunRecord,
+  type EnsureDailyRoutesResult,
   type FuelLogInput,
   type FuelLogRecord,
   type IncidentReportInput,
@@ -51,7 +59,7 @@ export async function signInDriver(): Promise<DriverSession> {
   };
 }
 
-export async function fetchAssignedRoute(): Promise<RouteDetail> {
+export async function fetchAssignedRoute(): Promise<RouteDetail | null> {
   if (!supabase) {
     return pilotDriverRoute;
   }
@@ -73,7 +81,7 @@ export async function fetchAssignedRoute(): Promise<RouteDetail> {
   }
 
   if (data == null) {
-    throw new Error("No route assigned today");
+    return null;
   }
 
   const parsed = routeDetailSchema.safeParse(data);
@@ -83,6 +91,80 @@ export async function fetchAssignedRoute(): Promise<RouteDetail> {
   }
 
   return parsed.data;
+}
+
+export async function fetchDriverTodayPlanningStatus(): Promise<DriverTodayPlanningStatus> {
+  if (!supabase) {
+    return {
+      hasAssignedRoute: true,
+      operatorRoutesExist: true,
+      canLoadDefaults: false
+    };
+  }
+
+  const { data, error } = await withTimeout(
+    supabase.rpc("driver_today_planning_status"),
+    REQUEST_TIMEOUT_MS,
+    "Timed out while checking today's route status"
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return driverTodayPlanningStatusSchema.parse(data);
+}
+
+export async function driverEnsureDailyRoutesLoaded(): Promise<EnsureDailyRoutesResult> {
+  if (!supabase) {
+    throw new Error("Loading default routes requires Supabase");
+  }
+
+  const { data, error } = await withTimeout(
+    supabase.rpc("driver_ensure_daily_routes_loaded"),
+    REQUEST_TIMEOUT_MS,
+    "Timed out while loading default routes"
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return ensureDailyRoutesResultSchema.parse(data);
+}
+
+export async function fetchPendingRouteNotices(): Promise<DriverRouteNotice[]> {
+  if (!supabase) {
+    return [];
+  }
+
+  const { data, error } = await withTimeout(
+    supabase.rpc("pending_driver_route_notices"),
+    REQUEST_TIMEOUT_MS,
+    "Timed out while loading route notices"
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return driverRouteNoticeSchema.array().parse(data ?? []);
+}
+
+export async function acknowledgeRouteNotice(noticeId: string): Promise<void> {
+  if (!supabase) {
+    return;
+  }
+
+  const { error } = await withTimeout(
+    supabase.rpc("acknowledge_driver_route_notice", { input_notice_id: noticeId }),
+    REQUEST_TIMEOUT_MS,
+    "Timed out while acknowledging route notice"
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
 }
 
 export async function syncStopAction(
@@ -275,6 +357,24 @@ export async function recordDumpsiteRun(input: DumpsiteRunInput): Promise<Dumpsi
   }
 
   return dumpsiteRunRecordSchema.parse(data);
+}
+
+export async function fetchDriverTodayShiftSummary(inputDate?: string): Promise<DriverTodayShiftSummary> {
+  if (!supabase) {
+    return { jobs: [] };
+  }
+
+  const { data, error } = await withTimeout(
+    supabase.rpc("driver_today_shift_summary", inputDate ? { input_date: inputDate } : {}),
+    REQUEST_TIMEOUT_MS,
+    "Timed out while loading today's shift summary"
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return driverTodayShiftSummarySchema.parse(data ?? { jobs: [] });
 }
 
 export async function fetchPendingHandoffs(): Promise<RouteTruckHandoff[]> {

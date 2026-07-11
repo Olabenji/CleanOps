@@ -24,7 +24,7 @@ CleanOps has a working **local pilot stack**: Supabase schema (26 migrations), o
 
 The system is **demo-ready for operator + driver + collection agent field testing** on one ward. It is **not production-ready** — no OTP auth, Paystack checkout is not initiated from apps yet (webhook is wired), and no CI.
 
-**Sprints:** Sprint 1–5 complete (through truck reassignment & route takeover). Next: Sprint 6 (admin edit flows).
+**Sprints:** Sprint 1–8 complete (through Admin edit flows). Next: Sprint 9 (quality gate).
 
 ---
 
@@ -99,9 +99,12 @@ The system is **demo-ready for operator + driver + collection agent field testin
 | Capability | Detail |
 |------------|--------|
 | Route list by date | Two-column layout: route list + detail/planner |
-| Plan from templates | `plan_daily_routes` clones recent route patterns onto a future date |
+| Plan from templates | `plan_daily_routes` / `ensure_daily_routes_loaded` apply zone default templates (migration `0031`) |
 | Route planning (scheduled only) | Change truck/driver; add/remove/reorder stops before shift starts |
-| Zone/truck guards | Customer stops must match route zone. Trucks are floaters (home zone optional; migration `0030`) |
+| Template pending banner | After plan edits, banner offers save to zone default / temp / discard; modal only on leave/sign-out |
+| Zone/customer guards | Customer stops must match route zone. Trucks are floaters (home zone optional; migration `0030`) |
+| Driver default-load fallback | If today has no routes, driver can load zone templates from mobile |
+| Driver route-change notices | In-app notices when operator edits an assigned route plan |
 | Operator stop corrections | Override stop status on active/completed routes |
 | Route cancellation | Operator can cancel; start/complete is field-only (driver mobile) |
 | Inline errors | Validation errors shown near planner controls, not only top banner |
@@ -110,12 +113,9 @@ The system is **demo-ready for operator + driver + collection agent field testin
 
 **Pending**
 
-- Full schedule builder (recurring templates, loader assignment)
+- Full schedule builder (recurring calendar UI / loader assignment)
 - Loader staff assignment on routes (schema has `driver_id` only)
-- Zone template save prompt after day-route edits (save to zone template vs temp template)
-- Auto-load zone route templates at start of day for operator + drivers
-- Driver login fallback to load previous/default template when operator has not planned
-- Route change popups + push notifications for affected drivers
+- Expo push for route-change notices (in-app notices delivered)
 - Audit log for operator corrections
 - Route export / print
 - GPS / photo proof on stops
@@ -175,7 +175,7 @@ The system is **demo-ready for operator + driver + collection agent field testin
 ### 6. Admin / Master Data (Web)
 
 **Location:** Admin tab (`AdminView` component)  
-**Backend:** `admin_master_data`, `onboard_staff_member`, `onboard_truck`, `onboard_customer`, `set_*_active`, `provision_staff_member_login`, `get_staff_password_reset_target` (migrations `0013`, `0020`, `0022`–`0024`)
+**Backend:** `admin_master_data`, `onboard_*`, `update_staff_member`, `update_truck`, `update_customer`, `set_*_active`, `provision_staff_member_login`, `get_staff_password_reset_target` (migrations `0013`, `0020`, `0022`–`0024`, `0042`)
 
 **Functional spec (delivered)**
 
@@ -183,16 +183,16 @@ The system is **demo-ready for operator + driver + collection agent field testin
 |------------|--------|
 | Sub-tabs | Staff, Trucks, Customers with per-tab filters |
 | Staff onboarding | Modal form with optional login email; auto-provisions Auth user + profile for field roles |
+| Staff / truck / customer edit | Edit button opens prefilled modal; identity, salary, fleet, and billing fields (Sprint 8) |
 | Staff login management | Create login for existing staff; send password reset email; one-time temp password modal |
 | Truck onboarding | Modal form: registration, zone, make/model/year, status; activate/deactivate |
 | Customer onboarding | Modal form: zone, address, type, monthly rate, service status; suspend/reactivate |
-| Zone reference | Read-only zone list for form dropdowns |
+| Staff roles | Includes `loader` (crew) separate from `driver` (migration `0034`) |
 | Login indicator | `hasLoginProfile` + `loginEmail` on staff rows |
 | Inline errors | Per-form and per-row error messages (not global banner only) |
 
 **Pending**
 
-- Edit existing staff/truck/customer records (create-only today)
 - Zone CRUD (zones are seed-only)
 - Auto-disable Auth user when staff deactivated
 
@@ -360,23 +360,15 @@ Ordered by impact on Phase 1 go-live (*one PSP, one ward, three trucks, full sta
 
 Run a full day simulation including truck handoff: propose reassignment on Routes → confirm on driver mobile → verify truck/driver update.
 
-### 2. Admin edit flows
-
-Allow updating existing staff, truck, and customer records (not just create + deactivate).
-
-### 3. Quality gate before go-live
+### 2. Quality gate before go-live
 
 Add CI (`typecheck` + migration lint), smoke tests for sign-in / plan routes / record payment, and one real Android device QA pass for driver and agent offline sync.
 
-### 4. Admin edit flows
-
-Allow updating existing staff, truck, and customer records (not just create + deactivate).
-
-### 5. Paystack checkout initiate (follow-on)
+### 3. Paystack checkout initiate (follow-on)
 
 Apps still need a Paystack initialize/checkout that attaches `metadata.operator_id` and `metadata.customer_id` before live resident payments.
 
-### 6. Collection agent receipts (deferred)
+### 4. Collection agent receipts (deferred)
 
 WhatsApp/SMS and PDF receipt delivery after core pilot validation.
 
