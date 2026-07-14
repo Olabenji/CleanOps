@@ -167,10 +167,16 @@ export const staffMemberSchema = z.object({
   active: z.boolean()
 });
 
+export const operatorStatuses = ["trial", "active", "suspended"] as const;
+export const operatorPlanCodes = ["basic", "growth", "pro"] as const;
+
 export const operatorProfileSchema = z.object({
   id: z.string().uuid(),
   operatorId: z.string().uuid().nullable(),
   operatorName: z.string().nullable(),
+  brandName: z.string().nullable().optional(),
+  operatorStatus: z.enum(operatorStatuses).nullable().optional(),
+  planCode: z.enum(operatorPlanCodes).nullable().optional(),
   fullName: z.string(),
   phone: z.string(),
   role: z.enum(userRoles)
@@ -184,12 +190,58 @@ export const updateOwnProfileInputSchema = z.object({
 export const ownAccountProfileSchema = z.object({
   profileId: z.string().uuid(),
   operatorId: z.string().uuid().nullable(),
+  operatorName: z.string().nullable().optional(),
+  brandName: z.string().nullable().optional(),
   fullName: z.string(),
   phone: z.string(),
   role: z.enum(userRoles),
   staffId: z.string().uuid().nullable(),
   licenceExpiresOn: z.string().nullable(),
   licenceImageUrl: z.string().nullable()
+});
+
+export const createOperatorTenantInputSchema = z.object({
+  name: z.string().min(2),
+  slug: z.string().min(2),
+  brandName: z.string().min(2).optional(),
+  planCode: z.enum(operatorPlanCodes).default("basic"),
+  status: z.enum(operatorStatuses).default("trial"),
+  lawmaReference: z.string().optional(),
+  ownerFullName: z.string().min(2),
+  ownerEmail: z.string().email(),
+  ownerPhone: z.string().min(7)
+});
+
+export const createOperatorTenantResultSchema = z.object({
+  operatorId: z.string().uuid(),
+  name: z.string(),
+  slug: z.string(),
+  brandName: z.string(),
+  status: z.enum(operatorStatuses),
+  planCode: z.enum(operatorPlanCodes),
+  ownerProfileId: z.string().uuid(),
+  ownerEmail: z.string().email(),
+  temporaryPassword: z.string().min(8)
+});
+
+export const platformOperatorSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  slug: z.string(),
+  brandName: z.string(),
+  status: z.enum(operatorStatuses),
+  planCode: z.enum(operatorPlanCodes),
+  lawmaReference: z.string().nullable().optional(),
+  primaryContactPhone: z.string().nullable().optional(),
+  onboardedAt: z.string().nullable().optional(),
+  createdAt: z.string().nullable().optional(),
+  ownerEmail: z.string().nullable().optional(),
+  ownerFullName: z.string().nullable().optional()
+});
+
+export const setOperatorStatusInputSchema = z.object({
+  operatorId: z.string().uuid(),
+  status: z.enum(operatorStatuses)
 });
 
 export const setStaffLicenceInputSchema = z.object({
@@ -205,6 +257,35 @@ export const staffLicenceResultSchema = z.object({
   licenceImageUrl: z.string().nullable()
 });
 
+export const isoWeekdaySchema = z.number().int().min(1).max(7);
+
+export const preferredWeekdaysSchema = z
+  .array(isoWeekdaySchema)
+  .min(1)
+  .max(7)
+  .refine((days) => new Set(days).size === days.length, {
+    message: "Preferred weekdays must be unique"
+  });
+
+export const ISO_WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+
+export function formatPreferredWeekdays(weekdays: number[]): string {
+  return [...weekdays]
+    .sort((a, b) => a - b)
+    .map((day) => ISO_WEEKDAY_LABELS[day - 1] ?? String(day))
+    .join(",");
+}
+
+export function formatCollectionFrequency(collectionsPerWeek: number, weekdays: number[]): string {
+  return `${collectionsPerWeek}×/week · ${formatPreferredWeekdays(weekdays)}`;
+}
+
+export const customerCollectionFrequencySchema = z.object({
+  collectionsPerWeek: z.number().int().min(1).max(7),
+  preferredWeekdays: preferredWeekdaysSchema,
+  frequencyNotes: z.string().nullable().optional()
+});
+
 export const customerSchema = z.object({
   id: z.string().uuid(),
   operatorId: z.string().uuid(),
@@ -214,7 +295,10 @@ export const customerSchema = z.object({
   address: z.string().min(5),
   customerType: z.enum(customerTypes),
   monthlyRateKobo: z.number().int().nonnegative(),
-  serviceStatus: z.enum(["active", "suspended"])
+  serviceStatus: z.enum(["active", "suspended"]),
+  collectionsPerWeek: z.number().int().min(1).max(7).default(1),
+  preferredWeekdays: preferredWeekdaysSchema.default([1]),
+  frequencyNotes: z.string().nullable().optional()
 });
 
 export const dashboardMetricSchema = z.object({
@@ -298,11 +382,18 @@ export const routePlanningOptionSchema = z.object({
   helper: z.string().nullable().optional()
 });
 
+export const routePlanningCustomerOptionSchema = routePlanningOptionSchema.extend({
+  zoneId: z.string().uuid(),
+  collectionsPerWeek: z.number().int().min(1).max(7).optional(),
+  preferredWeekdays: preferredWeekdaysSchema.optional(),
+  dueToday: z.boolean().optional()
+});
+
 export const routePlanningOptionsSchema = z.object({
   zones: z.array(routePlanningOptionSchema),
   trucks: z.array(routePlanningOptionSchema),
   drivers: z.array(routePlanningOptionSchema),
-  customers: z.array(routePlanningOptionSchema.extend({ zoneId: z.string().uuid() }))
+  customers: z.array(routePlanningCustomerOptionSchema)
 });
 
 export const adminZoneSchema = z.object({
@@ -345,7 +436,10 @@ export const adminCustomerSchema = z.object({
   address: z.string(),
   customerType: z.enum(customerTypes),
   monthlyRateKobo: z.number().int().nonnegative(),
-  serviceStatus: z.enum(["active", "suspended"])
+  serviceStatus: z.enum(["active", "suspended"]),
+  collectionsPerWeek: z.number().int().min(1).max(7),
+  preferredWeekdays: preferredWeekdaysSchema,
+  frequencyNotes: z.string().nullable().optional()
 });
 
 export const adminMasterDataSchema = z.object({
@@ -401,7 +495,10 @@ export const customerOnboardingInputSchema = z.object({
   address: z.string().min(5),
   customerType: z.enum(customerTypes),
   monthlyRateKobo: z.number().int().nonnegative(),
-  serviceStatus: z.enum(["active", "suspended"])
+  serviceStatus: z.enum(["active", "suspended"]),
+  collectionsPerWeek: z.number().int().min(1).max(7).default(1),
+  preferredWeekdays: preferredWeekdaysSchema.default([1]),
+  frequencyNotes: z.string().optional().nullable()
 });
 
 export const staffUpdateInputSchema = z.object({
@@ -432,7 +529,10 @@ export const customerUpdateInputSchema = z.object({
   phone: z.string().optional(),
   address: z.string().min(5),
   customerType: z.enum(customerTypes),
-  monthlyRateKobo: z.number().int().nonnegative()
+  monthlyRateKobo: z.number().int().nonnegative(),
+  collectionsPerWeek: z.number().int().min(1).max(7).default(1),
+  preferredWeekdays: preferredWeekdaysSchema.default([1]),
+  frequencyNotes: z.string().optional().nullable()
 });
 
 export const paymentSummarySchema = z.object({
@@ -464,7 +564,10 @@ export const customerLedgerItemSchema = z.object({
   currentTagMonth: z.string().nullable(),
   lastPaymentAt: z.string().nullable(),
   lastPaymentAmountKobo: z.number().int().positive().nullable(),
-  lastPaymentChannel: z.enum(paymentChannels).nullable()
+  lastPaymentChannel: z.enum(paymentChannels).nullable(),
+  collectionsPerWeek: z.number().int().min(1).max(7),
+  preferredWeekdays: preferredWeekdaysSchema,
+  frequencyNotes: z.string().nullable().optional()
 });
 
 export const paymentEntrySchema = z.object({
@@ -603,6 +706,8 @@ export type RouteReassignmentKind = (typeof routeReassignmentKinds)[number];
 export type RouteTruckHandoff = z.infer<typeof routeTruckHandoffSchema>;
 export type ProposeRouteTruckHandoffInput = z.infer<typeof proposeRouteTruckHandoffInputSchema>;
 export type UserRole = (typeof userRoles)[number];
+export type OperatorStatus = (typeof operatorStatuses)[number];
+export type OperatorPlanCode = (typeof operatorPlanCodes)[number];
 export type CustomerType = (typeof customerTypes)[number];
 export type PaymentChannel = (typeof paymentChannels)[number];
 export type RouteStopStatus = (typeof routeStopStatuses)[number];
@@ -612,6 +717,10 @@ export type IncidentType = (typeof incidentTypes)[number];
 export type OperatorProfile = z.infer<typeof operatorProfileSchema>;
 export type UpdateOwnProfileInput = z.infer<typeof updateOwnProfileInputSchema>;
 export type OwnAccountProfile = z.infer<typeof ownAccountProfileSchema>;
+export type CreateOperatorTenantInput = z.infer<typeof createOperatorTenantInputSchema>;
+export type CreateOperatorTenantResult = z.infer<typeof createOperatorTenantResultSchema>;
+export type PlatformOperator = z.infer<typeof platformOperatorSchema>;
+export type SetOperatorStatusInput = z.infer<typeof setOperatorStatusInputSchema>;
 export type SetStaffLicenceInput = z.infer<typeof setStaffLicenceInputSchema>;
 export type StaffLicenceResult = z.infer<typeof staffLicenceResultSchema>;
 export type StaffMember = z.infer<typeof staffMemberSchema>;
@@ -624,6 +733,7 @@ export type DriverStopAction = z.infer<typeof driverStopActionSchema>;
 export type IncidentReportInput = z.infer<typeof incidentReportInputSchema>;
 export type IncidentReport = z.infer<typeof incidentReportSchema>;
 export type RoutePlanningOption = z.infer<typeof routePlanningOptionSchema>;
+export type RoutePlanningCustomerOption = z.infer<typeof routePlanningCustomerOptionSchema>;
 export type RoutePlanningOptions = z.infer<typeof routePlanningOptionsSchema>;
 export type AdminZone = z.infer<typeof adminZoneSchema>;
 export type AdminStaff = z.infer<typeof adminStaffSchema>;

@@ -2,11 +2,14 @@ import type { UserRole } from "@cleanops/shared";
 import {
   LayoutDashboard,
   LogOut,
+  Menu,
   Route,
   Settings,
   Users,
-  WalletCards
+  WalletCards,
+  X
 } from "lucide-react";
+import { useState } from "react";
 
 export type OperatorView = "dashboard" | "routes" | "payments" | "staff" | "admin";
 
@@ -32,6 +35,7 @@ function shortRole(role: UserRole) {
 
 export default function OperatorSidebar({
   activeView,
+  brandName,
   fullName,
   onOpenProfile,
   onSelectView,
@@ -39,6 +43,7 @@ export default function OperatorSidebar({
   role
 }: {
   activeView: OperatorView;
+  brandName?: string | null;
   fullName: string;
   onOpenProfile: () => void;
   onSelectView: (view: OperatorView) => void;
@@ -46,12 +51,28 @@ export default function OperatorSidebar({
   role: UserRole;
 }) {
   const firstName = fullName.split(" ")[0] || fullName;
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const tenantBrand = brandName?.trim() || "Operator workspace";
+
+  function handleSelectView(view: OperatorView) {
+    setMobileNavOpen(false);
+    onSelectView(view);
+  }
 
   return (
-    <aside className="operator-sidebar">
+    <aside className={mobileNavOpen ? "operator-sidebar mobile-nav-open" : "operator-sidebar"}>
       <div className="sidebar-brand">
         <strong className="sidebar-wordmark">CleanOps</strong>
-        <span className="sidebar-tagline">Next to Godliness</span>
+        <span className="sidebar-tagline">{tenantBrand}</span>
+        <button
+          aria-expanded={mobileNavOpen}
+          aria-label={mobileNavOpen ? "Close navigation" : "Open navigation"}
+          className="sidebar-mobile-toggle"
+          onClick={() => setMobileNavOpen((current) => !current)}
+          type="button"
+        >
+          {mobileNavOpen ? <X aria-hidden="true" size={20} /> : <Menu aria-hidden="true" size={20} />}
+        </button>
       </div>
 
       <nav aria-label="Operator workflow sections" className="sidebar-nav">
@@ -61,7 +82,7 @@ export default function OperatorSidebar({
             <button
               className={activeView === item.id ? "sidebar-nav-item active" : "sidebar-nav-item"}
               key={item.id}
-              onClick={() => onSelectView(item.id)}
+              onClick={() => handleSelectView(item.id)}
               type="button"
             >
               <Icon aria-hidden="true" size={18} />
@@ -72,7 +93,14 @@ export default function OperatorSidebar({
       </nav>
 
       <div className="sidebar-footer">
-        <button className="sidebar-user" onClick={onOpenProfile} type="button">
+        <button
+          className="sidebar-user"
+          onClick={() => {
+            setMobileNavOpen(false);
+            onOpenProfile();
+          }}
+          type="button"
+        >
           <span className="avatar-chip" aria-hidden="true">
             {firstName.slice(0, 1)}
           </span>

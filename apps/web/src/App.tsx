@@ -12,6 +12,7 @@ import type {
   PaymentEntry,
   PaymentLedgerItem,
   ProposeRouteTruckHandoffInput,
+  PlatformOperator,
   RouteDetail,
   RoutePlanningOptions,
   RouteCoverSummary,
@@ -26,6 +27,7 @@ import type {
   TruckOnboardingInput,
   TruckUpdateInput
 } from "@cleanops/shared";
+import { formatCollectionFrequency } from "@cleanops/shared";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -44,6 +46,7 @@ import AdminView from "./components/AdminView";
 import AgentCollectionsView from "./components/AgentCollectionsView";
 import OperatorSidebar from "./components/OperatorSidebar";
 import PasswordRecoveryScreen from "./components/PasswordRecoveryScreen";
+import PlatformAdminView from "./components/PlatformAdminView";
 import ProfileModal from "./components/ProfileModal";
 import TemplateSavePrompt, { TemplatePendingBanner } from "./components/TemplateSavePrompt";
 import TruckHandoffPanel from "./components/TruckHandoffPanel";
@@ -57,6 +60,7 @@ import {
   type AuthState
 } from "./data/authService";
 import { getOperatorDashboard } from "./data/dashboardService";
+import { createOperatorTenant, listOperators, setOperatorStatus } from "./data/platformService";
 import { updateOwnProfile } from "./data/profileService";
 import {
   addRoutePlanStop,
@@ -217,6 +221,7 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState<string | null>(null);
+  const [platformOperators, setPlatformOperators] = useState<PlatformOperator[]>([]);
   const [profileOpen, setProfileOpen] = useState(false);
 
   useEffect(() => {
@@ -238,6 +243,15 @@ export function App() {
   useEffect(() => {
     void bootstrap();
   }, []);
+
+  useEffect(() => {
+    if (!statusMessage) {
+      return;
+    }
+
+    const timeoutId = setTimeout(() => setStatusMessage(null), 5000);
+    return () => clearTimeout(timeoutId);
+  }, [statusMessage]);
 
   useEffect(() => {
     if (!auth || operationDate !== todayIso) {
@@ -373,7 +387,11 @@ export function App() {
 
       if (currentAuth) {
         setAuth(currentAuth);
-        await loadWorkspace(operationDate);
+        if (currentAuth.profile.role === "platform_admin") {
+          setPlatformOperators(await listOperators());
+        } else {
+          await loadWorkspace(operationDate);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load operator profile");
@@ -427,7 +445,7 @@ export function App() {
       getStaffAttendance(targetDate),
       getMonthlyStaffSummary(summaryMonth),
       getRecentIncidentReports(targetDate),
-      getRoutePlanningOptions(),
+      getRoutePlanningOptions(targetDate),
       getAdminMasterData()
     ]);
 
@@ -534,6 +552,8 @@ export function App() {
       return;
     }
 
+    setStatusMessage(null);
+    setError(null);
     setActiveView(nextView);
   }
 
@@ -549,6 +569,9 @@ export function App() {
   async function performSignOut() {
     await signOutOperator();
     setAuth(null);
+    setStatusMessage(null);
+    setError(null);
+    setPlatformOperators([]);
     setDashboard(null);
     setRoutes([]);
     setPayments([]);
@@ -591,14 +614,18 @@ export function App() {
     }
   }
 
-  async function handleDemoSignIn() {
+  async function handleSignIn(email: string, password: string) {
     setLoading(true);
     setError(null);
 
     try {
-      const signedIn = await signInOperator();
+      const signedIn = await signInOperator(email, password);
       setAuth(signedIn);
-      await loadWorkspace(operationDate);
+      if (signedIn.profile.role === "platform_admin") {
+        setPlatformOperators(await listOperators());
+      } else {
+        await loadWorkspace(operationDate);
+      }
       setStatusMessage(`Signed in as ${signedIn.profile.fullName}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to sign in");
@@ -907,7 +934,7 @@ export function App() {
   async function refreshAdminData() {
     const [nextAdminData, nextPlanningOptions, nextLedger] = await Promise.all([
       getAdminMasterData(),
-      getRoutePlanningOptions(),
+      getRoutePlanningOptions(operationDate),
       getCustomerLedger()
     ]);
     setAdminData(nextAdminData);
@@ -1032,7 +1059,32 @@ export function App() {
   }
 
   if (!auth) {
-    return <LoginScreen error={error} onDemoSignIn={handleDemoSignIn} statusMessage={statusMessage} />;
+    return <LoginScreen error={error} onSignIn={(email, password) => void handleSignIn(email, password)} statusMessage={statusMessage} />;
+  }
+
+  if (auth.profile.role === "platform_admin") {
+    return (
+      <PlatformAdminView
+        operators={platformOperators}
+        platformName={auth.profile.fullName.split(" ")[0] || auth.profile.fullName}
+        onCreateOperator={async (input) => {
+          const result = await createOperatorTenant({
+            ...input,
+            status: "trial"
+          });
+          setStatusMessage(`Onboarded ${result.brandName}.`);
+          return result;
+        }}
+        onRefresh={async () => {
+          setPlatformOperators(await listOperators());
+        }}
+        onSetStatus={async (operatorId, status) => {
+          await setOperatorStatus({ operatorId, status });
+          setStatusMessage(`Operator marked ${status}.`);
+        }}
+        onSignOut={() => void handleSignOut()}
+      />
+    );
   }
 
   const selectedRoute = routes.find((routeItem) => routeItem.id === selectedRouteId) ?? routes[0];
@@ -1046,6 +1098,7 @@ export function App() {
     <main className="app-shell app-shell-saas">
       <OperatorSidebar
         activeView={activeView}
+        brandName={auth.profile.brandName ?? auth.profile.operatorName}
         fullName={auth.profile.fullName}
         onOpenProfile={() => setProfileOpen(true)}
         onSelectView={requestViewChange}
@@ -1063,8 +1116,10 @@ export function App() {
           title={workspaceTitles[activeView]}
         />
 
-      {error ? <p className="notice error">{error}</p> : null}
-      {statusMessage ? <p className="notice">{statusMessage}</p> : null}
+      <div className="toast-stack" aria-live="polite">
+        {error ? <p className="notice error">{error}</p> : null}
+        {statusMessage ? <p className="notice">{statusMessage}</p> : null}
+      </div>
 
       <ProfileModal
         initialFullName={auth.profile.fullName}
@@ -1100,11 +1155,8 @@ export function App() {
 
       {activeView === "dashboard" && dashboard ? (
         <DashboardView
-          adminStaff={adminData.staff}
           dashboard={dashboard}
           incidents={incidents}
-          onDeactivateStaff={(staffId) => void handleSetStaffActive(staffId, false)}
-          onEditStaff={() => requestViewChange("admin")}
           operationDate={operationDate}
           todayIso={todayIso}
         />
@@ -1177,51 +1229,74 @@ export function App() {
 
 function LoginScreen({
   error,
-  onDemoSignIn,
+  onSignIn,
   statusMessage
 }: {
   error: string | null;
-  onDemoSignIn: () => void;
+  onSignIn: (email: string, password: string) => void;
   statusMessage?: string | null;
 }) {
+  const [email, setEmail] = useState(demoCredentials.email);
+  const [password, setPassword] = useState(demoCredentials.password);
+
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    onSignIn(email, password);
+  }
+
   return (
     <main className="app-shell login-shell">
       <section className="login-card">
         <p className="eyebrow">CleanOps</p>
         <h1>Operator workspace</h1>
-        <p>Sign in to run routes, payments, attendance, and admin for your ward pilot.</p>
+        <p>Sign in to manage routes, payments, attendance, and admin for your operator.</p>
         {statusMessage ? <p className="notice">{statusMessage}</p> : null}
         {error ? <p className="notice error">{error}</p> : null}
-        <div className="credential-box">
-          <span>{demoCredentials.email}</span>
-          <span>{demoCredentials.password}</span>
-        </div>
-        <button className="primary-button" onClick={onDemoSignIn} type="button">
-          Sign in as demo operator
-        </button>
+        <form className="login-form" onSubmit={handleSubmit}>
+          <label>
+            Email
+            <input
+              autoComplete="username"
+              onChange={(event) => setEmail(event.target.value)}
+              required
+              type="email"
+              value={email}
+            />
+          </label>
+          <label>
+            Password
+            <input
+              autoComplete="current-password"
+              onChange={(event) => setPassword(event.target.value)}
+              required
+              type="password"
+              value={password}
+            />
+          </label>
+          <button className="primary-button" type="submit">
+            Sign in
+          </button>
+        </form>
+        <p className="login-demo-hint">
+          Local demo: {demoCredentials.email} / {demoCredentials.password}. Use a provisioned staff login, or{" "}
+          platform@cleanops.local / cleanops-platform-password for the platform console.
+        </p>
       </section>
     </main>
   );
 }
 
 function DashboardView({
-  adminStaff,
   dashboard,
   incidents,
-  onDeactivateStaff,
-  onEditStaff,
   operationDate,
   todayIso
 }: {
-  adminStaff: AdminMasterData["staff"];
   dashboard: OperatorDashboard;
   incidents: IncidentReport[];
-  onDeactivateStaff: (staffId: string) => void;
-  onEditStaff: () => void;
   operationDate: string;
   todayIso: string;
 }) {
-  const fieldWorkers = adminStaff.filter((staff) => staff.active).slice(0, 8);
   const openIncidents = incidents.filter((incident) => !incident.resolvedAt).length;
 
   return (
@@ -1240,77 +1315,6 @@ function DashboardView({
             </article>
           );
         })}
-      </section>
-
-      <section className="saas-section" aria-label="Collection runs">
-        <h2 className="saas-section-title">
-          {operationDate === todayIso ? "Today's collection runs" : "Collection runs"}
-        </h2>
-        <div className="saas-list">
-          {dashboard.routes.length === 0 ? (
-            <div className="saas-row">
-              <div className="saas-row-copy">
-                <strong>No routes loaded</strong>
-                <span>Plan routes for this date from the Routes tab.</span>
-              </div>
-            </div>
-          ) : (
-            dashboard.routes.map((route) => (
-              <div className="saas-row" key={route.id}>
-                <span className="avatar-chip lg" aria-hidden="true">
-                  {initialsFromName(route.driverName)}
-                </span>
-                <div className="saas-row-copy">
-                  <strong>
-                    {route.zoneName} · {route.driverName}
-                  </strong>
-                  <span>
-                    {route.completedStops}/{route.totalStops} stops · {route.truckRegistration}
-                  </span>
-                </div>
-                <span className={`status-pill ${route.delayed ? "danger" : route.status}`}>
-                  {route.delayed ? "Delayed" : route.status.replace("_", " ")}
-                </span>
-              </div>
-            ))
-          )}
-        </div>
-      </section>
-
-      <section className="saas-section" aria-label="Field workers">
-        <h2 className="saas-section-title">Field workers</h2>
-        <div className="saas-list">
-          {fieldWorkers.length === 0 ? (
-            <div className="saas-row">
-              <div className="saas-row-copy">
-                <strong>No active staff</strong>
-                <span>Onboard drivers and crew from Admin.</span>
-              </div>
-            </div>
-          ) : (
-            fieldWorkers.map((staff) => (
-              <div className="saas-row" key={staff.id}>
-                <span className="avatar-chip lg" aria-hidden="true">
-                  {initialsFromName(staff.fullName)}
-                </span>
-                <div className="saas-row-copy">
-                  <strong>{staff.fullName}</strong>
-                  <span>
-                    {staff.role.replace("_", " ")} · {formatKobo(staff.monthlySalaryKobo)}
-                  </span>
-                </div>
-                <div className="saas-row-actions">
-                  <button className="link-button" onClick={onEditStaff} type="button">
-                    Edit
-                  </button>
-                  <button className="danger-outline" onClick={() => onDeactivateStaff(staff.id)} type="button">
-                    Deactivate
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
       </section>
 
       {(dashboard.alerts.length > 0 || incidents.length > 0) && (
@@ -1359,6 +1363,41 @@ function DashboardView({
           </article>
         </section>
       )}
+
+      <section className="saas-section" aria-label="Collection runs">
+        <h2 className="saas-section-title">
+          {operationDate === todayIso ? "Today's collection runs" : "Collection runs"}
+        </h2>
+        <div className="saas-list">
+          {dashboard.routes.length === 0 ? (
+            <div className="saas-row">
+              <div className="saas-row-copy">
+                <strong>No routes loaded</strong>
+                <span>Plan routes for this date from the Routes tab.</span>
+              </div>
+            </div>
+          ) : (
+            dashboard.routes.map((route) => (
+              <div className="saas-row" key={route.id}>
+                <span className="avatar-chip lg" aria-hidden="true">
+                  {initialsFromName(route.driverName)}
+                </span>
+                <div className="saas-row-copy">
+                  <strong>
+                    {route.zoneName} · {route.driverName}
+                  </strong>
+                  <span>
+                    {route.completedStops}/{route.totalStops} stops · {route.truckRegistration}
+                  </span>
+                </div>
+                <span className={`status-pill ${route.delayed ? "danger" : route.status}`}>
+                  {route.delayed ? "Delayed" : route.status.replace("_", " ")}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+      </section>
     </>
   );
 }
@@ -1416,9 +1455,15 @@ function RoutesView({
   const routeFinalized = selectedRoute?.status === "completed" || selectedRoute?.status === "cancelled";
   const routePlanEditable = selectedRoute?.status === "scheduled" && !selectedRoute.startedAt && !selectedRoute.completedAt;
   const customersAlreadyPlanned = new Set(selectedRoute?.stops.map((stop) => stop.customerId).filter(Boolean));
-  const availableCustomers = planningOptions.customers.filter(
-    (customer) => customer.zoneId === selectedRoute?.zoneId && !customersAlreadyPlanned.has(customer.id)
-  );
+  const availableCustomers = planningOptions.customers
+    .filter((customer) => customer.zoneId === selectedRoute?.zoneId && !customersAlreadyPlanned.has(customer.id))
+    .sort((a, b) => {
+      const dueDelta = Number(Boolean(b.dueToday)) - Number(Boolean(a.dueToday));
+      if (dueDelta !== 0) {
+        return dueDelta;
+      }
+      return a.label.localeCompare(b.label);
+    });
   // Floating fleet: any active truck can be assigned; soft-sort home-zone matches first.
   const availableTrucks = [...planningOptions.trucks].sort((a, b) => {
     const aHome = a.zoneId === selectedRoute?.zoneId ? 0 : 1;
@@ -1664,7 +1709,9 @@ function RoutesView({
                       <option value="">Select customer</option>
                       {availableCustomers.map((customer) => (
                         <option key={customer.id} value={customer.id}>
-                          {customer.label} {customer.helper ? `- ${customer.helper}` : ""}
+                          {customer.dueToday ? "Due today · " : ""}
+                          {customer.label}
+                          {customer.helper ? ` — ${customer.helper}` : ""}
                         </option>
                       ))}
                     </select>
@@ -1948,6 +1995,9 @@ function PaymentsView({
               <span>
                 {customer.zoneName} · {formatKobo(customer.outstandingKobo)} outstanding
               </span>
+              <span>
+                {formatCollectionFrequency(customer.collectionsPerWeek, customer.preferredWeekdays)}
+              </span>
               <span className={`pill ${customer.serviceStatus === "suspended" ? "danger" : ""}`}>
                 {customer.serviceStatus}
               </span>
@@ -1966,7 +2016,11 @@ function PaymentsView({
             <h2>{selectedCustomer?.displayName ?? "No customer selected"}</h2>
             {selectedCustomer ? (
               <p className="panel-subtitle">
-                {selectedCustomer.address} · {selectedCustomer.customerType.replace("_", " ")}
+                {selectedCustomer.address} · {selectedCustomer.customerType.replace("_", " ")} ·{" "}
+                {formatCollectionFrequency(
+                  selectedCustomer.collectionsPerWeek,
+                  selectedCustomer.preferredWeekdays
+                )}
               </p>
             ) : null}
             {selectedCustomer?.serviceStatus === "suspended" && selectedCustomer.suspensionReason ? (

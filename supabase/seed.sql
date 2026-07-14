@@ -1,11 +1,22 @@
-insert into public.operators (id, name, lawma_reference, primary_contact_phone)
+insert into public.operators (id, name, lawma_reference, primary_contact_phone, slug, status, plan_code, brand_name, onboarded_at)
 values (
   '00000000-0000-4000-8000-000000000001',
   'Next to Godliness Ventures',
   'LAWMA-PSP-SURULERE-007',
-  '+2348000000001'
+  '+2348000000001',
+  'next-to-godliness',
+  'active',
+  'pro',
+  'Next to Godliness',
+  now()
 )
-on conflict (id) do nothing;
+on conflict (id) do update
+set
+  slug = excluded.slug,
+  status = excluded.status,
+  plan_code = excluded.plan_code,
+  brand_name = excluded.brand_name,
+  onboarded_at = coalesce(public.operators.onboarded_at, excluded.onboarded_at);
 
 insert into auth.users (
   id,
@@ -378,14 +389,17 @@ insert into public.customers (
   monthly_rate_kobo,
   service_status,
   current_tag_month,
-  suspension_reason
+  suspension_reason,
+  collections_per_week,
+  preferred_weekdays,
+  frequency_notes
 )
 values
-  ('00000000-0000-4000-8000-000000000401', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000101', 'Mrs. Folake Adebayo', '+2348000000401', '14 Akinwunmi Street, Surulere', 'residential', 500000, 'active', date_trunc('month', current_date)::date, null),
-  ('00000000-0000-4000-8000-000000000402', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000101', 'Mr. Tunde Lawal', '+2348000000402', '16 Akinwunmi Street, Surulere', 'residential', 500000, 'active', date_trunc('month', current_date)::date, null),
-  ('00000000-0000-4000-8000-000000000403', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000102', 'Tasty Bites Eatery', '+2348000000403', '22 Market Road, Surulere', 'restaurant', 2500000, 'active', date_trunc('month', current_date)::date, null),
-  ('00000000-0000-4000-8000-000000000404', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000102', 'Blue Gate Mini Mart', '+2348000000404', '25 Market Road, Surulere', 'small_business', 1500000, 'suspended', null, 'Outstanding monthly balance unpaid'),
-  ('00000000-0000-4000-8000-000000000405', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000103', 'Block C Residents Association', '+2348000000405', 'Block C Estate, Surulere', 'estate', 7500000, 'active', date_trunc('month', current_date)::date, null)
+  ('00000000-0000-4000-8000-000000000401', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000101', 'Mrs. Folake Adebayo', '+2348000000401', '14 Akinwunmi Street, Surulere', 'residential', 500000, 'active', date_trunc('month', current_date)::date, null, 1, array[1]::smallint[], null),
+  ('00000000-0000-4000-8000-000000000402', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000101', 'Mr. Tunde Lawal', '+2348000000402', '16 Akinwunmi Street, Surulere', 'residential', 500000, 'active', date_trunc('month', current_date)::date, null, 1, array[1]::smallint[], null),
+  ('00000000-0000-4000-8000-000000000403', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000102', 'Tasty Bites Eatery', '+2348000000403', '22 Market Road, Surulere', 'restaurant', 2500000, 'active', date_trunc('month', current_date)::date, null, 3, array[1, 3, 5]::smallint[], 'Seed: restaurant multi-day cadence (Mon/Wed/Fri)'),
+  ('00000000-0000-4000-8000-000000000404', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000102', 'Blue Gate Mini Mart', '+2348000000404', '25 Market Road, Surulere', 'small_business', 1500000, 'suspended', null, 'Outstanding monthly balance unpaid', 1, array[2]::smallint[], null),
+  ('00000000-0000-4000-8000-000000000405', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000103', 'Block C Residents Association', '+2348000000405', 'Block C Estate, Surulere', 'estate', 7500000, 'active', date_trunc('month', current_date)::date, null, 1, array[3]::smallint[], null)
 on conflict (id) do nothing;
 
 insert into public.routes (
@@ -483,4 +497,190 @@ values
     'Zone B running behind expected pace',
     'Traffic delay around Market Road has slowed stop completion.'
   )
+on conflict (id) do nothing;
+
+-- Platform admin (operator_id null). Local password: cleanops-platform-password
+insert into auth.users (
+  id,
+  instance_id,
+  aud,
+  role,
+  email,
+  phone,
+  encrypted_password,
+  email_confirmed_at,
+  phone_confirmed_at,
+  created_at,
+  updated_at,
+  raw_app_meta_data,
+  raw_user_meta_data,
+  is_super_admin,
+  confirmation_token,
+  recovery_token,
+  email_change_token_new,
+  email_change,
+  phone_change_token,
+  phone_change,
+  email_change_token_current,
+  reauthentication_token
+)
+values (
+  '00000000-0000-4000-8000-000000000091',
+  '00000000-0000-0000-0000-000000000000',
+  'authenticated',
+  'authenticated',
+  'platform@cleanops.local',
+  '+2348000000091',
+  crypt('cleanops-platform-password', gen_salt('bf')),
+  now(),
+  now(),
+  now(),
+  now(),
+  '{"provider":"email","providers":["email"]}'::jsonb,
+  '{"full_name":"CleanOps Platform"}'::jsonb,
+  false,
+  '',
+  '',
+  '',
+  '',
+  '',
+  '',
+  '',
+  ''
+)
+on conflict (id) do nothing;
+
+insert into auth.identities (
+  id,
+  provider_id,
+  user_id,
+  identity_data,
+  provider,
+  last_sign_in_at,
+  created_at,
+  updated_at
+)
+values (
+  '00000000-0000-4000-8000-000000000092',
+  '00000000-0000-4000-8000-000000000091',
+  '00000000-0000-4000-8000-000000000091',
+  '{"sub":"00000000-0000-4000-8000-000000000091","email":"platform@cleanops.local","email_verified":true,"phone_verified":true}'::jsonb,
+  'email',
+  now(),
+  now(),
+  now()
+)
+on conflict (provider_id, provider) do nothing;
+
+insert into public.profiles (id, operator_id, role, full_name, phone)
+values (
+  '00000000-0000-4000-8000-000000000091',
+  null,
+  'platform_admin',
+  'CleanOps Platform',
+  '+2348000000091'
+)
+on conflict (id) do nothing;
+
+-- Second demo tenant for multi-tenant QA. Owner password: cleanops-island-password
+insert into public.operators (id, name, lawma_reference, primary_contact_phone, slug, status, plan_code, brand_name, onboarded_at)
+values (
+  '00000000-0000-4000-8000-000000000002',
+  'Island Clean Services',
+  'LAWMA-PSP-ISLAND-001',
+  '+2348000000002',
+  'island-clean-services',
+  'trial',
+  'basic',
+  'Island Clean',
+  now()
+)
+on conflict (id) do update
+set
+  slug = excluded.slug,
+  status = excluded.status,
+  plan_code = excluded.plan_code,
+  brand_name = excluded.brand_name,
+  onboarded_at = coalesce(public.operators.onboarded_at, excluded.onboarded_at);
+
+insert into auth.users (
+  id,
+  instance_id,
+  aud,
+  role,
+  email,
+  phone,
+  encrypted_password,
+  email_confirmed_at,
+  phone_confirmed_at,
+  created_at,
+  updated_at,
+  raw_app_meta_data,
+  raw_user_meta_data,
+  is_super_admin,
+  confirmation_token,
+  recovery_token,
+  email_change_token_new,
+  email_change,
+  phone_change_token,
+  phone_change,
+  email_change_token_current,
+  reauthentication_token
+)
+values (
+  '00000000-0000-4000-8000-000000000093',
+  '00000000-0000-0000-0000-000000000000',
+  'authenticated',
+  'authenticated',
+  'island.owner@cleanops.local',
+  '+2348000000093',
+  crypt('cleanops-island-password', gen_salt('bf')),
+  now(),
+  now(),
+  now(),
+  now(),
+  '{"provider":"email","providers":["email"]}'::jsonb,
+  '{"full_name":"Tolu Island Owner"}'::jsonb,
+  false,
+  '',
+  '',
+  '',
+  '',
+  '',
+  '',
+  '',
+  ''
+)
+on conflict (id) do nothing;
+
+insert into auth.identities (
+  id,
+  provider_id,
+  user_id,
+  identity_data,
+  provider,
+  last_sign_in_at,
+  created_at,
+  updated_at
+)
+values (
+  '00000000-0000-4000-8000-000000000094',
+  '00000000-0000-4000-8000-000000000093',
+  '00000000-0000-4000-8000-000000000093',
+  '{"sub":"00000000-0000-4000-8000-000000000093","email":"island.owner@cleanops.local","email_verified":true,"phone_verified":true}'::jsonb,
+  'email',
+  now(),
+  now(),
+  now()
+)
+on conflict (provider_id, provider) do nothing;
+
+insert into public.profiles (id, operator_id, role, full_name, phone)
+values (
+  '00000000-0000-4000-8000-000000000093',
+  '00000000-0000-4000-8000-000000000002',
+  'operator_owner',
+  'Tolu Island Owner',
+  '+2348000000093'
+)
 on conflict (id) do nothing;

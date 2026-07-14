@@ -172,25 +172,17 @@ async function loadProfile(userId: string): Promise<AuthState> {
     };
   }
 
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id, operator_id, role, full_name, phone, operators(name)")
-    .eq("id", userId)
-    .single();
+  const { data, error } = await supabase.rpc("get_session_operator_context");
 
   if (error || !data) {
     throw new Error(error?.message ?? "Profile not found");
   }
 
-  const operator = Array.isArray(data.operators) ? data.operators[0] : data.operators;
-  const parsed = operatorProfileSchema.parse({
-    id: data.id,
-    operatorId: data.operator_id,
-    operatorName: operator?.name ?? null,
-    fullName: data.full_name,
-    phone: data.phone,
-    role: data.role
-  });
+  const parsed = operatorProfileSchema.parse(data);
+
+  if (parsed.id !== userId) {
+    throw new Error("Session profile mismatch");
+  }
 
   return {
     profile: parsed,

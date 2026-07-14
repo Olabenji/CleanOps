@@ -25,29 +25,23 @@ export async function searchCustomers(query = ""): Promise<CustomerLedgerItem[]>
     return filterPilotCustomers(query);
   }
 
-  try {
-    const { data, error } = await withTimeout(
-      supabase.rpc("search_customers", {
-        input_query: query.trim() || null
-      }),
-      REQUEST_TIMEOUT_MS,
-      "Timed out while searching customers"
-    );
+  const { data, error } = await withTimeout(
+    supabase.rpc("search_customers", {
+      input_query: query.trim() || null
+    }),
+    REQUEST_TIMEOUT_MS,
+    "Timed out while searching customers"
+  );
 
-    if (error || !data) {
-      return filterPilotCustomers(query);
-    }
-
-    const parsed = customerLedgerItemSchema.array().safeParse(data);
-
-    if (!parsed.success) {
-      return filterPilotCustomers(query);
-    }
-
-    return parsed.data;
-  } catch {
-    return filterPilotCustomers(query);
+  if (error) {
+    throw new Error(error.message);
   }
+
+  if (!data) {
+    return [];
+  }
+
+  return customerLedgerItemSchema.array().parse(data);
 }
 
 export async function recordAgentPayment(entry: AgentPaymentEntry): Promise<AgentPaymentReceipt> {
@@ -87,29 +81,23 @@ export async function getCustomerPaymentHistory(customerId: string): Promise<Pay
     return getPilotCustomerPaymentHistory(customerId);
   }
 
-  try {
-    const { data, error } = await withTimeout(
-      supabase.rpc("customer_payment_history", {
-        input_customer_id: customerId
-      }),
-      REQUEST_TIMEOUT_MS,
-      "Timed out while loading payment history"
-    );
+  const { data, error } = await withTimeout(
+    supabase.rpc("customer_payment_history", {
+      input_customer_id: customerId
+    }),
+    REQUEST_TIMEOUT_MS,
+    "Timed out while loading payment history"
+  );
 
-    if (error || !data) {
-      return getPilotCustomerPaymentHistory(customerId);
-    }
-
-    const parsed = paymentLedgerItemSchema.array().safeParse(data);
-
-    if (!parsed.success) {
-      return [];
-    }
-
-    return parsed.data;
-  } catch {
-    return getPilotCustomerPaymentHistory(customerId);
+  if (error) {
+    throw new Error(error.message);
   }
+
+  if (!data) {
+    return [];
+  }
+
+  return paymentLedgerItemSchema.array().parse(data);
 }
 
 export async function getAgentDailySummary(
@@ -119,27 +107,27 @@ export async function getAgentDailySummary(
     return agentDailyCollectionSummarySchema.parse(getPilotAgentDailySummary(collectionDate));
   }
 
-  try {
-    const { data, error } = await withTimeout(
-      supabase.rpc("agent_daily_collection_summary", {
-        input_date: collectionDate
-      }),
-      REQUEST_TIMEOUT_MS,
-      "Timed out while loading collection summary"
-    );
+  const { data, error } = await withTimeout(
+    supabase.rpc("agent_daily_collection_summary", {
+      input_date: collectionDate
+    }),
+    REQUEST_TIMEOUT_MS,
+    "Timed out while loading collection summary"
+  );
 
-    if (error || !data) {
-      return agentDailyCollectionSummarySchema.parse(getPilotAgentDailySummary(collectionDate));
-    }
-
-    const parsed = agentDailyCollectionSummarySchema.safeParse(data);
-
-    if (!parsed.success) {
-      return agentDailyCollectionSummarySchema.parse(getPilotAgentDailySummary(collectionDate));
-    }
-
-    return parsed.data;
-  } catch {
-    return agentDailyCollectionSummarySchema.parse(getPilotAgentDailySummary(collectionDate));
+  if (error) {
+    throw new Error(error.message);
   }
+
+  if (!data) {
+    return {
+      collectionDate,
+      agentName: "Collection agent",
+      totalCollectedKobo: 0,
+      paymentCount: 0,
+      payments: []
+    };
+  }
+
+  return agentDailyCollectionSummarySchema.parse(data);
 }

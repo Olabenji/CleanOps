@@ -108,5 +108,15 @@ export async function uploadDriverLicenceDocument(input: {
   }
 
   const { data } = supabase.storage.from(LICENCE_BUCKET).getPublicUrl(objectPath);
-  return data.publicUrl;
+  // Bucket is private; prefer a short-lived signed URL for display/storage metadata.
+  const { data: signed, error: signedError } = await supabase.storage
+    .from(LICENCE_BUCKET)
+    .createSignedUrl(objectPath, 60 * 60 * 24 * 7);
+
+  if (signedError || !signed?.signedUrl) {
+    // Fall back to path-style public URL only if signing fails (legacy objects).
+    return data.publicUrl;
+  }
+
+  return signed.signedUrl;
 }

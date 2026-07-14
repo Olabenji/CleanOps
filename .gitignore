@@ -12,6 +12,7 @@ web-build/
 # Environment files
 .env
 .env.*
+.env_PAT.local
 !.env.example
 
 # Logs
@@ -22,6 +23,8 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 .vscode/
+.claude/
+.cursor/
 
 # Supabase
 .branches/

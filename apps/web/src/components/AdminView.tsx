@@ -16,6 +16,7 @@ import type {
   TruckUpdateInput,
   UserRole
 } from "@cleanops/shared";
+import { ISO_WEEKDAY_LABELS, formatCollectionFrequency } from "@cleanops/shared";
 import { Truck, Users, WalletCards } from "lucide-react";
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -30,6 +31,19 @@ import {
   type TruckAdminFilters
 } from "../lib/adminFilters";
 import { uploadDriverLicenceDocument } from "../data/profileService";
+
+const WEEKDAY_OPTIONS = ISO_WEEKDAY_LABELS.map((label, index) => ({
+  value: index + 1,
+  label
+}));
+
+function defaultPreferredWeekdays(customerType: CustomerType): number[] {
+  return customerType === "restaurant" ? [1, 3, 5] : [1];
+}
+
+function defaultCollectionsPerWeek(customerType: CustomerType): number {
+  return customerType === "restaurant" ? 3 : 1;
+}
 
 type AdminSection = "staff" | "trucks" | "customers";
 type AdminModalKind = "staff" | "truck" | "customer";
@@ -184,7 +198,10 @@ export default function AdminView({
     monthlyRateNaira: "",
     phone: "",
     serviceStatus: "active" as CustomerLedgerItem["serviceStatus"],
-    zoneId: defaultZoneId
+    zoneId: defaultZoneId,
+    collectionsPerWeek: 1,
+    preferredWeekdays: [1] as number[],
+    frequencyNotes: ""
   });
   const [staffFilters, setStaffFilters] = useState<StaffAdminFilters>({
     query: "",
@@ -272,7 +289,10 @@ export default function AdminView({
         monthlyRateNaira: "",
         phone: "",
         serviceStatus: "active",
-        zoneId: defaultZoneId
+        zoneId: defaultZoneId,
+        collectionsPerWeek: 1,
+        preferredWeekdays: [1],
+        frequencyNotes: ""
       });
     }
 
@@ -325,7 +345,10 @@ export default function AdminView({
       monthlyRateNaira: String(customer.monthlyRateKobo / 100),
       phone: customer.phone ?? "",
       serviceStatus: customer.serviceStatus,
-      zoneId: customer.zoneId
+      zoneId: customer.zoneId,
+      collectionsPerWeek: customer.collectionsPerWeek,
+      preferredWeekdays: [...customer.preferredWeekdays],
+      frequencyNotes: customer.frequencyNotes ?? ""
     });
     setActiveModal("customer");
   }
@@ -497,7 +520,10 @@ export default function AdminView({
           displayName: customerForm.displayName,
           monthlyRateKobo: Math.round(Number(customerForm.monthlyRateNaira || 0) * 100),
           phone: customerForm.phone || undefined,
-          zoneId: customerForm.zoneId
+          zoneId: customerForm.zoneId,
+          collectionsPerWeek: customerForm.collectionsPerWeek,
+          preferredWeekdays: customerForm.preferredWeekdays,
+          frequencyNotes: customerForm.frequencyNotes || null
         });
         closeModal();
         return;
@@ -510,7 +536,10 @@ export default function AdminView({
         monthlyRateKobo: Math.round(Number(customerForm.monthlyRateNaira || 0) * 100),
         phone: customerForm.phone || undefined,
         serviceStatus: customerForm.serviceStatus,
-        zoneId: customerForm.zoneId
+        zoneId: customerForm.zoneId,
+        collectionsPerWeek: customerForm.collectionsPerWeek,
+        preferredWeekdays: customerForm.preferredWeekdays,
+        frequencyNotes: customerForm.frequencyNotes || null
       });
       setCustomerForm({
         address: "",
@@ -519,7 +548,10 @@ export default function AdminView({
         monthlyRateNaira: "",
         phone: "",
         serviceStatus: "active",
-        zoneId: defaultZoneId
+        zoneId: defaultZoneId,
+        collectionsPerWeek: 1,
+        preferredWeekdays: [1],
+        frequencyNotes: ""
       });
       closeModal();
     } catch (error) {
@@ -816,7 +848,7 @@ export default function AdminView({
             ) : (
               filteredTrucks.map((truck) => (
                 <div className="admin-row" key={truck.id}>
-                  <div>
+                  <div className="admin-row-copy">
                     <strong>{truck.registrationNumber}</strong>
                     <span>
                       {truck.zoneName ?? "No zone"} · {truck.status} ·{" "}
@@ -921,13 +953,14 @@ export default function AdminView({
             ) : (
               filteredCustomers.map((customer) => (
                 <div className="admin-row" key={customer.id}>
-                  <div>
+                  <div className="admin-row-copy">
                     <strong>{customer.displayName}</strong>
                     <span>
                       {customer.zoneName} · {customer.address} · {formatKobo(customer.monthlyRateKobo)}
                     </span>
                     <small>
-                      {customer.phone ?? "No phone"} · {customer.customerType.replace("_", " ")}
+                      {customer.phone ?? "No phone"} · {customer.customerType.replace("_", " ")} ·{" "}
+                      {formatCollectionFrequency(customer.collectionsPerWeek, customer.preferredWeekdays)}
                     </small>
                     {customerStatusErrors[customer.id] ? (
                       <p className="inline-error">{customerStatusErrors[customer.id]}</p>
@@ -1233,9 +1266,19 @@ export default function AdminView({
           <label>
             Type
             <select
-              onChange={(event) =>
-                setCustomerForm((current) => ({ ...current, customerType: event.target.value as CustomerType }))
-              }
+              onChange={(event) => {
+                const customerType = event.target.value as CustomerType;
+                setCustomerForm((current) => ({
+                  ...current,
+                  customerType,
+                  collectionsPerWeek: editingCustomerId
+                    ? current.collectionsPerWeek
+                    : defaultCollectionsPerWeek(customerType),
+                  preferredWeekdays: editingCustomerId
+                    ? current.preferredWeekdays
+                    : defaultPreferredWeekdays(customerType)
+                }));
+              }}
               value={customerForm.customerType}
             >
               {adminCustomerTypes.map((type) => (
@@ -1253,6 +1296,62 @@ export default function AdminView({
               required
               type="number"
               value={customerForm.monthlyRateNaira}
+            />
+          </label>
+          <label>
+            Collections per week
+            <input
+              max="7"
+              min="1"
+              onChange={(event) =>
+                setCustomerForm((current) => ({
+                  ...current,
+                  collectionsPerWeek: Math.min(7, Math.max(1, Number(event.target.value) || 1))
+                }))
+              }
+              required
+              type="number"
+              value={customerForm.collectionsPerWeek}
+            />
+          </label>
+          <fieldset className="weekday-fieldset">
+            <legend>Preferred weekdays</legend>
+            <p className="panel-subtitle">
+              Residential floor: 1×/week. Commercial frequency is agreed after site evaluation.
+            </p>
+            <div className="weekday-checkboxes">
+              {WEEKDAY_OPTIONS.map((day) => {
+                const checked = customerForm.preferredWeekdays.includes(day.value);
+                return (
+                  <label className="weekday-option" key={day.value}>
+                    <input
+                      checked={checked}
+                      onChange={() =>
+                        setCustomerForm((current) => {
+                          const preferredWeekdays = checked
+                            ? current.preferredWeekdays.filter((value) => value !== day.value)
+                            : [...current.preferredWeekdays, day.value].sort((a, b) => a - b);
+                          return {
+                            ...current,
+                            preferredWeekdays:
+                              preferredWeekdays.length > 0 ? preferredWeekdays : current.preferredWeekdays
+                          };
+                        })
+                      }
+                      type="checkbox"
+                    />
+                    {day.label}
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+          <label>
+            Frequency notes
+            <input
+              onChange={(event) => setCustomerForm((current) => ({ ...current, frequencyNotes: event.target.value }))}
+              placeholder="Optional site-evaluation notes"
+              value={customerForm.frequencyNotes}
             />
           </label>
           {!editingCustomerId ? (

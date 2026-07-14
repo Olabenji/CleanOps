@@ -92,6 +92,14 @@ export async function uploadDriverLicenceFromUri(input: {
     throw new Error(error.message);
   }
 
-  const { data } = supabase.storage.from(LICENCE_BUCKET).getPublicUrl(objectPath);
-  return data.publicUrl;
+  const { data: signed, error: signedError } = await supabase.storage
+    .from(LICENCE_BUCKET)
+    .createSignedUrl(objectPath, 60 * 60 * 24 * 7);
+
+  if (signedError || !signed?.signedUrl) {
+    const { data } = supabase.storage.from(LICENCE_BUCKET).getPublicUrl(objectPath);
+    return data.publicUrl;
+  }
+
+  return signed.signedUrl;
 }

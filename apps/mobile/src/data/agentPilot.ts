@@ -21,7 +21,10 @@ export const pilotAgentCustomers: CustomerLedgerItem[] = [
     currentTagMonth: null,
     lastPaymentAt: null,
     lastPaymentAmountKobo: null,
-    lastPaymentChannel: null
+    lastPaymentChannel: null,
+    collectionsPerWeek: 1,
+    preferredWeekdays: [1],
+    frequencyNotes: null
   },
   {
     customerId: "00000000-0000-4000-8000-000000000402",
@@ -38,7 +41,10 @@ export const pilotAgentCustomers: CustomerLedgerItem[] = [
     currentTagMonth: new Date().toISOString().slice(0, 10),
     lastPaymentAt: new Date().toISOString(),
     lastPaymentAmountKobo: 500000,
-    lastPaymentChannel: "agent_cash"
+    lastPaymentChannel: "agent_cash",
+    collectionsPerWeek: 1,
+    preferredWeekdays: [1],
+    frequencyNotes: null
   },
   {
     customerId: "00000000-0000-4000-8000-000000000403",
@@ -55,7 +61,10 @@ export const pilotAgentCustomers: CustomerLedgerItem[] = [
     currentTagMonth: null,
     lastPaymentAt: new Date().toISOString(),
     lastPaymentAmountKobo: 1000000,
-    lastPaymentChannel: "agent_cash"
+    lastPaymentChannel: "agent_cash",
+    collectionsPerWeek: 3,
+    preferredWeekdays: [1, 3, 5],
+    frequencyNotes: "Seed: restaurant multi-day cadence (Mon/Wed/Fri)"
   }
 ];
 

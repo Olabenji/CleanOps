@@ -26,6 +26,9 @@ export const pilotProfile: OperatorProfile = {
   id: "00000000-0000-4000-8000-000000000011",
   operatorId: "00000000-0000-4000-8000-000000000001",
   operatorName: "Next to Godliness Ventures",
+  brandName: "Next to Godliness",
+  operatorStatus: "active",
+  planCode: "pro",
   fullName: "Lanre Operator",
   phone: "+2348000000011",
   role: "operator_owner"
@@ -111,7 +114,10 @@ export let pilotCustomerLedger: CustomerLedgerItem[] = [
     currentTagMonth: new Date().toISOString().slice(0, 10),
     lastPaymentAt: new Date().toISOString(),
     lastPaymentAmountKobo: 500000,
-    lastPaymentChannel: "paystack"
+    lastPaymentChannel: "paystack",
+    collectionsPerWeek: 1,
+    preferredWeekdays: [1],
+    frequencyNotes: null
   },
   {
     customerId: "00000000-0000-4000-8000-000000000404",
@@ -128,7 +134,10 @@ export let pilotCustomerLedger: CustomerLedgerItem[] = [
     currentTagMonth: null,
     lastPaymentAt: null,
     lastPaymentAmountKobo: null,
-    lastPaymentChannel: null
+    lastPaymentChannel: null,
+    collectionsPerWeek: 1,
+    preferredWeekdays: [2],
+    frequencyNotes: null
   },
   {
     customerId: "00000000-0000-4000-8000-000000000405",
@@ -145,7 +154,10 @@ export let pilotCustomerLedger: CustomerLedgerItem[] = [
     currentTagMonth: new Date().toISOString().slice(0, 10),
     lastPaymentAt: new Date().toISOString(),
     lastPaymentAmountKobo: 7500000,
-    lastPaymentChannel: "agent_cash"
+    lastPaymentChannel: "agent_cash",
+    collectionsPerWeek: 1,
+    preferredWeekdays: [3],
+    frequencyNotes: null
   }
 ];
 

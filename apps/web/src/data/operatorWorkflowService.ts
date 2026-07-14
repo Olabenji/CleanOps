@@ -224,8 +224,12 @@ export async function getPaymentLedger(): Promise<PaymentLedgerItem[]> {
     .order("paid_at", { ascending: false })
     .limit(50);
 
-  if (error || !data) {
-    return pilotPayments;
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!data || data.length === 0) {
+    return [];
   }
 
   return data.map((payment) => {
@@ -251,8 +255,12 @@ export async function getCustomerLedger(): Promise<CustomerLedgerItem[]> {
 
   const { data, error } = await supabase.rpc("customer_ledger_snapshot");
 
-  if (error || !data) {
-    return pilotCustomerLedger;
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!data) {
+    return [];
   }
 
   return customerLedgerItemSchema.array().parse(data);
@@ -267,7 +275,11 @@ export async function getCustomerPaymentHistory(customerId: string): Promise<Pay
     input_customer_id: customerId
   });
 
-  if (error || !data) {
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!data) {
     return [];
   }
 
@@ -333,8 +345,17 @@ export async function getOperatorAgentCollections(
     input_date: collectionDate
   });
 
-  if (error || !data) {
-    return getPilotOperatorAgentCollections(collectionDate);
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!data) {
+    return {
+      collectionDate,
+      agents: [],
+      totalCollectedKobo: 0,
+      paymentCount: 0
+    };
   }
 
   return operatorAgentCollectionsSnapshotSchema.parse(data);
@@ -351,8 +372,12 @@ export async function getStaffAttendance(
     input_date: attendanceDate
   });
 
-  if (error || !data) {
-    return pilotStaffAttendance;
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!data) {
+    return [];
   }
 
   return staffAttendanceRowSchema.array().parse(data);
@@ -391,8 +416,12 @@ export async function getMonthlyStaffSummary(
     input_month: month
   });
 
-  if (error || !data) {
-    return getPilotMonthlyStaffSummary();
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!data) {
+    return [];
   }
 
   return monthlyStaffSummarySchema.array().parse(data);
@@ -408,8 +437,12 @@ export async function getRecentIncidentReports(operationDate?: string): Promise<
     input_date: operationDate ?? null
   });
 
-  if (error || !data) {
-    return filterPilotIncidentsByDate(operationDate);
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!data) {
+    return [];
   }
 
   return incidentReportSchema.array().parse(data);
@@ -472,7 +505,7 @@ export async function saveRouteAsTemplate(input: SaveRouteAsTemplateInput): Prom
   return saveRouteAsTemplateResultSchema.parse(data);
 }
 
-export async function getRoutePlanningOptions(): Promise<RoutePlanningOptions> {
+export async function getRoutePlanningOptions(operationDate?: string): Promise<RoutePlanningOptions> {
   if (!supabase) {
     return {
       zones: [],
@@ -482,7 +515,9 @@ export async function getRoutePlanningOptions(): Promise<RoutePlanningOptions> {
     };
   }
 
-  const { data, error } = await supabase.rpc("route_planning_options");
+  const { data, error } = await supabase.rpc("route_planning_options", {
+    input_date: operationDate ?? new Date().toISOString().slice(0, 10)
+  });
 
   if (error || !data) {
     throw new Error(error?.message ?? "Unable to load route planning options");
@@ -881,7 +916,10 @@ export async function onboardCustomer(input: CustomerOnboardingInput) {
     input_address: parsed.address,
     input_customer_type: parsed.customerType,
     input_monthly_rate_kobo: parsed.monthlyRateKobo,
-    input_service_status: parsed.serviceStatus
+    input_service_status: parsed.serviceStatus,
+    input_collections_per_week: parsed.collectionsPerWeek,
+    input_preferred_weekdays: parsed.preferredWeekdays,
+    input_frequency_notes: parsed.frequencyNotes ?? null
   });
 
   if (error) {
@@ -903,7 +941,10 @@ export async function updateCustomer(input: CustomerUpdateInput) {
     input_phone: parsed.phone ?? null,
     input_address: parsed.address,
     input_customer_type: parsed.customerType,
-    input_monthly_rate_kobo: parsed.monthlyRateKobo
+    input_monthly_rate_kobo: parsed.monthlyRateKobo,
+    input_collections_per_week: parsed.collectionsPerWeek,
+    input_preferred_weekdays: parsed.preferredWeekdays,
+    input_frequency_notes: parsed.frequencyNotes ?? null
   });
 
   if (error) {
