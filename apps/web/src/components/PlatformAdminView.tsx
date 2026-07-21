@@ -1,5 +1,6 @@
 import {
   operatorPlanCodes,
+  operationTimeZones,
   type CreateOperatorTenantResult,
   type OperatorPlanCode,
   type OperatorStatus,
@@ -30,6 +31,7 @@ export default function PlatformAdminView({
     slug: string;
     brandName: string;
     planCode: OperatorPlanCode;
+    timezone: string;
     ownerFullName: string;
     ownerEmail: string;
     ownerPhone: string;
@@ -50,6 +52,7 @@ export default function PlatformAdminView({
     slug: "",
     brandName: "",
     planCode: "basic" as OperatorPlanCode,
+    timezone: "Africa/Lagos",
     ownerFullName: "",
     ownerEmail: "",
     ownerPhone: "",
@@ -66,6 +69,7 @@ export default function PlatformAdminView({
         slug: form.slug || slugify(form.name),
         brandName: form.brandName || form.name,
         planCode: form.planCode,
+        timezone: form.timezone,
         ownerFullName: form.ownerFullName,
         ownerEmail: form.ownerEmail,
         ownerPhone: form.ownerPhone,
@@ -78,6 +82,7 @@ export default function PlatformAdminView({
         slug: "",
         brandName: "",
         planCode: "basic",
+        timezone: "Africa/Lagos",
         ownerFullName: "",
         ownerEmail: "",
         ownerPhone: "",
@@ -159,7 +164,8 @@ export default function PlatformAdminView({
                   <div className="admin-row-copy">
                     <strong>{operator.brandName || operator.name}</strong>
                     <span>
-                      {operator.slug} · {operator.planCode} · {operator.ownerEmail ?? "No owner email"}
+                      {operator.slug} · {operator.planCode} · {operator.timezone ?? "Africa/Lagos"} ·{" "}
+                      {operator.ownerEmail ?? "No owner email"}
                     </span>
                     <small>
                       {operator.ownerFullName ? `${operator.ownerFullName} · ` : ""}
@@ -248,6 +254,19 @@ export default function PlatformAdminView({
               {operatorPlanCodes.map((code) => (
                 <option key={code} value={code}>
                   {code}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Operations timezone
+            <select
+              onChange={(event) => setForm((current) => ({ ...current, timezone: event.target.value }))}
+              value={form.timezone}
+            >
+              {operationTimeZones.map((zone) => (
+                <option key={zone} value={zone}>
+                  {zone}
                 </option>
               ))}
             </select>

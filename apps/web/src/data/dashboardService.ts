@@ -1,4 +1,4 @@
-import { operatorDashboardSchema, type OperatorDashboard } from "@cleanops/shared";
+import { getOperationDate, operatorDashboardSchema, type OperatorDashboard } from "@cleanops/shared";
 import { supabase } from "../lib/supabase";
 import { getPilotDashboard } from "./pilotWorkflows";
 
@@ -39,7 +39,7 @@ function emptyDashboard(operatorName = "Operator"): OperatorDashboard {
   };
 }
 
-export async function getOperatorDashboard(operationDate = new Date().toISOString().slice(0, 10)): Promise<OperatorDashboard> {
+export async function getOperatorDashboard(operationDate = getOperationDate()): Promise<OperatorDashboard> {
   if (!supabase) {
     return getPilotDashboard();
   }

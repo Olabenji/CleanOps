@@ -1,4 +1,5 @@
 import type { DriverStopAction, RouteDetail, RouteStopStatus } from "@cleanops/shared";
+import { getOperationDate } from "@cleanops/shared";
 
 export const pilotDriver = {
   fullName: "Adewale Johnson",
@@ -15,7 +16,7 @@ export const pilotDriverRoute: RouteDetail = {
   completedStops: 2,
   totalStops: 5,
   delayed: false,
-  scheduledDate: new Date().toISOString().slice(0, 10),
+  scheduledDate: getOperationDate(),
   startedAt: new Date().toISOString(),
   completedAt: null,
   stops: [

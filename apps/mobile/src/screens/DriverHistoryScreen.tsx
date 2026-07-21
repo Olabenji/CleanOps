@@ -1,42 +1,47 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { DriverShiftJob } from "@cleanops/shared";
+import { addOperationDays, DEFAULT_OPERATION_TIME_ZONE, getOperationDate } from "@cleanops/shared";
 import { fetchDriverTodayShiftSummary } from "../data/driverService";
 import { colors } from "../theme";
 
-function isoDaysAgo(days: number) {
-  const date = new Date();
-  date.setHours(12, 0, 0, 0);
-  date.setDate(date.getDate() - days);
-  return date.toISOString().slice(0, 10);
-}
-
-function formatDayLabel(iso: string) {
-  const today = isoDaysAgo(0);
-  if (iso === today) {
-    return "Today";
-  }
-
-  if (iso === isoDaysAgo(1)) {
-    return "Yesterday";
-  }
-
-  return new Date(`${iso}T12:00:00`).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short"
-  });
-}
-
 export default function DriverHistoryScreen({
+  operationTimezone = DEFAULT_OPERATION_TIME_ZONE,
   renderJob
 }: {
+  operationTimezone?: string;
   renderJob: (job: DriverShiftJob) => ReactNode;
 }) {
+  function isoDaysAgo(days: number) {
+    return addOperationDays(getOperationDate(operationTimezone), -days);
+  }
+
+  function formatDayLabel(iso: string) {
+    const today = isoDaysAgo(0);
+    if (iso === today) {
+      return "Today";
+    }
+
+    if (iso === isoDaysAgo(1)) {
+      return "Yesterday";
+    }
+
+    return new Date(`${iso}T12:00:00`).toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short"
+    });
+  }
+
   const dayOptions = [0, 1, 2, 3, 4, 5, 6].map(isoDaysAgo);
   const [selectedDate, setSelectedDate] = useState(dayOptions[0]);
   const [jobs, setJobs] = useState<DriverShiftJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const today = getOperationDate(operationTimezone);
+    setSelectedDate(today);
+  }, [operationTimezone]);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,104 +73,95 @@ export default function DriverHistoryScreen({
   }, [selectedDate]);
 
   return (
-    <ScrollView contentContainerStyle={styles.container} style={styles.scroll}>
-      <Text style={styles.eyebrow}>CLEANOPS DRIVER</Text>
-      <Text style={styles.heading}>History</Text>
-      <Text style={styles.copy}>Completed jobs and cover work by day.</Text>
+    <View style={styles.safeArea}>
+      <ScrollView contentContainerStyle={styles.container} style={styles.scrollView}>
+        <Text style={styles.eyebrow}>CLEANOPS DRIVER</Text>
+        <Text style={styles.heading}>History</Text>
+        <Text style={styles.copy}>Finished jobs by day.</Text>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chips}>
-        {dayOptions.map((day) => (
-          <Pressable
-            key={day}
-            onPress={() => setSelectedDate(day)}
-            style={[styles.chip, selectedDate === day && styles.chipActive]}
-          >
-            <Text style={[styles.chipText, selectedDate === day && styles.chipTextActive]}>
-              {formatDayLabel(day)}
-            </Text>
-          </Pressable>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 8 }}>
+          {dayOptions.map((day) => (
+            <Pressable
+              key={day}
+              onPress={() => setSelectedDate(day)}
+              style={[styles.dayPill, selectedDate === day && styles.dayPillActive, { marginRight: 8 }]}
+            >
+              <Text style={[styles.dayText, selectedDate === day && styles.dayTextActive]}>
+                {formatDayLabel(day)}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+
+        {loading ? <ActivityIndicator color={colors.accent} style={{ marginTop: 24 }} /> : null}
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        {!loading && !error && jobs.length === 0 ? (
+          <Text style={styles.copy}>No finished jobs for this day.</Text>
+        ) : null}
+        {jobs.map((job) => (
+          <View key={job.id}>{renderJob(job)}</View>
         ))}
       </ScrollView>
-
-      {loading ? <ActivityIndicator color={colors.accent} style={{ marginTop: 24 }} /> : null}
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      {!loading && !error && jobs.length === 0 ? (
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyTitle}>No jobs for this day</Text>
-          <Text style={styles.emptyCopy}>Finished routes and cover jobs will show up here.</Text>
-        </View>
-      ) : null}
-      {!loading ? jobs.map((job) => <View key={job.id}>{renderJob(job)}</View>) : null}
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: { flex: 1 },
+  safeArea: {
+    backgroundColor: colors.bg,
+    flex: 1
+  },
+  scrollView: {
+    flex: 1
+  },
   container: {
-    gap: 12,
     padding: 20,
-    paddingBottom: 40
+    paddingBottom: 28,
+    paddingTop: 12
   },
   eyebrow: {
-    color: colors.muted,
-    fontSize: 12,
+    color: "#1a7f45",
+    fontSize: 13,
     fontWeight: "800",
-    letterSpacing: 1.2
+    letterSpacing: 1.4,
+    marginBottom: 12,
+    textTransform: "uppercase"
   },
   heading: {
-    color: colors.text,
-    fontSize: 28,
+    color: "#102017",
+    fontSize: 38,
     fontWeight: "800",
-    letterSpacing: -0.5
+    letterSpacing: -1.4,
+    marginBottom: 8
   },
   copy: {
-    color: colors.muted,
+    color: "#5d6f64",
     fontSize: 15,
-    lineHeight: 22
+    lineHeight: 22,
+    marginBottom: 8
   },
-  chips: {
-    marginVertical: 4
-  },
-  chip: {
+  dayPill: {
     backgroundColor: colors.card,
     borderColor: colors.border,
     borderRadius: 999,
     borderWidth: 1,
-    marginRight: 8,
     paddingHorizontal: 14,
     paddingVertical: 8
   },
-  chipActive: {
-    backgroundColor: colors.accentSoft,
-    borderColor: colors.accent
+  dayPillActive: {
+    backgroundColor: "#1a7f45",
+    borderColor: "#1a7f45"
   },
-  chipText: {
-    color: colors.muted,
+  dayText: {
+    color: "#5d6f64",
+    fontSize: 13,
     fontWeight: "700"
   },
-  chipTextActive: {
-    color: colors.accent
+  dayTextActive: {
+    color: "#fff"
   },
-  emptyCard: {
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderRadius: 18,
-    borderWidth: 1,
-    gap: 6,
-    padding: 16
-  },
-  emptyTitle: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: "800"
-  },
-  emptyCopy: {
-    color: colors.muted,
-    lineHeight: 20
-  },
-  error: {
-    color: colors.danger,
-    fontWeight: "700"
+  errorText: {
+    color: "#b42318",
+    marginTop: 12
   }
 });

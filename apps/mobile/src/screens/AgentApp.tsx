@@ -18,6 +18,7 @@ import type {
   CustomerLedgerItem,
   PaymentChannel
 } from "@cleanops/shared";
+import { addOperationDays, DEFAULT_OPERATION_TIME_ZONE, getOperationDate } from "@cleanops/shared";
 import { getAgentDailySummary, recordAgentPayment, searchCustomers } from "../data/agentService";
 import CustomerPaymentModal from "./CustomerPaymentModal";
 import {
@@ -67,6 +68,7 @@ export default function AgentApp({
   onSignOut: () => void;
   onSessionUpdated?: (next: Pick<FieldSession, "fullName" | "phone">) => void;
 }) {
+  const operationTimezone = session.timezone ?? DEFAULT_OPERATION_TIME_ZONE;
   const [customers, setCustomers] = useState<CustomerLedgerItem[]>([]);
   const [paymentModalCustomerId, setPaymentModalCustomerId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -82,7 +84,7 @@ export default function AgentApp({
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<AgentTabId>("collect");
-  const [historyDate, setHistoryDate] = useState(new Date().toISOString().slice(0, 10));
+  const [historyDate, setHistoryDate] = useState(() => getOperationDate(operationTimezone));
   const [historySummary, setHistorySummary] = useState<AgentDailyCollectionSummary | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -93,7 +95,7 @@ export default function AgentApp({
   const paymentModalCustomer =
     customers.find((customer) => customer.customerId === paymentModalCustomerId) ?? null;
   const pendingQueue = useMemo(() => queue.filter((item) => !item.syncedAt), [queue]);
-  const collectionDate = new Date().toISOString().slice(0, 10);
+  const collectionDate = getOperationDate(operationTimezone);
 
   useEffect(() => {
     void bootstrapAgent();
@@ -342,12 +344,9 @@ export default function AgentApp({
   }, [activeTab, historyDate]);
 
   if (activeTab === "history") {
-    const dayOptions = [0, 1, 2, 3, 4, 5, 6].map((days) => {
-      const date = new Date();
-      date.setHours(12, 0, 0, 0);
-      date.setDate(date.getDate() - days);
-      return date.toISOString().slice(0, 10);
-    });
+    const dayOptions = [0, 1, 2, 3, 4, 5, 6].map((days) =>
+      addOperationDays(getOperationDate(operationTimezone), -days)
+    );
 
     return (
       <View style={styles.safeArea}>

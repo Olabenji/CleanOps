@@ -7,6 +7,47 @@ export type AuthState = {
   mode: "demo" | "supabase";
 };
 
+/** Shared copy — never reveal whether the email is registered. */
+export const PASSWORD_RESET_GENERIC_MESSAGE =
+  "If an account exists for that email, a reset link has been sent. Check your inbox and spam folder. Open the link to set a new password, then sign in again (operators on this site; field staff on the mobile app).";
+
+export function getPasswordRecoveryRedirectUrl() {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+
+  return `${window.location.origin}${window.location.pathname}`;
+}
+
+/**
+ * Self-serve forgot-password for any Auth login (platform, operator, staff, future resident).
+ * Always returns the same success message to avoid account enumeration.
+ */
+export async function requestPasswordReset(
+  email: string,
+  redirectTo = getPasswordRecoveryRedirectUrl()
+): Promise<{ message: string }> {
+  const normalized = email.trim().toLowerCase();
+
+  if (!normalized || !normalized.includes("@")) {
+    throw new Error("Enter a valid email address.");
+  }
+
+  if (!supabase) {
+    throw new Error("Password reset requires a live Supabase connection.");
+  }
+
+  const { error } = await supabase.auth.resetPasswordForEmail(normalized, {
+    ...(redirectTo ? { redirectTo } : {})
+  });
+
+  if (error && /rate limit|too many|email rate/i.test(error.message)) {
+    throw new Error(error.message);
+  }
+
+  return { message: PASSWORD_RESET_GENERIC_MESSAGE };
+}
+
 export async function getCurrentOperatorProfile(): Promise<AuthState | null> {
   if (!supabase) {
     return {
@@ -109,8 +150,8 @@ export async function completePasswordRecovery(newPassword: string): Promise<str
     throw new Error(error.message);
   }
 
-  const email = data.user?.email;
-  if (!email) {
+  const nextEmail = data.user?.email;
+  if (!nextEmail) {
     throw new Error("Unable to confirm account after password update.");
   }
 
@@ -118,7 +159,7 @@ export async function completePasswordRecovery(newPassword: string): Promise<str
   clearPasswordRecoveryPending();
   await supabase.auth.signOut();
 
-  return email;
+  return nextEmail;
 }
 
 export function subscribeToPasswordRecovery(onRecovery: (email: string) => void) {

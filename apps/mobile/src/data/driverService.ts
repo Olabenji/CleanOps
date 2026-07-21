@@ -7,6 +7,7 @@ import {
   ensureDailyRoutesResultSchema,
   fuelLogInputSchema,
   fuelLogRecordSchema,
+  getOperationDate,
   incidentReportInputSchema,
   routeDetailSchema,
   routeTruckHandoffSchema,
@@ -59,7 +60,7 @@ export async function signInDriver(): Promise<DriverSession> {
   };
 }
 
-export async function fetchAssignedRoute(): Promise<RouteDetail | null> {
+export async function fetchAssignedRoute(operationDate = getOperationDate()): Promise<RouteDetail | null> {
   if (!supabase) {
     return pilotDriverRoute;
   }
@@ -71,7 +72,7 @@ export async function fetchAssignedRoute(): Promise<RouteDetail | null> {
   }
 
   const { data, error } = await withTimeout(
-    supabase.rpc("driver_assigned_route"),
+    supabase.rpc("driver_assigned_route", { input_date: operationDate }),
     REQUEST_TIMEOUT_MS,
     "Timed out while loading assigned route"
   );
@@ -331,7 +332,11 @@ export async function recordDumpsiteRun(input: DumpsiteRunInput): Promise<Dumpsi
       arrivedAt: parsed.phase === "arrive" ? now : null,
       clearedAt: parsed.phase === "clear" ? now : null,
       tippingFeeKobo: parsed.tippingFeeKobo ?? 0,
-      notes: parsed.notes ?? null
+      notes: parsed.notes ?? null,
+      dumpsiteSiteName: parsed.dumpsiteSiteName ?? null,
+      docketNumber: parsed.docketNumber ?? null,
+      weighbridgeTonnes: parsed.weighbridgeTonnes ?? null,
+      ticketPhotoPath: parsed.ticketPhotoPath ?? null
     });
   }
 
@@ -346,7 +351,11 @@ export async function recordDumpsiteRun(input: DumpsiteRunInput): Promise<Dumpsi
       input_route_id: parsed.routeId,
       input_phase: parsed.phase,
       input_tipping_fee_kobo: parsed.tippingFeeKobo ?? null,
-      input_notes: parsed.notes ?? null
+      input_notes: parsed.notes ?? null,
+      input_dumpsite_site_name: parsed.dumpsiteSiteName ?? null,
+      input_docket_number: parsed.docketNumber ?? null,
+      input_weighbridge_tonnes: parsed.weighbridgeTonnes ?? null,
+      input_ticket_photo_path: parsed.ticketPhotoPath ?? null
     }),
     REQUEST_TIMEOUT_MS,
     "Timed out while recording dumpsite run"
@@ -365,7 +374,9 @@ export async function fetchDriverTodayShiftSummary(inputDate?: string): Promise<
   }
 
   const { data, error } = await withTimeout(
-    supabase.rpc("driver_today_shift_summary", inputDate ? { input_date: inputDate } : {}),
+    supabase.rpc("driver_today_shift_summary", {
+      input_date: inputDate ?? getOperationDate()
+    }),
     REQUEST_TIMEOUT_MS,
     "Timed out while loading today's shift summary"
   );

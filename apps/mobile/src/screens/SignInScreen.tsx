@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { FieldRole } from "../data/fieldSessionService";
+import { requestPasswordReset } from "../data/passwordResetService";
 import { formatConnectionProbe, probeSupabaseConnection } from "../lib/supabaseDiagnostics";
 
 export default function SignInScreen({
@@ -35,6 +36,10 @@ export default function SignInScreen({
   const [showDemoAccounts, setShowDemoAccounts] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [keyboardInset, setKeyboardInset] = useState(0);
+  const [mode, setMode] = useState<"signIn" | "forgot">("signIn");
+  const [forgotBusy, setForgotBusy] = useState(false);
+  const [forgotMessage, setForgotMessage] = useState<string | null>(null);
+  const [forgotError, setForgotError] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -74,6 +79,22 @@ export default function SignInScreen({
     onSignIn({ email, password });
   }
 
+  async function handleForgotSubmit() {
+    Keyboard.dismiss();
+    setForgotBusy(true);
+    setForgotError(null);
+    setForgotMessage(null);
+
+    try {
+      const result = await requestPasswordReset(email);
+      setForgotMessage(result.message);
+    } catch (resetError) {
+      setForgotError(resetError instanceof Error ? resetError.message : "Unable to send reset email.");
+    } finally {
+      setForgotBusy(false);
+    }
+  }
+
   function scrollToInput(offsetY: number) {
     requestAnimationFrame(() => {
       scrollRef.current?.scrollTo({ animated: true, y: offsetY });
@@ -101,10 +122,12 @@ export default function SignInScreen({
         showsVerticalScrollIndicator
         style={styles.scroll}
       >
-        <Text style={styles.eyebrow}>CleanOps Field</Text>
-        <Text style={styles.heading}>Sign in</Text>
+        <Text style={styles.eyebrow}>CleanOps</Text>
+        <Text style={styles.heading}>{mode === "forgot" ? "Forgot password" : "Sign in"}</Text>
         <Text style={styles.copy}>
-          Use the login email and password from Admin onboarding, or the demo accounts below.
+          {mode === "forgot"
+            ? "Enter your account email. We will send a reset link that opens in the browser. After you set a new password, return here to sign in."
+            : "Staff and residents can sign in with the email and password provided for their CleanOps account."}
         </Text>
         <Text style={styles.hint}>
           Live sync needs your phone on the same Wi‑Fi as the dev machine, with Supabase running on port 54321.
@@ -120,79 +143,121 @@ export default function SignInScreen({
         </View>
 
         <View style={styles.formCard}>
-          <Text style={styles.formTitle}>Staff login</Text>
+          <Text style={styles.formTitle}>{mode === "forgot" ? "Reset by email" : "Account login"}</Text>
           <TextInput
             autoCapitalize="none"
             autoComplete="email"
             autoCorrect={false}
-            editable={!loading}
+            editable={!loading && !forgotBusy}
             keyboardType="email-address"
             onChangeText={setEmail}
             onFocus={() => scrollToInput(180)}
             placeholder="Email"
-            returnKeyType="next"
+            returnKeyType={mode === "forgot" ? "done" : "next"}
             style={styles.input}
             textContentType="username"
             value={email}
           />
-          <View style={styles.passwordField}>
-            <TextInput
-              editable={!loading}
-              onChangeText={setPassword}
-              onFocus={() => scrollToInput(260)}
-              onSubmitEditing={handleSubmit}
-              placeholder="Password"
-              returnKeyType="done"
-              secureTextEntry={!showPassword}
-              style={styles.passwordInput}
-              textContentType="password"
-              value={password}
-            />
+          {mode === "signIn" ? (
+            <View style={styles.passwordField}>
+              <TextInput
+                editable={!loading}
+                onChangeText={setPassword}
+                onFocus={() => scrollToInput(260)}
+                onSubmitEditing={handleSubmit}
+                placeholder="Password"
+                returnKeyType="done"
+                secureTextEntry={!showPassword}
+                style={styles.passwordInput}
+                textContentType="password"
+                value={password}
+              />
+              <Pressable
+                accessibilityLabel={showPassword ? "Hide password" : "Show password"}
+                accessibilityRole="button"
+                disabled={loading}
+                hitSlop={8}
+                onPress={() => setShowPassword((current) => !current)}
+                style={styles.passwordToggle}
+              >
+                <Text style={styles.passwordToggleText}>{showPassword ? "Hide" : "Show"}</Text>
+              </Pressable>
+            </View>
+          ) : null}
+          {mode === "signIn" && error ? <Text style={styles.error}>{error}</Text> : null}
+          {mode === "forgot" && forgotError ? <Text style={styles.error}>{forgotError}</Text> : null}
+          {mode === "forgot" && forgotMessage ? <Text style={styles.success}>{forgotMessage}</Text> : null}
+          {mode === "signIn" ? (
             <Pressable
-              accessibilityLabel={showPassword ? "Hide password" : "Show password"}
-              accessibilityRole="button"
-              disabled={loading}
-              hitSlop={8}
-              onPress={() => setShowPassword((current) => !current)}
-              style={styles.passwordToggle}
+              disabled={loading || !email.trim() || !password}
+              onPress={handleSubmit}
+              style={[styles.primaryButton, (loading || !email.trim() || !password) && styles.disabled]}
             >
-              <Text style={styles.passwordToggleText}>{showPassword ? "Hide" : "Show"}</Text>
+              <Text style={styles.primaryButtonText}>{loading ? "Signing in..." : "Sign in"}</Text>
             </Pressable>
-          </View>
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          ) : (
+            <Pressable
+              disabled={forgotBusy || !email.trim()}
+              onPress={() => void handleForgotSubmit()}
+              style={[styles.primaryButton, (forgotBusy || !email.trim()) && styles.disabled]}
+            >
+              <Text style={styles.primaryButtonText}>{forgotBusy ? "Sending..." : "Send reset link"}</Text>
+            </Pressable>
+          )}
           <Pressable
-            disabled={loading || !email.trim() || !password}
-            onPress={handleSubmit}
-            style={[styles.primaryButton, (loading || !email.trim() || !password) && styles.disabled]}
+            disabled={loading || forgotBusy}
+            onPress={() => {
+              setMode((current) => (current === "signIn" ? "forgot" : "signIn"));
+              setForgotError(null);
+              setForgotMessage(null);
+            }}
+            style={styles.forgotLink}
           >
-            <Text style={styles.primaryButtonText}>{loading ? "Signing in..." : "Sign in"}</Text>
+            <Text style={styles.forgotLinkText}>
+              {mode === "signIn" ? "Forgot password?" : "Back to sign in"}
+            </Text>
           </Pressable>
         </View>
 
-        <Pressable onPress={() => setShowDemoAccounts((current) => !current)} style={styles.demoToggle}>
-          <Text style={styles.demoToggleText}>{showDemoAccounts ? "Hide demo accounts" : "Use demo accounts"}</Text>
-        </Pressable>
-
-        {showDemoAccounts ? (
-          <View style={styles.demoSection}>
-            <Pressable
-              disabled={loading}
-              onPress={() => onDemoSignIn("driver")}
-              style={[styles.card, styles.driverCard, loading && styles.disabled]}
-            >
-              <Text style={styles.cardTitle}>Demo driver</Text>
-              <Text style={styles.cardCopy}>driver@cleanops.local</Text>
+        {mode === "signIn" ? (
+          <>
+            <Pressable onPress={() => setShowDemoAccounts((current) => !current)} style={styles.demoToggle}>
+              <Text style={styles.demoToggleText}>
+                {showDemoAccounts ? "Hide demo accounts" : "Use demo accounts"}
+              </Text>
             </Pressable>
 
-            <Pressable
-              disabled={loading}
-              onPress={() => onDemoSignIn("collection_agent")}
-              style={[styles.card, styles.agentCard, loading && styles.disabled]}
-            >
-              <Text style={styles.cardTitle}>Demo collection agent</Text>
-              <Text style={styles.cardCopy}>agent@cleanops.local</Text>
-            </Pressable>
-          </View>
+            {showDemoAccounts ? (
+              <View style={styles.demoSection}>
+                <Pressable
+                  disabled={loading}
+                  onPress={() => onDemoSignIn("driver")}
+                  style={[styles.card, styles.driverCard, loading && styles.disabled]}
+                >
+                  <Text style={styles.cardTitle}>Demo driver</Text>
+                  <Text style={styles.cardCopy}>driver@cleanops.local</Text>
+                </Pressable>
+
+                <Pressable
+                  disabled={loading}
+                  onPress={() => onDemoSignIn("collection_agent")}
+                  style={[styles.card, styles.agentCard, loading && styles.disabled]}
+                >
+                  <Text style={styles.cardTitle}>Demo collection agent</Text>
+                  <Text style={styles.cardCopy}>agent@cleanops.local</Text>
+                </Pressable>
+
+                <Pressable
+                  disabled={loading}
+                  onPress={() => onDemoSignIn("resident")}
+                  style={[styles.card, loading && styles.disabled]}
+                >
+                  <Text style={styles.cardTitle}>Demo resident (offline)</Text>
+                  <Text style={styles.cardCopy}>Pilot inbox / schedule preview</Text>
+                </Pressable>
+              </View>
+            ) : null}
+          </>
         ) : null}
       </ScrollView>
     </KeyboardAvoidingView>
@@ -317,6 +382,13 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     padding: 12
   },
+  success: {
+    backgroundColor: "#e8f7ee",
+    borderRadius: 12,
+    color: "#14532d",
+    marginBottom: 12,
+    padding: 12
+  },
   primaryButton: {
     backgroundColor: "#1a7f45",
     borderRadius: 14,
@@ -328,6 +400,16 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700",
     textAlign: "center"
+  },
+  forgotLink: {
+    alignSelf: "center",
+    marginTop: 14,
+    paddingVertical: 6
+  },
+  forgotLinkText: {
+    color: "#1a7f45",
+    fontSize: 14,
+    fontWeight: "700"
   },
   demoToggle: {
     alignSelf: "center",

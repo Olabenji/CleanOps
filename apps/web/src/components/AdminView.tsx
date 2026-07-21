@@ -4,6 +4,8 @@ import type {
   AdminStaff,
   AdminTruck,
   CustomerLedgerItem,
+  CustomerLoginProvisionInput,
+  CustomerLoginProvisionResult,
   CustomerOnboardingInput,
   CustomerType,
   CustomerUpdateInput,
@@ -136,7 +138,9 @@ export default function AdminView({
   onOnboardCustomer,
   onOnboardStaff,
   onOnboardTruck,
+  onProvisionCustomerLogin,
   onProvisionStaffLogin,
+  onRequestCustomerPasswordReset,
   onRequestStaffPasswordReset,
   onSetCustomerServiceStatus,
   onSetStaffActive,
@@ -150,7 +154,11 @@ export default function AdminView({
   onOnboardCustomer: (input: CustomerOnboardingInput) => Promise<void>;
   onOnboardStaff: (input: StaffOnboardingInput) => Promise<StaffOnboardingResult>;
   onOnboardTruck: (input: TruckOnboardingInput) => Promise<void>;
+  onProvisionCustomerLogin: (input: CustomerLoginProvisionInput) => Promise<CustomerLoginProvisionResult>;
   onProvisionStaffLogin: (input: StaffLoginProvisionInput) => Promise<StaffOnboardingResult>;
+  onRequestCustomerPasswordReset: (
+    customerId: string
+  ) => Promise<{ sent: true; loginEmail: string; customerName: string }>;
   onRequestStaffPasswordReset: (staffId: string) => Promise<{ sent: true; loginEmail: string; staffName: string }>;
   onSetCustomerServiceStatus: (customerId: string, serviceStatus: CustomerLedgerItem["serviceStatus"]) => Promise<void>;
   onSetStaffActive: (staffId: string, active: boolean) => Promise<void>;
@@ -179,10 +187,13 @@ export default function AdminView({
     licenceImageUrl: ""
   });
   const [staffCredentials, setStaffCredentials] = useState<StaffOnboardingResult | null>(null);
+  const [customerCredentials, setCustomerCredentials] = useState<CustomerLoginProvisionResult | null>(null);
   const [provisionStaffId, setProvisionStaffId] = useState<string | null>(null);
+  const [provisionCustomerId, setProvisionCustomerId] = useState<string | null>(null);
   const [provisionEmail, setProvisionEmail] = useState("");
   const [provisionFormError, setProvisionFormError] = useState<string | null>(null);
   const [staffLoginActionErrors, setStaffLoginActionErrors] = useState<Record<string, string>>({});
+  const [customerLoginActionErrors, setCustomerLoginActionErrors] = useState<Record<string, string>>({});
   const [truckForm, setTruckForm] = useState({
     make: "",
     model: "",
@@ -456,8 +467,56 @@ export default function AdminView({
 
   function openProvisionLogin(staffId: string, fullName: string) {
     setProvisionStaffId(staffId);
+    setProvisionCustomerId(null);
     setProvisionEmail(suggestStaffLoginEmail(fullName));
     setProvisionFormError(null);
+  }
+
+  function openProvisionCustomerLogin(customer: AdminCustomer) {
+    setProvisionCustomerId(customer.id);
+    setProvisionStaffId(null);
+    setProvisionEmail(customer.loginEmail ?? customer.email ?? "");
+    setProvisionFormError(null);
+  }
+
+  async function submitProvisionCustomerLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!provisionCustomerId) {
+      return;
+    }
+
+    setProvisionFormError(null);
+
+    try {
+      const result = await onProvisionCustomerLogin({
+        customerId: provisionCustomerId,
+        loginEmail: provisionEmail
+      });
+      setProvisionCustomerId(null);
+      setProvisionEmail("");
+      if (result.loginProvisioned && result.temporaryPassword) {
+        setCustomerCredentials(result);
+      }
+    } catch (error) {
+      setProvisionFormError(error instanceof Error ? error.message : "Unable to create resident login");
+    }
+  }
+
+  async function handleCustomerPasswordReset(customerId: string) {
+    setCustomerLoginActionErrors((current) => {
+      const next = { ...current };
+      delete next[customerId];
+      return next;
+    });
+
+    try {
+      await onRequestCustomerPasswordReset(customerId);
+    } catch (error) {
+      setCustomerLoginActionErrors((current) => ({
+        ...current,
+        [customerId]: error instanceof Error ? error.message : "Unable to send password reset email"
+      }));
+    }
   }
 
   async function submitTruck(event: FormEvent<HTMLFormElement>) {
@@ -962,8 +1021,18 @@ export default function AdminView({
                       {customer.phone ?? "No phone"} · {customer.customerType.replace("_", " ")} ·{" "}
                       {formatCollectionFrequency(customer.collectionsPerWeek, customer.preferredWeekdays)}
                     </small>
+                    <small>
+                      {customer.hasLoginProfile
+                        ? customer.loginEmail
+                          ? `Resident login: ${customer.loginEmail}`
+                          : "Resident login linked"
+                        : "No resident login"}
+                    </small>
                     {customerStatusErrors[customer.id] ? (
                       <p className="inline-error">{customerStatusErrors[customer.id]}</p>
+                    ) : null}
+                    {customerLoginActionErrors[customer.id] ? (
+                      <p className="inline-error">{customerLoginActionErrors[customer.id]}</p>
                     ) : null}
                   </div>
                   <span className={`pill ${customer.serviceStatus === "suspended" ? "danger" : ""}`}>
@@ -973,6 +1042,15 @@ export default function AdminView({
                     <button onClick={() => openEditCustomer(customer)} type="button">
                       Edit
                     </button>
+                    {!customer.hasLoginProfile ? (
+                      <button onClick={() => openProvisionCustomerLogin(customer)} type="button">
+                        Create login
+                      </button>
+                    ) : (
+                      <button onClick={() => void handleCustomerPasswordReset(customer.id)} type="button">
+                        Send reset email
+                      </button>
+                    )}
                     <button
                       onClick={() =>
                         void toggleCustomerStatus(
@@ -1492,6 +1570,76 @@ export default function AdminView({
             </button>
           </div>
         </form>
+      </AdminModal>
+
+      <AdminModal
+        onClose={() => {
+          setProvisionCustomerId(null);
+          setProvisionEmail("");
+          setProvisionFormError(null);
+        }}
+        open={Boolean(provisionCustomerId)}
+        subtitle="Creates an email-only resident Auth login linked to this customer. Share the temporary password, or send a reset later."
+        title="Create resident login"
+      >
+        <form
+          className="entry-card admin-form admin-modal-form"
+          onSubmit={(event) => void submitProvisionCustomerLogin(event)}
+        >
+          <label>
+            Login email
+            <input
+              onChange={(event) => setProvisionEmail(event.target.value)}
+              placeholder="resident@example.com"
+              required
+              type="email"
+              value={provisionEmail}
+            />
+          </label>
+          {provisionFormError ? <p className="inline-error">{provisionFormError}</p> : null}
+          <div className="button-row">
+            <button className="primary-button" type="submit">
+              Create login
+            </button>
+          </div>
+        </form>
+      </AdminModal>
+
+      <AdminModal
+        onClose={() => setCustomerCredentials(null)}
+        open={Boolean(customerCredentials)}
+        subtitle="Share these credentials with the household contact. The temporary password is shown once."
+        title="Resident login created"
+      >
+        {customerCredentials ? (
+          <div className="entry-card admin-credentials-card">
+            <p>
+              <strong>Email:</strong> {customerCredentials.loginEmail}
+            </p>
+            <p>
+              <strong>Temporary password:</strong> {customerCredentials.temporaryPassword}
+            </p>
+            <p>
+              Residents will use the resident portal when it ships. They can use Forgot password on the operator web
+              login to recover access.
+            </p>
+            <div className="button-row">
+              <button
+                onClick={() => {
+                  void navigator.clipboard.writeText(
+                    `Email: ${customerCredentials.loginEmail}\nTemporary password: ${customerCredentials.temporaryPassword}`
+                  );
+                }}
+                type="button"
+              >
+                Copy credentials
+              </button>
+              <button className="primary-button" onClick={() => setCustomerCredentials(null)} type="button">
+                Done
+              </button>
+            </div>
+          </div>
+        ) : null}
       </AdminModal>
     </section>
   );

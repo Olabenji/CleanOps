@@ -18,7 +18,8 @@
     "test:pilot:cleanup": "node scripts/pilot-validation.mjs --cleanup",
     "test:paystack:sign": "node scripts/paystack-webhook-smoke.mjs sign",
     "test:paystack:post": "node scripts/paystack-webhook-smoke.mjs post",
-    "test:paystack:idempotent": "node scripts/paystack-webhook-smoke.mjs post-duplicate"
+    "test:paystack:idempotent": "node scripts/paystack-webhook-smoke.mjs post-duplicate",
+    "dev:functions": "supabase functions serve --env-file .env.functions.local"
   },
   "engines": {
     "node": ">=22.0.0",

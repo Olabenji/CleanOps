@@ -18,10 +18,16 @@ import {
   saveRouteAsTemplateInputSchema,
   saveRouteAsTemplateResultSchema,
   ensureDailyRoutesResultSchema,
+  finalizeRouteWithUnservicedResultSchema,
+  getOperationDate,
+  getOperationMonth,
   staffOnboardingInputSchema,
   staffOnboardingResultSchema,
   staffLoginProvisionInputSchema,
   staffPasswordResetTargetSchema,
+  customerLoginProvisionInputSchema,
+  customerLoginProvisionResultSchema,
+  customerPasswordResetTargetSchema,
   staffAttendanceRowSchema,
   staffUpdateInputSchema,
   truckOnboardingInputSchema,
@@ -32,6 +38,7 @@ import {
   type CustomerOnboardingInput,
   type CustomerUpdateInput,
   type EnsureDailyRoutesResult,
+  type FinalizeRouteWithUnservicedResult,
   type IncidentReport,
   type MonthlyStaffSummary,
   type OperatorAgentCollectionsSnapshot,
@@ -49,6 +56,8 @@ import {
   type StaffOnboardingInput,
   type StaffOnboardingResult,
   type StaffLoginProvisionInput,
+  type CustomerLoginProvisionInput,
+  type CustomerLoginProvisionResult,
   type StaffAttendanceRow,
   type StaffUpdateInput,
   type TruckOnboardingInput,
@@ -57,6 +66,7 @@ import {
 import { deriveRouteProgress } from "../lib/routeProgress";
 import { formatAppError } from "../lib/errors";
 import { supabase } from "../lib/supabase";
+import { requestPasswordReset } from "./authService";
 import {
   applyPilotAttendanceOverride,
   getPilotMonthlyStaffSummary,
@@ -80,6 +90,7 @@ type RawRouteStop = {
   completed_at: string | null;
   notes: string | null;
   skip_reason: string | null;
+  is_make_good?: boolean | null;
   customers:
     | {
         display_name?: string;
@@ -133,6 +144,7 @@ export async function getRoutes(operationDate?: string): Promise<RouteDetail[]> 
         completed_at,
         notes,
         skip_reason,
+        is_make_good,
         customers(id, display_name, address, service_status)
       )
     `
@@ -203,6 +215,30 @@ export async function transitionRouteStatus(routeId: string, status: RouteStatus
   }
 
   return getRoutes(operationDate);
+}
+
+export async function finalizeRouteWithUnserviced(
+  routeId: string,
+  note?: string,
+  operationDate?: string
+): Promise<{ routes: RouteDetail[]; result: FinalizeRouteWithUnservicedResult }> {
+  if (!supabase) {
+    throw new Error("Closing incomplete routes requires Supabase");
+  }
+
+  const { data, error } = await supabase.rpc("finalize_route_with_unserviced", {
+    input_route_id: routeId,
+    input_note: note ?? null
+  });
+
+  if (error || !data) {
+    throw new Error(error?.message ?? "Unable to close incomplete route");
+  }
+
+  return {
+    result: finalizeRouteWithUnservicedResultSchema.parse(data),
+    routes: await getRoutes(operationDate)
+  };
 }
 
 export async function getPaymentLedger(): Promise<PaymentLedgerItem[]> {
@@ -335,7 +371,7 @@ export async function updateCustomerAccountStatus(
 }
 
 export async function getOperatorAgentCollections(
-  collectionDate = new Date().toISOString().slice(0, 10)
+  collectionDate = getOperationDate()
 ): Promise<OperatorAgentCollectionsSnapshot> {
   if (!supabase) {
     return getPilotOperatorAgentCollections(collectionDate);
@@ -362,7 +398,7 @@ export async function getOperatorAgentCollections(
 }
 
 export async function getStaffAttendance(
-  attendanceDate = new Date().toISOString().slice(0, 10)
+  attendanceDate = getOperationDate()
 ): Promise<StaffAttendanceRow[]> {
   if (!supabase) {
     return pilotStaffAttendance;
@@ -406,7 +442,7 @@ export async function recordAttendanceOverride(override: AttendanceOverride): Pr
 }
 
 export async function getMonthlyStaffSummary(
-  month = new Date().toISOString().slice(0, 10)
+  month = getOperationMonth()
 ): Promise<MonthlyStaffSummary[]> {
   if (!supabase) {
     return getPilotMonthlyStaffSummary();
@@ -516,7 +552,7 @@ export async function getRoutePlanningOptions(operationDate?: string): Promise<R
   }
 
   const { data, error } = await supabase.rpc("route_planning_options", {
-    input_date: operationDate ?? new Date().toISOString().slice(0, 10)
+    input_date: operationDate ?? getOperationDate()
   });
 
   if (error || !data) {
@@ -650,12 +686,16 @@ export async function rejectRouteTruckHandoff(
   return routeTruckHandoffSchema.parse(data);
 }
 
-export async function addRoutePlanStop(routeId: string, customerId: string, operationDate?: string): Promise<RouteDetail[]> {
+export async function addRoutePlanStop(
+  routeId: string,
+  customerId: string,
+  operationDate?: string
+): Promise<{ routes: RouteDetail[]; warning: string | null }> {
   if (!supabase) {
-    return filterPilotRoutesByDate(operationDate);
+    return { routes: filterPilotRoutesByDate(operationDate), warning: null };
   }
 
-  const { error } = await supabase.rpc("add_route_plan_stop", {
+  const { data, error } = await supabase.rpc("add_route_plan_stop", {
     input_route_id: routeId,
     input_customer_id: customerId
   });
@@ -664,7 +704,12 @@ export async function addRoutePlanStop(routeId: string, customerId: string, oper
     throw new Error(error.message);
   }
 
-  return getRoutes(operationDate);
+  const warning =
+    data && typeof data === "object" && "warning" in data && typeof (data as { warning: unknown }).warning === "string"
+      ? (data as { warning: string }).warning
+      : null;
+
+  return { routes: await getRoutes(operationDate), warning };
 }
 
 export async function removeRoutePlanStop(stopId: string, operationDate?: string): Promise<RouteDetail[]> {
@@ -775,6 +820,50 @@ export async function provisionStaffMemberLogin(
   return staffOnboardingResultSchema.parse(data);
 }
 
+export async function provisionCustomerLogin(
+  input: CustomerLoginProvisionInput
+): Promise<CustomerLoginProvisionResult> {
+  const parsed = customerLoginProvisionInputSchema.parse(input);
+
+  if (!supabase) {
+    throw new Error("Customer login provisioning requires Supabase.");
+  }
+
+  const { data, error } = await supabase.rpc("provision_customer_login", {
+    input_customer_id: parsed.customerId,
+    input_login_email: parsed.loginEmail
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return customerLoginProvisionResultSchema.parse(data);
+}
+
+export async function requestCustomerPasswordReset(customerId: string) {
+  if (!supabase) {
+    throw new Error("Password reset requires Supabase.");
+  }
+
+  const { data, error } = await supabase.rpc("get_customer_password_reset_target", {
+    input_customer_id: customerId
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const target = customerPasswordResetTargetSchema.parse(data);
+  await requestPasswordReset(target.loginEmail);
+
+  return {
+    sent: true as const,
+    loginEmail: target.loginEmail,
+    customerName: target.customerName
+  };
+}
+
 export async function requestStaffPasswordReset(staffId: string) {
   if (!supabase) {
     throw new Error("Password reset requires Supabase.");
@@ -789,16 +878,7 @@ export async function requestStaffPasswordReset(staffId: string) {
   }
 
   const target = staffPasswordResetTargetSchema.parse(data);
-  const redirectTo =
-    typeof window !== "undefined" ? `${window.location.origin}${window.location.pathname}` : undefined;
-
-  const { error: resetError } = await supabase.auth.resetPasswordForEmail(target.loginEmail, {
-    redirectTo
-  });
-
-  if (resetError) {
-    throw new Error(resetError.message);
-  }
+  await requestPasswordReset(target.loginEmail);
 
   return {
     sent: true as const,
@@ -1028,7 +1108,8 @@ function mapRoute(route: any): RouteDetail | null {
           completedAt: stop.completed_at,
           notes: stop.notes,
           skipReason: stop.skip_reason,
-          serviceStatus: customer?.service_status ?? "active"
+          serviceStatus: customer?.service_status ?? "active",
+          isMakeGood: Boolean(stop.is_make_good)
         };
       })
   });

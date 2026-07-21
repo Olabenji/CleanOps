@@ -37,5 +37,14 @@ verify_jwt = true
 [functions.paystack-webhook]
 verify_jwt = false
 
+[functions.resident-paystack-checkout]
+verify_jwt = true
+
+[functions.resident-paystack-verify]
+verify_jwt = true
+
+[functions.dispatch-resident-notifications]
+verify_jwt = false
+
 [storage]
 enabled = true

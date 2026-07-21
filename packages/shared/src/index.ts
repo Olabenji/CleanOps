@@ -102,7 +102,11 @@ export const dumpsiteRunInputSchema = z.object({
   routeId: z.string().uuid(),
   phase: z.enum(dumpsiteRunPhases),
   tippingFeeKobo: z.number().int().nonnegative().optional(),
-  notes: z.string().optional()
+  notes: z.string().optional(),
+  dumpsiteSiteName: z.string().optional(),
+  docketNumber: z.string().optional(),
+  weighbridgeTonnes: z.number().nonnegative().optional(),
+  ticketPhotoPath: z.string().optional()
 });
 
 export const dumpsiteRunRecordSchema = z.object({
@@ -112,7 +116,180 @@ export const dumpsiteRunRecordSchema = z.object({
   arrivedAt: z.string().nullable(),
   clearedAt: z.string().nullable(),
   tippingFeeKobo: z.number().int().nonnegative(),
-  notes: z.string().nullable()
+  notes: z.string().nullable(),
+  dumpsiteSiteName: z.string().nullable().optional(),
+  docketNumber: z.string().nullable().optional(),
+  weighbridgeTonnes: z.number().nullable().optional(),
+  ticketPhotoPath: z.string().nullable().optional()
+});
+
+export const serviceComplaintCategories = [
+  "missed_stop",
+  "overflow",
+  "crew",
+  "billing",
+  "illegal_dump",
+  "other"
+] as const;
+
+export const serviceComplaintStatuses = [
+  "open",
+  "acknowledged",
+  "in_progress",
+  "resolved",
+  "escalated"
+] as const;
+
+export const serviceComplaintSchema = z.object({
+  id: z.string().uuid(),
+  customerId: z.string().uuid().nullable().optional(),
+  customerName: z.string().nullable().optional(),
+  routeId: z.string().uuid().nullable().optional(),
+  zoneName: z.string().nullable().optional(),
+  source: z.string(),
+  category: z.enum(serviceComplaintCategories),
+  title: z.string(),
+  description: z.string(),
+  status: z.enum(serviceComplaintStatuses),
+  acknowledgedAt: z.string().nullable(),
+  resolvedAt: z.string().nullable(),
+  escalatedAt: z.string().nullable().optional(),
+  slaDueAt: z.string(),
+  resolutionNotes: z.string().nullable().optional(),
+  createdAt: z.string(),
+  slaBreached: z.boolean().optional()
+});
+
+export const createServiceComplaintInputSchema = z.object({
+  title: z.string().min(3),
+  description: z.string().min(5),
+  category: z.enum(serviceComplaintCategories).default("other"),
+  source: z.enum(["operator", "resident", "agent", "call_centre"]).default("operator"),
+  customerId: z.string().uuid().optional().nullable(),
+  routeId: z.string().uuid().optional().nullable(),
+  zoneId: z.string().uuid().optional().nullable()
+});
+
+export const submitResidentComplaintInputSchema = z.object({
+  title: z.string().min(3),
+  description: z.string().min(5),
+  category: z.enum(serviceComplaintCategories).default("missed_stop")
+});
+
+export const residentPaymentSchema = z.object({
+  id: z.string().uuid(),
+  channel: z.enum(paymentChannels),
+  amountKobo: z.number().int().positive(),
+  paidAt: z.string(),
+  externalReference: z.string().nullable().optional()
+});
+
+export const residentPaystackCheckoutInputSchema = z.object({
+  amountKobo: z.number().int().positive().optional(),
+  callbackUrl: z.string().url().or(z.string().startsWith("cleanops://")).optional()
+});
+
+export const residentPaystackCheckoutResultSchema = z.object({
+  authorizationUrl: z.string().url(),
+  accessCode: z.string().min(1),
+  reference: z.string().min(1),
+  amountKobo: z.number().int().positive()
+});
+
+export const residentPaystackVerifyResultSchema = z.object({
+  posted: z.boolean(),
+  alreadyPosted: z.boolean(),
+  paymentId: z.string().uuid().nullable(),
+  outstandingKobo: z.number().int().nonnegative().nullable(),
+  amountKobo: z.number().int().positive(),
+  reference: z.string().min(1)
+});
+
+export const billDeliveryStatuses = ["pending", "delivered", "failed", "disputed"] as const;
+
+export const billDeliverySchema = z.object({
+  id: z.string().uuid(),
+  customerId: z.string().uuid(),
+  customerName: z.string(),
+  zoneName: z.string().nullable().optional(),
+  billPeriodStart: z.string(),
+  amountKobo: z.number().int().nonnegative(),
+  status: z.enum(billDeliveryStatuses),
+  deliveredAt: z.string().nullable(),
+  deliveryNote: z.string().nullable().optional(),
+  deliveredByName: z.string().nullable().optional(),
+  createdAt: z.string()
+});
+
+export const recordBillDeliveryInputSchema = z.object({
+  customerId: z.string().uuid(),
+  billPeriodStart: z.string(),
+  amountKobo: z.number().int().nonnegative(),
+  status: z.enum(billDeliveryStatuses).default("delivered"),
+  deliveryNote: z.string().optional().nullable()
+});
+
+export const complianceCaseTypes = [
+  "illegal_dumping",
+  "skeletal_service",
+  "irregular_service"
+] as const;
+
+export const complianceCaseStatuses = ["open", "investigating", "closed", "referred"] as const;
+
+export const complianceCaseSchema = z.object({
+  id: z.string().uuid(),
+  caseType: z.enum(complianceCaseTypes),
+  status: z.enum(complianceCaseStatuses),
+  title: z.string(),
+  description: z.string(),
+  customerName: z.string().nullable().optional(),
+  zoneName: z.string().nullable().optional(),
+  routeId: z.string().uuid().nullable().optional(),
+  closedAt: z.string().nullable().optional(),
+  closureNotes: z.string().nullable().optional(),
+  createdAt: z.string()
+});
+
+export const createComplianceCaseInputSchema = z.object({
+  caseType: z.enum(complianceCaseTypes),
+  title: z.string().min(3),
+  description: z.string().min(5),
+  customerId: z.string().uuid().optional().nullable(),
+  routeId: z.string().uuid().optional().nullable(),
+  zoneId: z.string().uuid().optional().nullable(),
+  incidentReportId: z.string().uuid().optional().nullable()
+});
+
+export const vehicleBrandingChecklistSchema = z.object({
+  id: z.string().uuid(),
+  truckId: z.string().uuid(),
+  truckRegistration: z.string(),
+  routeId: z.string().uuid().nullable().optional(),
+  checkedAt: z.string(),
+  scheduledDate: z.string(),
+  wardInscriptionOk: z.boolean(),
+  phoneDisplayedOk: z.boolean(),
+  colourCodingOk: z.boolean(),
+  amberLightOk: z.boolean(),
+  nettingOrTarpaulinOk: z.boolean(),
+  gangPpeOk: z.boolean(),
+  passed: z.boolean(),
+  notes: z.string().nullable().optional(),
+  checkedByName: z.string().nullable().optional()
+});
+
+export const recordVehicleBrandingChecklistInputSchema = z.object({
+  truckId: z.string().uuid(),
+  wardInscriptionOk: z.boolean(),
+  phoneDisplayedOk: z.boolean(),
+  colourCodingOk: z.boolean(),
+  amberLightOk: z.boolean(),
+  nettingOrTarpaulinOk: z.boolean(),
+  gangPpeOk: z.boolean(),
+  routeId: z.string().uuid().optional().nullable(),
+  notes: z.string().optional().nullable(),
+  scheduledDate: z.string().optional()
 });
 
 export const routeTruckHandoffSchema = z.object({
@@ -177,6 +354,8 @@ export const operatorProfileSchema = z.object({
   brandName: z.string().nullable().optional(),
   operatorStatus: z.enum(operatorStatuses).nullable().optional(),
   planCode: z.enum(operatorPlanCodes).nullable().optional(),
+  timezone: z.string().nullable().optional(),
+  customerId: z.string().uuid().nullable().optional(),
   fullName: z.string(),
   phone: z.string(),
   role: z.enum(userRoles)
@@ -192,6 +371,8 @@ export const ownAccountProfileSchema = z.object({
   operatorId: z.string().uuid().nullable(),
   operatorName: z.string().nullable().optional(),
   brandName: z.string().nullable().optional(),
+  timezone: z.string().nullable().optional(),
+  customerId: z.string().uuid().nullable().optional(),
   fullName: z.string(),
   phone: z.string(),
   role: z.enum(userRoles),
@@ -206,6 +387,7 @@ export const createOperatorTenantInputSchema = z.object({
   brandName: z.string().min(2).optional(),
   planCode: z.enum(operatorPlanCodes).default("basic"),
   status: z.enum(operatorStatuses).default("trial"),
+  timezone: z.string().min(1).default("Africa/Lagos"),
   lawmaReference: z.string().optional(),
   ownerFullName: z.string().min(2),
   ownerEmail: z.string().email(),
@@ -219,6 +401,7 @@ export const createOperatorTenantResultSchema = z.object({
   brandName: z.string(),
   status: z.enum(operatorStatuses),
   planCode: z.enum(operatorPlanCodes),
+  timezone: z.string().optional(),
   ownerProfileId: z.string().uuid(),
   ownerEmail: z.string().email(),
   temporaryPassword: z.string().min(8)
@@ -231,6 +414,7 @@ export const platformOperatorSchema = z.object({
   brandName: z.string(),
   status: z.enum(operatorStatuses),
   planCode: z.enum(operatorPlanCodes),
+  timezone: z.string().optional(),
   lawmaReference: z.string().nullable().optional(),
   primaryContactPhone: z.string().nullable().optional(),
   onboardedAt: z.string().nullable().optional(),
@@ -286,6 +470,90 @@ export const customerCollectionFrequencySchema = z.object({
   frequencyNotes: z.string().nullable().optional()
 });
 
+export const residentHomeTruckSchema = z.object({
+  registrationNumber: z.string(),
+  status: z.enum(truckStatuses)
+});
+
+export const residentHomePspSchema = z.object({
+  operatorName: z.string(),
+  brandName: z.string().nullable(),
+  primaryContactPhone: z.string().nullable(),
+  lawmaReference: z.string().nullable().optional(),
+  timezone: z.string().nullable().optional()
+});
+
+export const residentHomeMakeGoodSchema = z.object({
+  active: z.literal(true),
+  sourceDate: z.string(),
+  targetDate: z.string().optional(),
+  dueBy: z.string(),
+  status: z.enum(["open", "scheduled"])
+});
+
+export const residentNotificationKinds = ["unserviced_recovery", "recovery_resolved"] as const;
+export const residentNotificationStatuses = ["unread", "read", "resolved"] as const;
+
+export const residentNotificationSchema = z.object({
+  id: z.string().uuid(),
+  kind: z.enum(residentNotificationKinds),
+  title: z.string(),
+  body: z.string(),
+  payload: z.record(z.string(), z.unknown()).default({}),
+  status: z.enum(residentNotificationStatuses),
+  makeGoodId: z.string().uuid().nullable().optional(),
+  createdAt: z.string(),
+  readAt: z.string().nullable().optional(),
+  resolvedAt: z.string().nullable().optional()
+});
+
+export const registerResidentPushDeviceInputSchema = z.object({
+  installationId: z.string().min(1),
+  expoPushToken: z.string().min(1),
+  platform: z.enum(["ios", "android", "web", "unknown"]).default("unknown"),
+  appVersion: z.string().optional()
+});
+
+export const finalizeRouteWithUnservicedResultSchema = z.object({
+  routeId: z.string().uuid(),
+  outcome: z.enum(["partial", "not_started"]),
+  recoveredStops: z.number().int().nonnegative(),
+  totalStops: z.number().int().nonnegative(),
+  note: z.string().nullable().optional()
+});
+
+export type ResidentNotification = z.infer<typeof residentNotificationSchema>;
+export type RegisterResidentPushDeviceInput = z.infer<typeof registerResidentPushDeviceInputSchema>;
+export type FinalizeRouteWithUnservicedResult = z.infer<typeof finalizeRouteWithUnservicedResultSchema>;
+
+export const residentHomeSchema = z.object({
+  customerId: z.string().uuid(),
+  displayName: z.string(),
+  address: z.string(),
+  phone: z.string().nullable(),
+  email: z.string().nullable().optional(),
+  customerType: z.enum(customerTypes),
+  zoneName: z.string(),
+  serviceStatus: z.enum(["active", "suspended"]),
+  suspensionReason: z.string().nullable().optional(),
+  collectionsPerWeek: z.number().int().min(1).max(7),
+  preferredWeekdays: preferredWeekdaysSchema,
+  frequencyNotes: z.string().nullable().optional(),
+  monthlyRateKobo: z.number().int().nonnegative(),
+  paidThisMonthKobo: z.number().int().nonnegative(),
+  outstandingKobo: z.number().int().nonnegative(),
+  lastPaymentAt: z.string().nullable(),
+  lastPaymentAmountKobo: z.number().int().positive().nullable(),
+  lastPaymentChannel: z.enum(paymentChannels).nullable(),
+  psp: residentHomePspSchema,
+  zoneTrucks: z.array(residentHomeTruckSchema),
+  makeGood: residentHomeMakeGoodSchema.nullable().optional()
+});
+
+export type ResidentHome = z.infer<typeof residentHomeSchema>;
+export type ResidentHomePsp = z.infer<typeof residentHomePspSchema>;
+export type ResidentHomeMakeGood = z.infer<typeof residentHomeMakeGoodSchema>;
+
 export const customerSchema = z.object({
   id: z.string().uuid(),
   operatorId: z.string().uuid(),
@@ -331,7 +599,8 @@ export const routeStopSchema = z.object({
   completedAt: z.string().nullable(),
   notes: z.string().nullable(),
   skipReason: z.string().nullable(),
-  serviceStatus: z.enum(["active", "suspended"])
+  serviceStatus: z.enum(["active", "suspended"]),
+  isMakeGood: z.boolean().optional()
 });
 
 export const routeDetailSchema = routeSummarySchema.extend({
@@ -433,13 +702,16 @@ export const adminCustomerSchema = z.object({
   zoneName: z.string(),
   displayName: z.string(),
   phone: z.string().nullable(),
+  email: z.string().nullable().optional(),
   address: z.string(),
   customerType: z.enum(customerTypes),
   monthlyRateKobo: z.number().int().nonnegative(),
   serviceStatus: z.enum(["active", "suspended"]),
   collectionsPerWeek: z.number().int().min(1).max(7),
   preferredWeekdays: preferredWeekdaysSchema,
-  frequencyNotes: z.string().nullable().optional()
+  frequencyNotes: z.string().nullable().optional(),
+  hasLoginProfile: z.boolean().optional().default(false),
+  loginEmail: z.string().nullable().optional()
 });
 
 export const adminMasterDataSchema = z.object({
@@ -476,6 +748,24 @@ export const staffLoginProvisionInputSchema = z.object({
 export const staffPasswordResetTargetSchema = z.object({
   loginEmail: z.string().email(),
   staffName: z.string()
+});
+
+export const customerLoginProvisionInputSchema = z.object({
+  customerId: z.string().uuid(),
+  loginEmail: z.string().email()
+});
+
+export const customerLoginProvisionResultSchema = z.object({
+  customerId: z.string().uuid(),
+  profileId: z.string().uuid(),
+  loginEmail: z.string().email(),
+  temporaryPassword: z.string(),
+  loginProvisioned: z.boolean()
+});
+
+export const customerPasswordResetTargetSchema = z.object({
+  loginEmail: z.string().email(),
+  customerName: z.string()
 });
 
 export const truckOnboardingInputSchema = z.object({
@@ -699,6 +989,21 @@ export type FuelLogInput = z.infer<typeof fuelLogInputSchema>;
 export type FuelLogRecord = z.infer<typeof fuelLogRecordSchema>;
 export type DumpsiteRunInput = z.infer<typeof dumpsiteRunInputSchema>;
 export type DumpsiteRunRecord = z.infer<typeof dumpsiteRunRecordSchema>;
+export type ServiceComplaint = z.infer<typeof serviceComplaintSchema>;
+export type CreateServiceComplaintInput = z.infer<typeof createServiceComplaintInputSchema>;
+export type SubmitResidentComplaintInput = z.infer<typeof submitResidentComplaintInputSchema>;
+export type ResidentPayment = z.infer<typeof residentPaymentSchema>;
+export type ResidentPaystackCheckoutInput = z.infer<typeof residentPaystackCheckoutInputSchema>;
+export type ResidentPaystackCheckoutResult = z.infer<typeof residentPaystackCheckoutResultSchema>;
+export type ResidentPaystackVerifyResult = z.infer<typeof residentPaystackVerifyResultSchema>;
+export type BillDelivery = z.infer<typeof billDeliverySchema>;
+export type RecordBillDeliveryInput = z.infer<typeof recordBillDeliveryInputSchema>;
+export type ComplianceCase = z.infer<typeof complianceCaseSchema>;
+export type CreateComplianceCaseInput = z.infer<typeof createComplianceCaseInputSchema>;
+export type VehicleBrandingChecklist = z.infer<typeof vehicleBrandingChecklistSchema>;
+export type RecordVehicleBrandingChecklistInput = z.infer<
+  typeof recordVehicleBrandingChecklistInputSchema
+>;
 export type RouteTruckHandoffStatus = (typeof routeTruckHandoffStatuses)[number];
 export type RouteTruckHandoffReason = (typeof routeTruckHandoffReasons)[number];
 export type RouteTruckHandoffSourceOutcome = (typeof routeTruckHandoffSourceOutcomes)[number];
@@ -743,6 +1048,9 @@ export type AdminMasterData = z.infer<typeof adminMasterDataSchema>;
 export type StaffOnboardingInput = z.infer<typeof staffOnboardingInputSchema>;
 export type StaffOnboardingResult = z.infer<typeof staffOnboardingResultSchema>;
 export type StaffLoginProvisionInput = z.infer<typeof staffLoginProvisionInputSchema>;
+export type CustomerLoginProvisionInput = z.infer<typeof customerLoginProvisionInputSchema>;
+export type CustomerLoginProvisionResult = z.infer<typeof customerLoginProvisionResultSchema>;
+export type CustomerPasswordResetTarget = z.infer<typeof customerPasswordResetTargetSchema>;
 export type StaffPasswordResetTarget = z.infer<typeof staffPasswordResetTargetSchema>;
 export const routeTemplateKinds = ["zone_default", "temporary"] as const;
 
@@ -866,6 +1174,17 @@ export type MonthlyStaffSummary = z.infer<typeof monthlyStaffSummarySchema>;
 export type StaffAttendanceSummary = z.infer<typeof staffAttendanceSummarySchema>;
 export type FleetSummary = z.infer<typeof fleetSummarySchema>;
 export type OperatorDashboard = z.infer<typeof operatorDashboardSchema>;
+
+export {
+  addOperationDays,
+  DEFAULT_OPERATION_TIME_ZONE,
+  getOperationDate,
+  getOperationMonth,
+  getZonedOperationDate,
+  OPERATION_TIME_ZONE,
+  operationTimeZones
+} from "./operationDate";
+export type { OperationTimeZone } from "./operationDate";
 
 export {
   computePaystackSignature,

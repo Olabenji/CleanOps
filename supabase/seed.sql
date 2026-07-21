@@ -1,4 +1,4 @@
-insert into public.operators (id, name, lawma_reference, primary_contact_phone, slug, status, plan_code, brand_name, onboarded_at)
+insert into public.operators (id, name, lawma_reference, primary_contact_phone, slug, status, plan_code, brand_name, timezone, onboarded_at)
 values (
   '00000000-0000-4000-8000-000000000001',
   'Next to Godliness Ventures',
@@ -8,6 +8,7 @@ values (
   'active',
   'pro',
   'Next to Godliness',
+  'Africa/Lagos',
   now()
 )
 on conflict (id) do update
@@ -16,6 +17,7 @@ set
   status = excluded.status,
   plan_code = excluded.plan_code,
   brand_name = excluded.brand_name,
+  timezone = coalesce(public.operators.timezone, excluded.timezone),
   onboarded_at = coalesce(public.operators.onboarded_at, excluded.onboarded_at);
 
 insert into auth.users (
@@ -583,7 +585,7 @@ values (
 on conflict (id) do nothing;
 
 -- Second demo tenant for multi-tenant QA. Owner password: cleanops-island-password
-insert into public.operators (id, name, lawma_reference, primary_contact_phone, slug, status, plan_code, brand_name, onboarded_at)
+insert into public.operators (id, name, lawma_reference, primary_contact_phone, slug, status, plan_code, brand_name, timezone, onboarded_at)
 values (
   '00000000-0000-4000-8000-000000000002',
   'Island Clean Services',
@@ -593,6 +595,7 @@ values (
   'trial',
   'basic',
   'Island Clean',
+  'Africa/Lagos',
   now()
 )
 on conflict (id) do update
@@ -601,6 +604,7 @@ set
   status = excluded.status,
   plan_code = excluded.plan_code,
   brand_name = excluded.brand_name,
+  timezone = coalesce(public.operators.timezone, excluded.timezone),
   onboarded_at = coalesce(public.operators.onboarded_at, excluded.onboarded_at);
 
 insert into auth.users (

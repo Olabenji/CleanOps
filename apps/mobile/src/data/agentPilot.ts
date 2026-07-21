@@ -1,4 +1,5 @@
 import type { CustomerLedgerItem, PaymentLedgerItem } from "@cleanops/shared";
+import { getOperationDate, getOperationMonth } from "@cleanops/shared";
 
 export const pilotAgent = {
   fullName: "Kunle Martins",
@@ -38,7 +39,7 @@ export const pilotAgentCustomers: CustomerLedgerItem[] = [
     outstandingKobo: 0,
     serviceStatus: "active",
     suspensionReason: null,
-    currentTagMonth: new Date().toISOString().slice(0, 10),
+    currentTagMonth: getOperationMonth(),
     lastPaymentAt: new Date().toISOString(),
     lastPaymentAmountKobo: 500000,
     lastPaymentChannel: "agent_cash",
@@ -148,7 +149,7 @@ export function recordPilotAgentPayment(input: {
   };
 }
 
-export function getPilotAgentDailySummary(collectionDate = new Date().toISOString().slice(0, 10)) {
+export function getPilotAgentDailySummary(collectionDate = getOperationDate()) {
   const payments = pilotAgentCollections.filter((payment) => payment.paidAt.slice(0, 10) === collectionDate);
 
   return {

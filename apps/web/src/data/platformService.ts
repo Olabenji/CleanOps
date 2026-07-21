@@ -43,7 +43,8 @@ export async function createOperatorTenant(
     input_plan_code: parsed.planCode,
     input_brand_name: parsed.brandName ?? parsed.name,
     input_lawma_reference: parsed.lawmaReference ?? null,
-    input_status: parsed.status
+    input_status: parsed.status,
+    input_timezone: parsed.timezone
   });
 
   if (error) {

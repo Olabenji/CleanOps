@@ -15,7 +15,7 @@ const RESTORE_TIMEOUT_MS = 4_000;
 
 export type { FieldRole, FieldSession } from "../lib/fieldSession";
 
-const credentials: Record<FieldRole, { email: string; password: string }> = {
+const credentials: Record<Exclude<FieldRole, "resident">, { email: string; password: string }> = {
   driver: {
     email: "driver@cleanops.local",
     password: "cleanops-driver-password"
@@ -27,7 +27,7 @@ const credentials: Record<FieldRole, { email: string; password: string }> = {
 };
 
 function toFieldRole(role: string): FieldRole | null {
-  if (role === "driver" || role === "collection_agent") {
+  if (role === "driver" || role === "collection_agent" || role === "resident") {
     return role;
   }
 
@@ -62,11 +62,7 @@ async function loadFieldSessionFromAuth(fallbackRole: FieldRole): Promise<FieldS
   }
 
   const { data: profile, error: profileError } = await withTimeout(
-    supabase
-      .from("profiles")
-      .select("full_name, phone, role")
-      .eq("id", sessionData.session.user.id)
-      .maybeSingle(),
+    supabase.rpc("get_session_operator_context"),
     SIGN_IN_TIMEOUT_MS,
     "Timed out while loading profile"
   );
@@ -82,14 +78,17 @@ async function loadFieldSessionFromAuth(fallbackRole: FieldRole): Promise<FieldS
   const resolvedRole = toFieldRole(profile?.role ?? fallbackRole);
 
   if (!resolvedRole) {
-    throw new Error("This account is not authorized for the field mobile app. Use a driver or collection agent login.");
+    throw new Error(
+      "This account is not authorized for the CleanOps mobile app. Use a driver, collection agent, or resident login."
+    );
   }
 
   return {
-    fullName: profile?.full_name ?? pilotNames[resolvedRole],
+    fullName: profile?.fullName ?? profile?.full_name ?? pilotNames[resolvedRole],
     phone: profile?.phone ?? pilotPhones[resolvedRole],
     role: resolvedRole,
-    mode: "supabase"
+    mode: "supabase",
+    timezone: typeof profile?.timezone === "string" ? profile.timezone : "Africa/Lagos"
   };
 }
 
@@ -133,6 +132,14 @@ export async function signInWithCredentials(email: string, password: string): Pr
 }
 
 export async function signInFieldUser(role: FieldRole): Promise<FieldSession> {
+  if (role === "resident") {
+    if (!supabase || forcePilotModeEnabled()) {
+      return createPilotSession("resident");
+    }
+
+    throw new Error("Resident demo sign-in requires a provisioned resident account. Use email/password.");
+  }
+
   if (!supabase || forcePilotModeEnabled()) {
     return createPilotSession(role);
   }

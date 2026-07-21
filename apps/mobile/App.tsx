@@ -1,6 +1,6 @@
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import {
   restoreFieldSession,
@@ -11,6 +11,7 @@ import {
 } from "./src/data/fieldSessionService";
 import AgentApp from "./src/screens/AgentApp";
 import DriverApp from "./src/screens/DriverApp";
+import ResidentApp from "./src/screens/ResidentApp";
 import SignInScreen from "./src/screens/SignInScreen";
 
 export default function App() {
@@ -25,7 +26,6 @@ function FieldApp() {
   const [session, setSession] = useState<FieldSession | null>(null);
   const [bootstrapping, setBootstrapping] = useState(true);
   const [signingIn, setSigningIn] = useState(false);
-  const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -70,14 +70,12 @@ function FieldApp() {
   }
 
   async function handleSignOut() {
-    setSigningOut(true);
-
     try {
       await signOutFieldUser();
       setSession(null);
       setError(null);
     } finally {
-      setSigningOut(false);
+      // no-op
     }
   }
 
@@ -86,7 +84,7 @@ function FieldApp() {
       <SafeAreaView style={styles.loadingShell}>
         <StatusBar style="dark" />
         <ActivityIndicator color="#1a7f45" size="large" />
-        <Text style={styles.loadingText}>Loading CleanOps field app...</Text>
+        <Text style={styles.loadingText}>Loading CleanOps...</Text>
       </SafeAreaView>
     );
   }
@@ -120,8 +118,14 @@ function FieldApp() {
             onSignOut={() => void handleSignOut()}
             session={session}
           />
-        ) : (
+        ) : session.role === "collection_agent" ? (
           <AgentApp
+            onSessionUpdated={(next) => setSession((current) => (current ? { ...current, ...next } : current))}
+            onSignOut={() => void handleSignOut()}
+            session={session}
+          />
+        ) : (
+          <ResidentApp
             onSessionUpdated={(next) => setSession((current) => (current ? { ...current, ...next } : current))}
             onSignOut={() => void handleSignOut()}
             session={session}
@@ -163,39 +167,5 @@ const styles = StyleSheet.create({
     color: "#637466",
     fontSize: 16,
     marginTop: 16
-  },
-  topBar: {
-    alignItems: "center",
-    borderBottomColor: "#dbe7dd",
-    borderBottomWidth: 1,
-    flexDirection: "row",
-    gap: 12,
-    justifyContent: "space-between",
-    paddingHorizontal: 24,
-    paddingVertical: 12
-  },
-  topBarIdentity: {
-    flex: 1,
-    minWidth: 0
-  },
-  topBarName: {
-    color: "#102017",
-    fontSize: 16,
-    fontWeight: "800"
-  },
-  topBarLabel: {
-    color: "#637466",
-    fontSize: 12,
-    fontWeight: "700",
-    marginTop: 2,
-    textTransform: "uppercase"
-  },
-  signOutButton: {
-    paddingVertical: 4
-  },
-  signOut: {
-    color: "#1a7f45",
-    fontSize: 14,
-    fontWeight: "700"
   }
 });

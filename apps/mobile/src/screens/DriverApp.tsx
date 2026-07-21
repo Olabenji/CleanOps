@@ -12,6 +12,8 @@ import {
   View
 } from "react-native";
 import {
+  DEFAULT_OPERATION_TIME_ZONE,
+  getOperationDate,
   incidentTypes,
   type DriverRouteNotice,
   type DriverShiftJob,
@@ -115,6 +117,7 @@ export default function DriverApp({
   onSignOut: () => void;
   onSessionUpdated?: (next: Pick<FieldSession, "fullName" | "phone">) => void;
 }) {
+  const operationDate = getOperationDate(session.timezone ?? DEFAULT_OPERATION_TIME_ZONE);
   const [route, setRoute] = useState<RouteDetail | null>(session.mode === "pilot" ? pilotDriverRoute : null);
   const [shiftStarted, setShiftStarted] = useState(
     session.mode === "pilot" ? Boolean(pilotDriverRoute.startedAt) : false
@@ -142,6 +145,9 @@ export default function DriverApp({
   const [fuelStation, setFuelStation] = useState("");
   const [dumpsiteNotes, setDumpsiteNotes] = useState("");
   const [dumpsiteTippingNaira, setDumpsiteTippingNaira] = useState("");
+  const [dumpsiteSiteName, setDumpsiteSiteName] = useState("");
+  const [dumpsiteDocketNumber, setDumpsiteDocketNumber] = useState("");
+  const [dumpsiteTonnes, setDumpsiteTonnes] = useState("");
   const [dumpsiteRun, setDumpsiteRun] = useState<DumpsiteRunRecord | null>(null);
   const [pendingHandoffs, setPendingHandoffs] = useState<RouteTruckHandoff[]>([]);
   const [shiftJobs, setShiftJobs] = useState<DriverShiftJob[]>([]);
@@ -151,6 +157,7 @@ export default function DriverApp({
   const [handoffActionId, setHandoffActionId] = useState<string | null>(null);
   const [submittingFuel, setSubmittingFuel] = useState(false);
   const [submittingDumpsitePhase, setSubmittingDumpsitePhase] = useState<string | null>(null);
+  const [endingRoute, setEndingRoute] = useState(false);
   const [submittingIncident, setSubmittingIncident] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -172,6 +179,28 @@ export default function DriverApp({
     [pendingActions]
   );
   const pendingQueue = pendingActions.length + incidentQueue.length;
+  const pendingStopCount = useMemo(
+    () => route?.stops.filter((stop) => stop.status === "pending").length ?? 0,
+    [route]
+  );
+  const wrapUpReady = Boolean(
+    route && route.status === "in_progress" && route.stops.length > 0 && pendingStopCount === 0
+  );
+  const skippedStopCount = useMemo(
+    () => route?.stops.filter((stop) => stop.status === "skipped" || stop.status === "missed_reported").length ?? 0,
+    [route]
+  );
+  const completedStopCount = useMemo(
+    () => route?.stops.filter((stop) => stop.status === "completed").length ?? 0,
+    [route]
+  );
+
+  useEffect(() => {
+    if (wrapUpReady) {
+      setDumpsiteFormOpen(true);
+      setMessage("Collection stops done. Review, log dumpsite if needed, then end route.");
+    }
+  }, [wrapUpReady, route?.id]);
 
   useEffect(() => {
     void bootstrapDriver();
@@ -255,7 +284,7 @@ export default function DriverApp({
     }
 
     try {
-      const assignedRoute = await fetchAssignedRoute();
+      const assignedRoute = await fetchAssignedRoute(operationDate);
       if (assignedRoute) {
         setRoute(assignedRoute);
         setShiftStarted(assignedRoute.status === "in_progress" || Boolean(assignedRoute.startedAt));
@@ -275,7 +304,7 @@ export default function DriverApp({
       setShiftStarted(false);
       setDumpsiteRun(null);
       setPendingHandoffs(await fetchPendingHandoffs().catch(() => []));
-      const summary = await fetchDriverTodayShiftSummary().catch(() => ({ jobs: [] as DriverShiftJob[] }));
+      const summary = await fetchDriverTodayShiftSummary(operationDate).catch(() => ({ jobs: [] as DriverShiftJob[] }));
       setShiftJobs(summary.jobs);
 
       const planning = await fetchDriverTodayPlanningStatus();
@@ -366,7 +395,7 @@ export default function DriverApp({
 
     try {
       await transitionAssignedRoute(route.id, "in_progress");
-      const nextRoute = await fetchAssignedRoute();
+      const nextRoute = await fetchAssignedRoute(operationDate);
       if (nextRoute) {
         setRoute(nextRoute);
       }
@@ -378,6 +407,11 @@ export default function DriverApp({
 
   async function handleStopAction(stop: RouteStop, status: RouteStopStatus) {
     if (!route) {
+      return;
+    }
+
+    if (status === "completed" && stop.serviceStatus === "suspended") {
+      setMessage("Service is suspended for this customer — use Skip instead of Complete.");
       return;
     }
 
@@ -393,8 +427,19 @@ export default function DriverApp({
     }
 
     if (session?.mode === "pilot") {
-      setRoute((current) => (current ? updateStop(current, stop.id, status, note, skipReason) : current));
-      setMessage("Pilot route updated locally. Supabase sync is disabled in pilot mode.");
+      setRoute((current) => {
+        if (!current) {
+          return current;
+        }
+        const next = updateStop(current, stop.id, status, note, skipReason);
+        const remaining = next.stops.filter((item) => item.status === "pending").length;
+        setMessage(
+          remaining === 0
+            ? "All stops finished. Review, log dumpsite if needed, then end route."
+            : "Pilot route updated locally. Supabase sync is disabled in pilot mode."
+        );
+        return next;
+      });
       return;
     }
 
@@ -406,8 +451,14 @@ export default function DriverApp({
       const syncedAt = syncResult.syncedAt ?? new Date().toISOString();
       setLastSyncAt(syncedAt);
       await saveLastSyncAt(syncedAt);
-      setRoute(await fetchAssignedRoute() ?? route);
-      setMessage("Stop update synced.");
+      const refreshed = (await fetchAssignedRoute(operationDate)) ?? route;
+      setRoute(refreshed);
+      const remainingPending = refreshed.stops.filter((item) => item.status === "pending").length;
+      setMessage(
+        remainingPending === 0
+          ? "All stops finished. Use wrap-up below for dumpsite / end route."
+          : "Stop update synced."
+      );
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown sync error";
 
@@ -527,6 +578,10 @@ export default function DriverApp({
     }
 
     const tippingFeeKobo = phase === "clear" ? parseNairaToKobo(dumpsiteTippingNaira) ?? 0 : undefined;
+    const weighbridgeTonnes =
+      phase === "clear" && dumpsiteTonnes.trim()
+        ? Number(dumpsiteTonnes.replace(/,/g, ""))
+        : undefined;
 
     setSubmittingDumpsitePhase(phase);
 
@@ -535,24 +590,83 @@ export default function DriverApp({
         routeId: route.id,
         phase,
         tippingFeeKobo,
-        notes: dumpsiteNotes.trim() || undefined
+        notes: dumpsiteNotes.trim() || undefined,
+        dumpsiteSiteName: dumpsiteSiteName.trim() || undefined,
+        docketNumber: phase === "clear" ? dumpsiteDocketNumber.trim() || undefined : undefined,
+        weighbridgeTonnes:
+          weighbridgeTonnes !== undefined && Number.isFinite(weighbridgeTonnes)
+            ? weighbridgeTonnes
+            : undefined
       });
       setDumpsiteRun(record);
       if (phase === "clear") {
         setDumpsiteNotes("");
         setDumpsiteTippingNaira("");
+        setDumpsiteDocketNumber("");
+        setDumpsiteTonnes("");
       }
       setMessage(
         phase === "depart"
           ? "Departed for dumpsite."
           : phase === "arrive"
             ? "Arrived at dumpsite."
-            : "Dumpsite clearance recorded."
+            : "Dumpsite clearance recorded with disposal evidence."
       );
     } catch (error) {
       Alert.alert("Unable to record dumpsite run", error instanceof Error ? error.message : "Unknown error");
     } finally {
       setSubmittingDumpsitePhase(null);
+    }
+  }
+
+  function confirmEndRoute() {
+    if (!route || !wrapUpReady) {
+      return;
+    }
+
+    const dumpsiteDone = Boolean(dumpsiteRun?.clearedAt);
+    Alert.alert(
+      "End route?",
+      dumpsiteDone
+        ? "This closes the collection run. You can still review finished jobs on the shift wrap-up screen."
+        : "Dumpsite clearance has not been logged yet. End route anyway, or cancel and log dumpsite first?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: dumpsiteDone ? "End route" : "End without dumpsite",
+          style: dumpsiteDone ? "default" : "destructive",
+          onPress: () => {
+            void handleEndRoute();
+          }
+        }
+      ]
+    );
+  }
+
+  async function handleEndRoute() {
+    if (!route) {
+      return;
+    }
+
+    setEndingRoute(true);
+    try {
+      if (session.mode === "pilot") {
+        setRoute(null);
+        setDumpsiteRun(null);
+        setShiftJobs([]);
+        setMessage(`Route ended · ${route.zoneName}. Pilot wrap-up complete.`);
+        return;
+      }
+
+      await transitionAssignedRoute(route.id, "completed");
+      setRoute(null);
+      setDumpsiteRun(null);
+      await bootstrapDriver(true);
+      setMessage("Route ended. Review today's work below, or wait for your next assignment.");
+    } catch (error) {
+      Alert.alert("Unable to end route", error instanceof Error ? error.message : "Unknown error");
+    } finally {
+      setEndingRoute(false);
     }
   }
 
@@ -683,7 +797,7 @@ export default function DriverApp({
           setLastSyncAt(latestSyncAt);
           await saveLastSyncAt(latestSyncAt);
         }
-        const nextRoute = await fetchAssignedRoute();
+        const nextRoute = await fetchAssignedRoute(operationDate);
         if (nextRoute) {
           setRoute(nextRoute);
         }
@@ -716,7 +830,10 @@ export default function DriverApp({
   if (activeTab === "history") {
     return (
       <View style={styles.safeArea}>
-        <DriverHistoryScreen renderJob={(job) => <ShiftJobCard job={job} />} />
+        <DriverHistoryScreen
+          operationTimezone={session.timezone ?? DEFAULT_OPERATION_TIME_ZONE}
+          renderJob={(job) => <ShiftJobCard job={job} />}
+        />
         <DriverTabBar activeTab={activeTab} onChange={setActiveTab} />
       </View>
     );
@@ -867,7 +984,9 @@ export default function DriverApp({
         <View style={styles.todayHeader}>
           <View style={styles.todayHeaderCopy}>
             <Text style={styles.eyebrow}>CLEANOPS DRIVER</Text>
-            <Text style={styles.heading}>{route.zoneName} collection run</Text>
+            <Text style={styles.heading}>
+              {wrapUpReady ? `${route.zoneName} wrap-up` : `${route.zoneName} collection run`}
+            </Text>
             <Text style={styles.copy}>
               {session?.fullName ?? pilotDriver.fullName} · {route.truckRegistration} ·{" "}
               {shiftStarted ? "Shift active" : "Shift not started"}
@@ -934,6 +1053,46 @@ export default function DriverApp({
             </View>
           ) : null}
         </View>
+
+        {wrapUpReady ? (
+          <View style={styles.wrapUpCard}>
+            <Text style={styles.cardTitle}>Route wrap-up</Text>
+            <Text style={styles.cardCopy}>
+              All collection stops are done. Review the day, log dumpsite if needed, then end the route
+              when you are ready to close out.
+            </Text>
+            <Text style={styles.stopMeta}>
+              Completed {completedStopCount} · Skipped {skippedStopCount} · Total {route.totalStops}
+            </Text>
+            <Text style={styles.stopMeta}>
+              Dumpsite:{" "}
+              {dumpsiteRun?.clearedAt
+                ? "cleared"
+                : dumpsiteRun?.arrivedAt
+                  ? "arrived — clear still needed"
+                  : dumpsiteRun?.departedAt
+                    ? "departed — arrive/clear still needed"
+                    : "not logged yet"}
+            </Text>
+            <View style={styles.actionRow}>
+              <Pressable
+                onPress={() => setDumpsiteFormOpen(true)}
+                style={styles.secondaryButton}
+              >
+                <Text style={styles.secondaryButtonText}>
+                  {dumpsiteRun?.clearedAt ? "Review dumpsite log" : "Begin dumpsite run"}
+                </Text>
+              </Pressable>
+              <Pressable
+                disabled={endingRoute}
+                onPress={confirmEndRoute}
+                style={[styles.primaryButton, endingRoute && styles.disabledButton]}
+              >
+                <Text style={styles.primaryButtonText}>{endingRoute ? "Ending..." : "End route"}</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
 
         <View style={styles.actionRow}>
           <Pressable
@@ -1075,6 +1234,13 @@ export default function DriverApp({
 
               {!dumpsiteRun?.clearedAt ? (
                 <>
+                  <Text style={styles.summaryLabel}>Landfill / site name (optional)</Text>
+                  <TextInput
+                    onChangeText={setDumpsiteSiteName}
+                    placeholder="e.g. Olusosun"
+                    style={styles.input}
+                    value={dumpsiteSiteName}
+                  />
                   <Text style={styles.summaryLabel}>Notes (optional)</Text>
                   <TextInput
                     multiline
@@ -1085,6 +1251,21 @@ export default function DriverApp({
                   />
                   {dumpsiteRun?.arrivedAt && !dumpsiteRun.clearedAt ? (
                     <>
+                      <Text style={styles.summaryLabel}>Docket / receipt number</Text>
+                      <TextInput
+                        onChangeText={setDumpsiteDocketNumber}
+                        placeholder="Weighbridge docket #"
+                        style={styles.input}
+                        value={dumpsiteDocketNumber}
+                      />
+                      <Text style={styles.summaryLabel}>Weighbridge tonnes</Text>
+                      <TextInput
+                        keyboardType="decimal-pad"
+                        onChangeText={setDumpsiteTonnes}
+                        placeholder="e.g. 4.250"
+                        style={styles.input}
+                        value={dumpsiteTonnes}
+                      />
                       <Text style={styles.summaryLabel}>Tipping fee in naira (optional)</Text>
                       <TextInput
                         keyboardType="decimal-pad"
@@ -1096,9 +1277,22 @@ export default function DriverApp({
                     </>
                   ) : null}
                 </>
-              ) : dumpsiteRun.tippingFeeKobo > 0 ? (
-                <Text style={styles.stopMeta}>Tipping fee: {formatKobo(dumpsiteRun.tippingFeeKobo)}</Text>
-              ) : null}
+              ) : (
+                <>
+                  {dumpsiteRun.docketNumber ? (
+                    <Text style={styles.stopMeta}>Docket: {dumpsiteRun.docketNumber}</Text>
+                  ) : null}
+                  {dumpsiteRun.weighbridgeTonnes != null ? (
+                    <Text style={styles.stopMeta}>Tonnes: {dumpsiteRun.weighbridgeTonnes}</Text>
+                  ) : null}
+                  {dumpsiteRun.dumpsiteSiteName ? (
+                    <Text style={styles.stopMeta}>Site: {dumpsiteRun.dumpsiteSiteName}</Text>
+                  ) : null}
+                  {dumpsiteRun.tippingFeeKobo > 0 ? (
+                    <Text style={styles.stopMeta}>Tipping fee: {formatKobo(dumpsiteRun.tippingFeeKobo)}</Text>
+                  ) : null}
+                </>
+              )}
             </View>
           ) : null}
         </View>
@@ -1185,7 +1379,9 @@ export default function DriverApp({
             const pendingAction = syncEnabled ? pendingActionByStop[stop.id] : undefined;
             const effectiveStatus = pendingAction?.status ?? stop.status;
             const isSyncing = Boolean(syncingStopIds[stop.id]);
+            const isSuspended = stop.serviceStatus === "suspended";
             const actionDisabled = effectiveStatus !== "pending" || isSyncing || queueSyncing;
+            const completeDisabled = actionDisabled || isSuspended;
 
             return (
               <View key={stop.id} style={[styles.stopCard, effectiveStatus !== "pending" && styles.stopCardDone]}>
@@ -1193,6 +1389,8 @@ export default function DriverApp({
                   <View>
                     <Text style={styles.stopTitle}>
                       #{stop.stopSequence} {stop.customerName}
+                      {stop.isMakeGood ? " · Make-good" : ""}
+                      {isSuspended ? " · Suspended" : ""}
                     </Text>
                     <Text style={styles.stopAddress}>{stop.address}</Text>
                   </View>
@@ -1200,10 +1398,15 @@ export default function DriverApp({
                     style={[
                       styles.statusPill,
                       effectiveStatus === "skipped" && styles.warningPill,
+                      isSuspended && styles.warningPill,
                       pendingAction && styles.queuePill
                     ]}
                   >
-                    {pendingAction ? `queued ${pendingAction.status}` : effectiveStatus.replace("_", " ")}
+                    {pendingAction
+                      ? `queued ${pendingAction.status}`
+                      : isSuspended && effectiveStatus === "pending"
+                        ? "suspended"
+                        : effectiveStatus.replace("_", " ")}
                   </Text>
                 </View>
 
@@ -1213,8 +1416,10 @@ export default function DriverApp({
                     {pendingAction.errorMessage ? `: ${pendingAction.errorMessage}` : "."}
                   </Text>
                 ) : null}
-                {stop.serviceStatus === "suspended" ? (
-                  <Text style={styles.warningText}>Service suspended: verify tag before pickup.</Text>
+                {isSuspended ? (
+                  <Text style={styles.warningText}>
+                    Service suspended — do not collect. Use Skip with a reason (e.g. suspended / unpaid).
+                  </Text>
                 ) : null}
                 {pendingAction?.skipReason || stop.skipReason ? (
                   <View style={styles.fieldSkipReason}>
@@ -1248,9 +1453,9 @@ export default function DriverApp({
 
                 <View style={styles.actionRow}>
                   <Pressable
-                    disabled={actionDisabled}
+                    disabled={completeDisabled}
                     onPress={() => handleStopAction(stop, "completed")}
-                    style={[styles.primaryButton, actionDisabled && styles.disabledButton]}
+                    style={[styles.primaryButton, completeDisabled && styles.disabledButton]}
                   >
                     <Text style={styles.primaryButtonText}>
                       {isSyncing ? "Syncing..." : pendingAction ? "Queued" : "Complete"}
@@ -1425,6 +1630,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 8,
     marginBottom: 16,
+    padding: 16
+  },
+  wrapUpCard: {
+    backgroundColor: "#e8f7ee",
+    borderColor: "#9fd4b0",
+    borderRadius: 18,
+    borderWidth: 1,
+    gap: 10,
+    marginBottom: 16,
+    marginTop: 8,
     padding: 16
   },
   shiftJobCard: {

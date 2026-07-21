@@ -1,6 +1,10 @@
 import type {
   AdminMasterData,
   AttendanceOverride,
+  BillDelivery,
+  ComplianceCase,
+  CreateComplianceCaseInput,
+  CreateServiceComplaintInput,
   CustomerLedgerItem,
   CustomerOnboardingInput,
   CustomerUpdateInput,
@@ -13,21 +17,26 @@ import type {
   PaymentLedgerItem,
   ProposeRouteTruckHandoffInput,
   PlatformOperator,
+  RecordBillDeliveryInput,
+  RecordVehicleBrandingChecklistInput,
   RouteDetail,
   RoutePlanningOptions,
   RouteCoverSummary,
   RouteStatus,
   RouteStopStatus,
   RouteTruckHandoff,
+  ServiceComplaint,
   StaffOnboardingInput,
   StaffOnboardingResult,
   StaffLoginProvisionInput,
+  CustomerLoginProvisionInput,
   StaffAttendanceRow,
   StaffUpdateInput,
   TruckOnboardingInput,
-  TruckUpdateInput
+  TruckUpdateInput,
+  VehicleBrandingChecklist
 } from "@cleanops/shared";
-import { formatCollectionFrequency } from "@cleanops/shared";
+import { formatCollectionFrequency, DEFAULT_OPERATION_TIME_ZONE, getOperationDate, getOperationMonth } from "@cleanops/shared";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -44,28 +53,45 @@ import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import AdminView from "./components/AdminView";
 import AgentCollectionsView from "./components/AgentCollectionsView";
+import ComplianceView from "./components/ComplianceView";
 import OperatorSidebar from "./components/OperatorSidebar";
 import PasswordRecoveryScreen from "./components/PasswordRecoveryScreen";
 import PlatformAdminView from "./components/PlatformAdminView";
 import ProfileModal from "./components/ProfileModal";
+import ResidentApp from "./components/ResidentApp";
 import TemplateSavePrompt, { TemplatePendingBanner } from "./components/TemplateSavePrompt";
 import TruckHandoffPanel from "./components/TruckHandoffPanel";
 import WorkspaceHeader from "./components/WorkspaceHeader";
 import {
   getCurrentOperatorProfile,
   getPasswordRecoveryContext,
+  requestPasswordReset,
   signInOperator,
   signOutOperator,
   subscribeToPasswordRecovery,
   type AuthState
 } from "./data/authService";
 import { getOperatorDashboard } from "./data/dashboardService";
+import { dispatchResidentNotifications } from "./data/residentService";
 import { createOperatorTenant, listOperators, setOperatorStatus } from "./data/platformService";
 import { updateOwnProfile } from "./data/profileService";
+import {
+  createComplianceCase,
+  createServiceComplaint,
+  listBillDeliveries,
+  listComplianceCases,
+  listServiceComplaints,
+  listVehicleBrandingChecklists,
+  recordBillDelivery,
+  recordVehicleBrandingChecklist,
+  updateComplianceCaseStatus,
+  updateServiceComplaintStatus
+} from "./data/lawmaComplianceService";
 import {
   addRoutePlanStop,
   cancelRouteTruckHandoff,
   ensureDailyRoutesLoaded,
+  finalizeRouteWithUnserviced,
   getAdminMasterData,
   getCustomerLedger,
   getCustomerPaymentHistory,
@@ -83,6 +109,8 @@ import {
   onboardStaffMember,
   proposeRouteTruckHandoff,
   provisionStaffMemberLogin,
+  provisionCustomerLogin,
+  requestCustomerPasswordReset,
   requestStaffPasswordReset,
   onboardTruck,
   recordAttendanceOverride,
@@ -105,13 +133,14 @@ import { formatAppError, parseAmountNairaToKobo } from "./lib/errors";
 import { deriveRouteProgress } from "./lib/routeProgress";
 
 const metricIcons = [Truck, WalletCards, Users, AlertTriangle];
-type View = "dashboard" | "routes" | "payments" | "staff" | "admin";
+type View = "dashboard" | "routes" | "payments" | "staff" | "compliance" | "admin";
 
 const workspaceTitles: Record<View, string> = {
   dashboard: "Operations overview",
   routes: "Route operations",
   payments: "Payments & ledger",
   staff: "Staff attendance",
+  compliance: "Compliance",
   admin: "Admin master data"
 };
 type RouteInlineError = {
@@ -143,7 +172,6 @@ const operatorPaymentChannels: PaymentChannel[] = [
   "paystack"
 ];
 
-const todayIso = new Date().toISOString().slice(0, 10);
 const LIVE_POLL_MS = 45_000;
 const PAYMENTS_POLL_MS = 20_000;
 
@@ -190,21 +218,26 @@ function formatKobo(amountKobo: number) {
 
 export function App() {
   const [auth, setAuth] = useState<AuthState | null>(null);
+  const todayIso = getOperationDate(auth?.profile.timezone ?? DEFAULT_OPERATION_TIME_ZONE);
   const [dashboard, setDashboard] = useState<OperatorDashboard | null>(null);
   const [routes, setRoutes] = useState<RouteDetail[]>([]);
   const [routeHandoffs, setRouteHandoffs] = useState<RouteTruckHandoff[]>([]);
   const [routeCovers, setRouteCovers] = useState<RouteCoverSummary[]>([]);
   const [payments, setPayments] = useState<PaymentLedgerItem[]>([]);
   const [incidents, setIncidents] = useState<IncidentReport[]>([]);
+  const [serviceComplaints, setServiceComplaints] = useState<ServiceComplaint[]>([]);
+  const [complianceCases, setComplianceCases] = useState<ComplianceCase[]>([]);
+  const [billDeliveries, setBillDeliveries] = useState<BillDelivery[]>([]);
+  const [vehicleChecklists, setVehicleChecklists] = useState<VehicleBrandingChecklist[]>([]);
   const [customerLedger, setCustomerLedger] = useState<CustomerLedgerItem[]>([]);
   const [adminData, setAdminData] = useState<AdminMasterData>(emptyAdminData);
   const [planningOptions, setPlanningOptions] = useState<RoutePlanningOptions>(emptyPlanningOptions);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [staffAttendance, setStaffAttendance] = useState<StaffAttendanceRow[]>([]);
   const [monthlyStaffSummary, setMonthlyStaffSummary] = useState<MonthlyStaffSummary[]>([]);
-  const [operationDate, setOperationDate] = useState(todayIso);
-  const [attendanceDate, setAttendanceDate] = useState(todayIso);
-  const [summaryMonth, setSummaryMonth] = useState(todayIso);
+  const [operationDate, setOperationDate] = useState(() => getOperationDate());
+  const [attendanceDate, setAttendanceDate] = useState(() => getOperationDate());
+  const [summaryMonth, setSummaryMonth] = useState(() => getOperationMonth());
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<View>("dashboard");
   const [routeInlineError, setRouteInlineError] = useState<RouteInlineError>(null);
@@ -245,6 +278,18 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (!auth?.profile.timezone) {
+      return;
+    }
+
+    const tz = auth.profile.timezone;
+    const nextToday = getOperationDate(tz);
+    setOperationDate(nextToday);
+    setAttendanceDate(nextToday);
+    setSummaryMonth(getOperationMonth(tz));
+  }, [auth?.profile.operatorId, auth?.profile.timezone]);
+
+  useEffect(() => {
     if (!statusMessage) {
       return;
     }
@@ -252,6 +297,15 @@ export function App() {
     const timeoutId = setTimeout(() => setStatusMessage(null), 5000);
     return () => clearTimeout(timeoutId);
   }, [statusMessage]);
+
+  useEffect(() => {
+    if (!error) {
+      return;
+    }
+
+    const timeoutId = setTimeout(() => setError(null), 8000);
+    return () => clearTimeout(timeoutId);
+  }, [error]);
 
   useEffect(() => {
     if (!auth || operationDate !== todayIso) {
@@ -389,7 +443,7 @@ export function App() {
         setAuth(currentAuth);
         if (currentAuth.profile.role === "platform_admin") {
           setPlatformOperators(await listOperators());
-        } else {
+        } else if (currentAuth.profile.role !== "resident") {
           await loadWorkspace(operationDate);
         }
       }
@@ -435,7 +489,11 @@ export function App() {
       monthlyStaffData,
       incidentData,
       routePlanningOptions,
-      nextAdminData
+      nextAdminData,
+      complaintData,
+      complianceData,
+      billDeliveryData,
+      checklistData
     ] = await Promise.all([
       getOperatorDashboard(targetDate),
       getRouteTruckHandoffs(targetDate),
@@ -446,7 +504,11 @@ export function App() {
       getMonthlyStaffSummary(summaryMonth),
       getRecentIncidentReports(targetDate),
       getRoutePlanningOptions(targetDate),
-      getAdminMasterData()
+      getAdminMasterData(),
+      listServiceComplaints(targetDate),
+      listComplianceCases(),
+      listBillDeliveries(`${targetDate.slice(0, 8)}01`),
+      listVehicleBrandingChecklists(targetDate)
     ]);
 
     setDashboard(dashboardData);
@@ -460,6 +522,10 @@ export function App() {
     setStaffAttendance(staffData);
     setMonthlyStaffSummary(monthlyStaffData);
     setIncidents(incidentData);
+    setServiceComplaints(complaintData);
+    setComplianceCases(complianceData);
+    setBillDeliveries(billDeliveryData);
+    setVehicleChecklists(checklistData);
     setSelectedRouteId((current) => (routesData.some((route) => route.id === current) ? current : routesData[0]?.id ?? null));
     setSelectedCustomerId((current) => current ?? ledgerData[0]?.customerId ?? null);
   }
@@ -576,6 +642,10 @@ export function App() {
     setRoutes([]);
     setPayments([]);
     setIncidents([]);
+    setServiceComplaints([]);
+    setComplianceCases([]);
+    setBillDeliveries([]);
+    setVehicleChecklists([]);
     setCustomerLedger([]);
     setAdminData(emptyAdminData);
     setPlanningOptions(emptyPlanningOptions);
@@ -623,7 +693,7 @@ export function App() {
       setAuth(signedIn);
       if (signedIn.profile.role === "platform_admin") {
         setPlatformOperators(await listOperators());
-      } else {
+      } else if (signedIn.profile.role !== "resident") {
         await loadWorkspace(operationDate);
       }
       setStatusMessage(`Signed in as ${signedIn.profile.fullName}`);
@@ -709,6 +779,42 @@ export function App() {
       setRouteInlineError({
         area: "routeAction",
         message: err instanceof Error ? err.message : "Unable to update route status"
+      });
+    }
+  }
+
+  async function handleFinalizeRouteWithUnserviced(routeId: string) {
+    setStatusMessage(null);
+    setError(null);
+    setRouteInlineError(null);
+
+    const note = window.prompt(
+      "Close this incomplete route? Remaining pending stops become missed and recover tomorrow. Optional note:",
+      "Unserviced at supervisor route close"
+    );
+
+    if (note === null) {
+      return;
+    }
+
+    try {
+      const { routes: nextRoutes, result } = await finalizeRouteWithUnserviced(
+        routeId,
+        note.trim() || undefined,
+        operationDate
+      );
+      setRoutes(nextRoutes);
+      await getOperatorDashboard(operationDate).then(setDashboard);
+      void dispatchResidentNotifications().catch(() => undefined);
+      setStatusMessage(
+        `Route closed (${result.outcome.replace("_", " ")}). ${result.recoveredStops} stop${
+          result.recoveredStops === 1 ? "" : "s"
+        } queued for next-day recovery.`
+      );
+    } catch (err) {
+      setRouteInlineError({
+        area: "routeAction",
+        message: err instanceof Error ? err.message : "Unable to close incomplete route"
       });
     }
   }
@@ -875,9 +981,9 @@ export function App() {
     setRouteInlineError(null);
 
     try {
-      const nextRoutes = await addRoutePlanStop(routeId, customerId, operationDate);
+      const { routes: nextRoutes, warning } = await addRoutePlanStop(routeId, customerId, operationDate);
       await refreshRoutesForSelectedDate(nextRoutes);
-      setStatusMessage("Stop added to route plan.");
+      setStatusMessage(warning ? `Stop added to route plan. ${warning}` : "Stop added to route plan.");
       markTemplatePending(routeId);
     } catch (err) {
       setRouteInlineError({
@@ -962,9 +1068,24 @@ export function App() {
     return result;
   }
 
+  async function handleProvisionCustomerLogin(input: CustomerLoginProvisionInput) {
+    setStatusMessage(null);
+    const result = await provisionCustomerLogin(input);
+    await refreshAdminData();
+    setStatusMessage(`Resident login created for ${result.loginEmail}.`);
+    return result;
+  }
+
   async function handleRequestStaffPasswordReset(staffId: string) {
     setStatusMessage(null);
     const result = await requestStaffPasswordReset(staffId);
+    setStatusMessage(`Password reset email sent to ${result.loginEmail}. Check Inbucket locally.`);
+    return result;
+  }
+
+  async function handleRequestCustomerPasswordReset(customerId: string) {
+    setStatusMessage(null);
+    const result = await requestCustomerPasswordReset(customerId);
     setStatusMessage(`Password reset email sent to ${result.loginEmail}. Check Inbucket locally.`);
     return result;
   }
@@ -1032,6 +1153,69 @@ export function App() {
     setStatusMessage(`Customer marked ${serviceStatus}.`);
   }
 
+  async function refreshComplianceData(targetDate = operationDate) {
+    const [complaintData, complianceData, billDeliveryData, checklistData] = await Promise.all([
+      listServiceComplaints(targetDate),
+      listComplianceCases(),
+      listBillDeliveries(`${targetDate.slice(0, 8)}01`),
+      listVehicleBrandingChecklists(targetDate)
+    ]);
+    setServiceComplaints(complaintData);
+    setComplianceCases(complianceData);
+    setBillDeliveries(billDeliveryData);
+    setVehicleChecklists(checklistData);
+  }
+
+  async function handleCreateServiceComplaint(input: CreateServiceComplaintInput) {
+    setStatusMessage(null);
+    await createServiceComplaint(input);
+    await refreshComplianceData();
+    setStatusMessage("Complaint logged. 24h SLA clock started.");
+  }
+
+  async function handleUpdateServiceComplaint(
+    id: string,
+    status: ServiceComplaint["status"],
+    notes?: string
+  ) {
+    setStatusMessage(null);
+    await updateServiceComplaintStatus(id, status, notes);
+    await refreshComplianceData();
+    setStatusMessage(`Complaint marked ${status}.`);
+  }
+
+  async function handleCreateComplianceCase(input: CreateComplianceCaseInput) {
+    setStatusMessage(null);
+    await createComplianceCase(input);
+    await refreshComplianceData();
+    setStatusMessage("Compliance case opened.");
+  }
+
+  async function handleUpdateComplianceCase(
+    id: string,
+    status: ComplianceCase["status"],
+    notes?: string
+  ) {
+    setStatusMessage(null);
+    await updateComplianceCaseStatus(id, status, notes);
+    await refreshComplianceData();
+    setStatusMessage(`Compliance case marked ${status}.`);
+  }
+
+  async function handleRecordBillDelivery(input: RecordBillDeliveryInput) {
+    setStatusMessage(null);
+    await recordBillDelivery(input);
+    await refreshComplianceData();
+    setStatusMessage("Bill delivery recorded.");
+  }
+
+  async function handleRecordVehicleChecklist(input: RecordVehicleBrandingChecklistInput) {
+    setStatusMessage(null);
+    await recordVehicleBrandingChecklist(input);
+    await refreshComplianceData();
+    setStatusMessage("Vehicle branding / PPE checklist saved.");
+  }
+
   async function handleUpdateOwnProfile(input: { fullName: string; phone: string }) {
     setStatusMessage(null);
     const updated = await updateOwnProfile(input);
@@ -1085,6 +1269,10 @@ export function App() {
         onSignOut={() => void handleSignOut()}
       />
     );
+  }
+
+  if (auth.profile.role === "resident") {
+    return <ResidentApp fullName={auth.profile.fullName} onSignOut={() => void handleSignOut()} />;
   }
 
   const selectedRoute = routes.find((routeItem) => routeItem.id === selectedRouteId) ?? routes[0];
@@ -1180,6 +1368,7 @@ export function App() {
           onSelectRoute={setSelectedRouteId}
           onUpdateRoutePlanAssignment={handleUpdateRoutePlanAssignment}
           onUpdateRouteStatus={handleRouteStatus}
+          onFinalizeRouteWithUnserviced={handleFinalizeRouteWithUnserviced}
           onUpdateStop={handleStopStatus}
         />
       ) : null}
@@ -1205,6 +1394,26 @@ export function App() {
           onSummaryMonthChange={handleSummaryMonthChange}
         />
       ) : null}
+      {activeView === "compliance" ? (
+        <ComplianceView
+          billDeliveries={billDeliveries}
+          billPeriodStart={`${operationDate.slice(0, 8)}01`}
+          checklists={vehicleChecklists}
+          complaints={serviceComplaints}
+          complianceCases={complianceCases}
+          customerLedger={customerLedger}
+          onCreateComplaint={handleCreateServiceComplaint}
+          onCreateComplianceCase={handleCreateComplianceCase}
+          onRecordBillDelivery={handleRecordBillDelivery}
+          onRecordChecklist={handleRecordVehicleChecklist}
+          onUpdateComplaintStatus={handleUpdateServiceComplaint}
+          onUpdateComplianceStatus={handleUpdateComplianceCase}
+          trucks={adminData.trucks.map((truck) => ({
+            id: truck.id,
+            registrationNumber: truck.registrationNumber
+          }))}
+        />
+      ) : null}
       {activeView === "admin" ? (
         <AdminView
           adminData={adminData}
@@ -1212,7 +1421,9 @@ export function App() {
           onOnboardCustomer={handleOnboardCustomer}
           onOnboardStaff={handleOnboardStaff}
           onOnboardTruck={handleOnboardTruck}
+          onProvisionCustomerLogin={handleProvisionCustomerLogin}
           onProvisionStaffLogin={handleProvisionStaffLogin}
+          onRequestCustomerPasswordReset={handleRequestCustomerPasswordReset}
           onRequestStaffPasswordReset={handleRequestStaffPasswordReset}
           onSetCustomerServiceStatus={handleSetCustomerServiceStatus}
           onSetStaffActive={handleSetStaffActive}
@@ -1238,10 +1449,71 @@ function LoginScreen({
 }) {
   const [email, setEmail] = useState(demoCredentials.email);
   const [password, setPassword] = useState(demoCredentials.password);
+  const [mode, setMode] = useState<"signIn" | "forgot">("signIn");
+  const [forgotBusy, setForgotBusy] = useState(false);
+  const [forgotMessage, setForgotMessage] = useState<string | null>(null);
+  const [forgotError, setForgotError] = useState<string | null>(null);
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     onSignIn(email, password);
+  }
+
+  async function handleForgotSubmit(event: FormEvent) {
+    event.preventDefault();
+    setForgotBusy(true);
+    setForgotError(null);
+    setForgotMessage(null);
+
+    try {
+      const result = await requestPasswordReset(email);
+      setForgotMessage(result.message);
+    } catch (err) {
+      setForgotError(err instanceof Error ? err.message : "Unable to send reset email.");
+    } finally {
+      setForgotBusy(false);
+    }
+  }
+
+  if (mode === "forgot") {
+    return (
+      <main className="app-shell login-shell">
+        <section className="login-card">
+          <p className="eyebrow">CleanOps</p>
+          <h1>Forgot password</h1>
+          <p>Enter the login email for your operator, platform, or staff account. We will email a reset link if that account exists.</p>
+          {forgotMessage ? <p className="notice">{forgotMessage}</p> : null}
+          {forgotError ? <p className="notice error">{forgotError}</p> : null}
+          <form className="login-form" onSubmit={(event) => void handleForgotSubmit(event)}>
+            <label>
+              Email
+              <input
+                autoComplete="username"
+                onChange={(event) => setEmail(event.target.value)}
+                required
+                type="email"
+                value={email}
+              />
+            </label>
+            <button className="primary-button" disabled={forgotBusy} type="submit">
+              {forgotBusy ? "Sending..." : "Send reset link"}
+            </button>
+          </form>
+          <button
+            className="ghost-button"
+            onClick={() => {
+              setMode("signIn");
+              setForgotError(null);
+              setForgotMessage(null);
+            }}
+            style={{ marginTop: 12 }}
+            type="button"
+          >
+            Back to sign in
+          </button>
+        </section>
+      </main>
+    );
   }
 
   return (
@@ -1277,6 +1549,18 @@ function LoginScreen({
             Sign in
           </button>
         </form>
+        <button
+          className="ghost-button"
+          onClick={() => {
+            setMode("forgot");
+            setForgotError(null);
+            setForgotMessage(null);
+          }}
+          style={{ marginTop: 12 }}
+          type="button"
+        >
+          Forgot password?
+        </button>
         <p className="login-demo-hint">
           Local demo: {demoCredentials.email} / {demoCredentials.password}. Use a provisioned staff login, or{" "}
           platform@cleanops.local / cleanops-platform-password for the platform console.
@@ -1420,6 +1704,7 @@ function RoutesView({
   onSelectRoute,
   onUpdateRoutePlanAssignment,
   onUpdateRouteStatus,
+  onFinalizeRouteWithUnserviced,
   onUpdateStop
 }: {
   routes: RouteDetail[];
@@ -1439,6 +1724,7 @@ function RoutesView({
   onSelectRoute: (routeId: string) => void;
   onUpdateRoutePlanAssignment: (routeId: string, zoneId: string, truckId: string, driverId: string | null) => void;
   onUpdateRouteStatus: (routeId: string, status: RouteStatus) => void;
+  onFinalizeRouteWithUnserviced: (routeId: string) => void;
   onUpdateStop: (
     routeId: string,
     stopId: string,
@@ -1615,9 +1901,16 @@ function RoutesView({
               </div>
               <div className="button-row">
                 {selectedRoute.status !== "completed" && selectedRoute.status !== "cancelled" ? (
-                  <button onClick={() => onUpdateRouteStatus(selectedRoute.id, "cancelled")} type="button">
-                    Cancel route
-                  </button>
+                  <>
+                    {pendingStops > 0 ? (
+                      <button onClick={() => onFinalizeRouteWithUnserviced(selectedRoute.id)} type="button">
+                        Close incomplete (recover tomorrow)
+                      </button>
+                    ) : null}
+                    <button onClick={() => onUpdateRouteStatus(selectedRoute.id, "cancelled")} type="button">
+                      Cancel route
+                    </button>
+                  </>
                 ) : (
                   <small>No route-level operator actions available.</small>
                 )}
@@ -1627,8 +1920,9 @@ function RoutesView({
               ) : null}
             </div>
             <p className="panel-subtitle">
-              Route start and completion are field actions. Operators can cancel a route, reassign trucks with driver
-              confirmation, or correct individual stops when driver updates fail to transmit.
+              Route start and completion are field actions. Supervisors can close an incomplete route to queue
+              remaining due stops for next-day recovery, cancel a route, reassign trucks with driver confirmation, or
+              correct individual stops when driver updates fail to transmit.
             </p>
 
             <TruckHandoffPanel
@@ -1719,10 +2013,20 @@ function RoutesView({
                   <button
                     disabled={!selectedCustomerToAdd}
                     onClick={() => {
-                      if (selectedCustomerToAdd) {
-                        onAddRouteStop(selectedRoute.id, selectedCustomerToAdd);
-                        setSelectedCustomerToAdd("");
+                      if (!selectedCustomerToAdd) {
+                        return;
                       }
+                      const customer = availableCustomers.find((entry) => entry.id === selectedCustomerToAdd);
+                      if (customer && !customer.dueToday) {
+                        const confirmed = window.confirm(
+                          `${customer.label} is not due on this preferred weekday. Add them as a manual override?`
+                        );
+                        if (!confirmed) {
+                          return;
+                        }
+                      }
+                      onAddRouteStop(selectedRoute.id, selectedCustomerToAdd);
+                      setSelectedCustomerToAdd("");
                     }}
                     type="button"
                   >
@@ -1745,14 +2049,32 @@ function RoutesView({
                 const currentSkipReason = skipReasons[stop.id] ?? stop.skipReason ?? "";
                 const stopIsCompleted = stop.status === "completed";
                 const nextCompleteStatus: RouteStopStatus = stopIsCompleted ? "pending" : "completed";
+                const isSuspended = stop.serviceStatus === "suspended";
+                const completeDisabled = routeFinalized || (isSuspended && !stopIsCompleted);
 
                 return (
                   <div className="stop-row stop-row-detailed" key={stop.id}>
                     <div>
                       <strong>
                         #{stop.stopSequence} {stop.customerName}
+                        {stop.isMakeGood ? (
+                          <span className="pill" style={{ marginLeft: 8 }}>
+                            Make-good
+                          </span>
+                        ) : null}
+                        {isSuspended ? (
+                          <span className="pill danger" style={{ marginLeft: 8 }}>
+                            Suspended
+                          </span>
+                        ) : null}
                       </strong>
                       <span>{stop.address}</span>
+                      {isSuspended ? (
+                        <p className="field-skip-reason">
+                          <strong>Service suspended</strong>
+                          Do not mark complete — skip with a reason if the truck reached this stop.
+                        </p>
+                      ) : null}
                       {stop.notes ? (
                         <p className="field-note">
                           <strong>Note</strong>
@@ -1766,7 +2088,7 @@ function RoutesView({
                         </p>
                       ) : null}
                     </div>
-                    <span className={`pill ${stop.status === "skipped" ? "danger" : ""}`}>
+                    <span className={`pill ${stop.status === "skipped" || isSuspended ? "danger" : ""}`}>
                       {stop.status.replace("_", " ")}
                     </span>
                     <div className="stop-controls">
@@ -1812,9 +2134,14 @@ function RoutesView({
                           </>
                         ) : null}
                         <button
-                          disabled={routeFinalized}
+                          disabled={completeDisabled}
                           onClick={() =>
                             onUpdateStop(selectedRoute.id, stop.id, nextCompleteStatus, notes[stop.id])
+                          }
+                          title={
+                            isSuspended && !stopIsCompleted
+                              ? "Cannot complete a suspended customer stop"
+                              : undefined
                           }
                           type="button"
                         >
@@ -1877,7 +2204,7 @@ function PaymentsView({
   const [amountNaira, setAmountNaira] = useState("");
   const [channel, setChannel] = useState<PaymentChannel>("agent_cash");
   const [externalReference, setExternalReference] = useState("");
-  const [tagMonth, setTagMonth] = useState(new Date().toISOString().slice(0, 10));
+  const [tagMonth, setTagMonth] = useState(getOperationMonth);
   const [history, setHistory] = useState<PaymentLedgerItem[]>([]);
   const [paymentFormError, setPaymentFormError] = useState<string | null>(null);
   const [customerStatusError, setCustomerStatusError] = useState<string | null>(null);

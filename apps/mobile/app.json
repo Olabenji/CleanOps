@@ -7,6 +7,14 @@
     "scheme": "cleanops",
     "userInterfaceStyle": "light",
     "assetBundlePatterns": ["**/*"],
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "color": "#1a7f45"
+        }
+      ]
+    ],
     "ios": {
       "supportsTablet": true
     },

@@ -14,6 +14,7 @@ import type {
   RouteStopStatus,
   StaffAttendanceRow
 } from "@cleanops/shared";
+import { getOperationDate, getOperationMonth } from "@cleanops/shared";
 import { pilotDashboard } from "./pilotDashboard";
 import { deriveRouteProgress } from "../lib/routeProgress";
 
@@ -29,6 +30,7 @@ export const pilotProfile: OperatorProfile = {
   brandName: "Next to Godliness",
   operatorStatus: "active",
   planCode: "pro",
+  timezone: "Africa/Lagos",
   fullName: "Lanre Operator",
   phone: "+2348000000011",
   role: "operator_owner"
@@ -59,7 +61,7 @@ export let pilotRouteDetails: RouteDetail[] = pilotDashboard.routes.map((route, 
 
   return reconcilePilotRoute({
     ...route,
-    scheduledDate: new Date().toISOString().slice(0, 10),
+    scheduledDate: getOperationDate(),
     startedAt: route.status === "scheduled" ? null : new Date().toISOString(),
     completedAt: route.status === "completed" ? new Date().toISOString() : null,
     stops
@@ -111,7 +113,7 @@ export let pilotCustomerLedger: CustomerLedgerItem[] = [
     outstandingKobo: 0,
     serviceStatus: "active",
     suspensionReason: null,
-    currentTagMonth: new Date().toISOString().slice(0, 10),
+    currentTagMonth: getOperationMonth(),
     lastPaymentAt: new Date().toISOString(),
     lastPaymentAmountKobo: 500000,
     lastPaymentChannel: "paystack",
@@ -151,7 +153,7 @@ export let pilotCustomerLedger: CustomerLedgerItem[] = [
     outstandingKobo: 0,
     serviceStatus: "active",
     suspensionReason: null,
-    currentTagMonth: new Date().toISOString().slice(0, 10),
+    currentTagMonth: getOperationMonth(),
     lastPaymentAt: new Date().toISOString(),
     lastPaymentAmountKobo: 7500000,
     lastPaymentChannel: "agent_cash",
@@ -385,7 +387,7 @@ export function recordPilotPayment(entry: PaymentEntry): CustomerLedgerItem[] {
       outstandingKobo,
       serviceStatus: shouldReactivate ? "active" : customer.serviceStatus,
       suspensionReason: shouldReactivate ? null : customer.suspensionReason,
-      currentTagMonth: shouldReactivate ? new Date().toISOString().slice(0, 10) : customer.currentTagMonth,
+      currentTagMonth: shouldReactivate ? getOperationMonth() : customer.currentTagMonth,
       lastPaymentAt: paidAt,
       lastPaymentAmountKobo: entry.amountKobo,
       lastPaymentChannel: entry.channel

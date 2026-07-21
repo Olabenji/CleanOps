@@ -2,6 +2,7 @@ import {
   agentDailyCollectionSummarySchema,
   agentPaymentReceiptSchema,
   customerLedgerItemSchema,
+  getOperationDate,
   paymentLedgerItemSchema,
   type AgentDailyCollectionSummary,
   type AgentPaymentEntry,
@@ -101,7 +102,7 @@ export async function getCustomerPaymentHistory(customerId: string): Promise<Pay
 }
 
 export async function getAgentDailySummary(
-  collectionDate = new Date().toISOString().slice(0, 10)
+  collectionDate = getOperationDate()
 ): Promise<AgentDailyCollectionSummary> {
   if (!supabase) {
     return agentDailyCollectionSummarySchema.parse(getPilotAgentDailySummary(collectionDate));
