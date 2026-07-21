@@ -13,6 +13,7 @@ import AgentApp from "./src/screens/AgentApp";
 import DriverApp from "./src/screens/DriverApp";
 import ResidentApp from "./src/screens/ResidentApp";
 import SignInScreen from "./src/screens/SignInScreen";
+import { initMobileMonitoring } from "./src/lib/monitoring";
 
 export default function App() {
   return (
@@ -27,6 +28,10 @@ function FieldApp() {
   const [bootstrapping, setBootstrapping] = useState(true);
   const [signingIn, setSigningIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    initMobileMonitoring();
+  }, []);
 
   useEffect(() => {
     void (async () => {

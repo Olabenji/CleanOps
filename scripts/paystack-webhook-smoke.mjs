@@ -71,7 +71,21 @@ async function postOnce(label) {
   const text = await response.text();
   console.log(`[${label}] status=${response.status}`);
   console.log(`[${label}] body=${text}`);
-  return { status: response.status, text };
+
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    body = null;
+  }
+
+  if (!response.ok || body?.received !== true || !body?.paymentId) {
+    throw new Error(
+      `[${label}] Paystack webhook smoke failed: status=${response.status} body=${text}`
+    );
+  }
+
+  return { status: response.status, body };
 }
 
 const command = process.argv[2] ?? "help";
@@ -82,8 +96,18 @@ if (command === "sign") {
 } else if (command === "post") {
   await postOnce("post");
 } else if (command === "post-duplicate") {
-  await postOnce("first");
-  await postOnce("duplicate");
+  const first = await postOnce("first");
+  const duplicate = await postOnce("duplicate");
+
+  if (first.body.alreadyPosted !== false) {
+    throw new Error("First Paystack post was unexpectedly reported as a duplicate.");
+  }
+
+  if (duplicate.body.alreadyPosted !== true) {
+    throw new Error("Duplicate Paystack post was not reported as already posted.");
+  }
+
+  console.log("PAYSTACK SMOKE PASS");
 } else {
   console.log(`Unknown or missing command: ${command}
 

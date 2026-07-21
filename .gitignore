@@ -9,6 +9,9 @@ build/
 .expo-shared/
 web-build/
 *.tsbuildinfo
+test-results/
+playwright-report/
+blob-report/
 
 # Environment files
 .env

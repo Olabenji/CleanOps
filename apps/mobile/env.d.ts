@@ -7,5 +7,7 @@ declare const process: {
     EXPO_PUBLIC_WEB_APP_URL?: string;
     /** Expo/EAS project id required for push tokens on physical devices. */
     EXPO_PUBLIC_EAS_PROJECT_ID?: string;
+    /** Optional Sentry DSN for production error monitoring. */
+    EXPO_PUBLIC_SENTRY_DSN?: string;
   };
 };

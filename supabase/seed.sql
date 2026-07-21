@@ -404,6 +404,105 @@ values
   ('00000000-0000-4000-8000-000000000405', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000103', 'Block C Residents Association', '+2348000000405', 'Block C Estate, Surulere', 'estate', 7500000, 'active', date_trunc('month', current_date)::date, null, 1, array[3]::smallint[], null)
 on conflict (id) do nothing;
 
+-- Deterministic resident account for local and CI login smoke tests.
+insert into auth.users (
+  id,
+  instance_id,
+  aud,
+  role,
+  email,
+  phone,
+  encrypted_password,
+  email_confirmed_at,
+  phone_confirmed_at,
+  created_at,
+  updated_at,
+  raw_app_meta_data,
+  raw_user_meta_data,
+  is_super_admin,
+  confirmation_token,
+  recovery_token,
+  email_change_token_new,
+  email_change,
+  phone_change_token,
+  phone_change,
+  email_change_token_current,
+  reauthentication_token
+)
+values (
+  '00000000-0000-4000-8000-000000000041',
+  '00000000-0000-0000-0000-000000000000',
+  'authenticated',
+  'authenticated',
+  'resident@cleanops.local',
+  '+2348000000041',
+  crypt('cleanops-resident-password', gen_salt('bf')),
+  now(),
+  now(),
+  now(),
+  now(),
+  '{"provider":"email","providers":["email"]}'::jsonb,
+  '{"full_name":"Mrs. Folake Adebayo"}'::jsonb,
+  false,
+  '',
+  '',
+  '',
+  '',
+  '',
+  '',
+  '',
+  ''
+)
+on conflict (id) do update
+set
+  email = excluded.email,
+  encrypted_password = excluded.encrypted_password,
+  email_confirmed_at = coalesce(auth.users.email_confirmed_at, excluded.email_confirmed_at),
+  updated_at = now();
+
+insert into auth.identities (
+  id,
+  provider_id,
+  user_id,
+  identity_data,
+  provider,
+  last_sign_in_at,
+  created_at,
+  updated_at
+)
+values (
+  '00000000-0000-4000-8000-000000000042',
+  '00000000-0000-4000-8000-000000000041',
+  '00000000-0000-4000-8000-000000000041',
+  '{"sub":"00000000-0000-4000-8000-000000000041","email":"resident@cleanops.local","email_verified":true,"phone_verified":true}'::jsonb,
+  'email',
+  now(),
+  now(),
+  now()
+)
+on conflict (provider_id, provider) do nothing;
+
+insert into public.profiles (id, operator_id, role, full_name, phone)
+values (
+  '00000000-0000-4000-8000-000000000041',
+  '00000000-0000-4000-8000-000000000001',
+  'resident',
+  'Mrs. Folake Adebayo',
+  '+2348000000401'
+)
+on conflict (id) do update
+set
+  operator_id = excluded.operator_id,
+  role = excluded.role,
+  full_name = excluded.full_name,
+  phone = excluded.phone;
+
+update public.customers
+set
+  profile_id = '00000000-0000-4000-8000-000000000041',
+  email = 'resident@cleanops.local'
+where id = '00000000-0000-4000-8000-000000000401';
+
 insert into public.routes (
   id,
   operator_id,

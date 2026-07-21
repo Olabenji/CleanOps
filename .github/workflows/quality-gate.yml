@@ -1,0 +1,102 @@
+name: Quality gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  quality:
+    name: Typecheck, tests, and migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate environment example
+        run: npm run env:check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build workspaces
+        run: npm run build
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start local Supabase
+        run: npx supabase start
+
+      - name: Migration list
+        run: npx supabase migration list --local
+
+      - name: Database lint (application schemas)
+        run: npm run db:lint
+
+      - name: Capture local Supabase credentials
+        run: |
+          npx supabase status -o env > .supabase.env
+          set -a
+          # shellcheck disable=SC1091
+          source .supabase.env
+          set +a
+          echo "SUPABASE_URL=$API_URL" >> "$GITHUB_ENV"
+          echo "SUPABASE_ANON_KEY=$ANON_KEY" >> "$GITHUB_ENV"
+          echo "ANON_KEY=$ANON_KEY" >> "$GITHUB_ENV"
+          echo "SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY" >> "$GITHUB_ENV"
+          echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY" >> "$GITHUB_ENV"
+          echo "EXPO_PUBLIC_SUPABASE_URL=$API_URL" >> "$GITHUB_ENV"
+          echo "EXPO_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY" >> "$GITHUB_ENV"
+
+      - name: Recovery SQL smoke
+        run: npm run test:recovery
+
+      - name: Resident login smoke
+        run: npm run test:resident
+
+      - name: Serve Paystack webhook function
+        run: |
+          cat > .env.functions.ci <<EOF
+          SUPABASE_URL=${SUPABASE_URL}
+          SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+          PAYSTACK_SECRET_KEY=sk_test_local_cleanops
+          EOF
+          npx supabase functions serve paystack-webhook --env-file .env.functions.ci --no-verify-jwt &
+          echo $! > .functions.pid
+          sleep 8
+
+      - name: Paystack webhook smoke
+        env:
+          PAYSTACK_SECRET_KEY: sk_test_local_cleanops
+          PAYSTACK_WEBHOOK_URL: ${{ env.SUPABASE_URL }}/functions/v1/paystack-webhook
+        run: npm run test:paystack:idempotent
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser resident login smoke
+        run: npm run test:browser
+
+      - name: Stop function server
+        if: always()
+        run: |
+          if [ -f .functions.pid ]; then
+            kill "$(cat .functions.pid)" || true
+          fi

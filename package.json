@@ -14,6 +14,13 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
+    "quality": "npm run env:check && npm run typecheck && npm test && npm run build",
+    "env:check": "node scripts/validate-env.mjs --mode=example",
+    "env:check:production": "node scripts/validate-env.mjs --mode=production",
+    "db:lint": "node scripts/validate-db-lint.mjs",
+    "test:recovery": "node scripts/run-db-smokes.mjs",
+    "test:resident": "node scripts/resident-login-smoke.mjs",
+    "test:browser": "playwright test",
     "test:pilot": "node scripts/pilot-validation.mjs",
     "test:pilot:cleanup": "node scripts/pilot-validation.mjs --cleanup",
     "test:paystack:sign": "node scripts/paystack-webhook-smoke.mjs sign",
@@ -26,6 +33,7 @@
     "npm": ">=11.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/node": "latest",
     "typescript": "latest"
   }

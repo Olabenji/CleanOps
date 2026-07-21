@@ -128,10 +128,12 @@ begin
   end if;
 
   -- Re-open one make-good to verify dashboard alert + resident home shape
+  delete from collection_make_goods where customer_id = v_folake and source_date = v_mon;
+
   insert into collection_make_goods (
-    operator_id, customer_id, source_date, status, due_by
+    operator_id, customer_id, source_date, status, due_by, target_date
   ) values (
-    v_operator, v_folake, v_mon, 'open', v_mon + 7
+    v_operator, v_folake, v_mon, 'open', v_mon + 7, v_mon + 1
   );
 
   v_alerts := public.operator_dashboard_snapshot(public.operation_current_date())->'alerts';

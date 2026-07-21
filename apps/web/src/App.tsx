@@ -72,6 +72,7 @@ import {
   type AuthState
 } from "./data/authService";
 import { getOperatorDashboard } from "./data/dashboardService";
+import { initWebMonitoring } from "./lib/monitoring";
 import { dispatchResidentNotifications } from "./data/residentService";
 import { createOperatorTenant, listOperators, setOperatorStatus } from "./data/platformService";
 import { updateOwnProfile } from "./data/profileService";
@@ -256,6 +257,10 @@ export function App() {
   const [recoveryEmail, setRecoveryEmail] = useState<string | null>(null);
   const [platformOperators, setPlatformOperators] = useState<PlatformOperator[]>([]);
   const [profileOpen, setProfileOpen] = useState(false);
+
+  useEffect(() => {
+    initWebMonitoring();
+  }, []);
 
   useEffect(() => {
     return subscribeToPasswordRecovery((email) => {
