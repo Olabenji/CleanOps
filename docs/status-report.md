@@ -1,30 +1,31 @@
 # CleanOps Status Report
 
-**As of:** 9 July 2026  
-**Phase:** Phase 1 — Core Ops Pilot (Weeks 1–8 target)  
-**Workspace:** TypeScript monorepo (`apps/web`, `apps/mobile`, `packages/shared`, `supabase/`)
+**As of:** 22 July 2026  
+**Phase:** Phase 1 complete locally; Phase 2 resident + recovery foundations shipped  
+**Workspace:** TypeScript monorepo (`apps/web`, `apps/mobile`, `packages/shared`, `supabase/`)  
+**Canonical handover:** [agent-handover.md](./agent-handover.md) (and Cursor handover canvas)
 
 ---
 
 ## Executive Summary
 
-CleanOps has a working **local pilot stack**: Supabase schema (26 migrations), operator web dashboard with five workflow tabs, driver and collection-agent mobile apps with live Supabase sync and offline queuing, staff login provisioning from Admin, operator-side agent collection reconciliation, Paystack webhook, and driver fuel/dumpsite field logging.
+CleanOps has a working **local pilot stack** through migrations **0059**: operator web (dashboard, routes, payments, staff, compliance, admin), shared Expo mobile for **driver / collection agent / resident**, frequency-aware routing with next-day make-good recovery, resident Paystack checkout + verify, complaints with 24h SLA, and push/inbox foundations (live remote push needs an Expo development build — not Expo Go).
 
-**Rough completion against Phase 1 backlog:**
+**Rough completion:**
 
 | Area | Status |
 |------|--------|
-| Foundation (schema, shared types, local dev) | ~90% |
-| Operator web (dashboard, routes, payments, staff, admin) | ~85% |
-| Driver mobile | ~75% |
+| Foundation (schema, shared types, local dev) | ~95% (migrations `0001`–`0059` locally) |
+| Operator web (dashboard, routes, payments, staff, compliance, admin) | ~90% (make-good board / fleet UI still open) |
+| Driver mobile | ~80% (wrap-up, suspended-stop guard, make-good badges) |
 | Collection agent mobile | ~90% (WhatsApp/PDF receipts deferred) |
-| Resident mobile | 0% |
-| Integrations (Paystack, Twilio, Termii, push) | ~35% (Paystack webhook verified; checkout pending) |
-| Quality (CI, tests, device QA) | ~15% (shared Paystack unit tests; no CI yet) |
+| Resident web + mobile | ~85% (auth, home, schedule, account, Paystack, complaints, inbox) |
+| Integrations (Paystack, Twilio, Termii, push) | ~60% (Paystack webhook + checkout/verify shipped; Twilio/Termii stub; Expo push infra only) |
+| Quality (CI, tests, device QA) | ~20% (shared unit/smoke SQL scripts; no CI workflows yet) |
 
-The system is **demo-ready for operator + driver + collection agent field testing** on one ward. It is **not production-ready** — no OTP auth, Paystack checkout is not initiated from apps yet (webhook is wired), and no CI.
+The system is **demo-ready** for operator, driver, agent, and resident flows on local Supabase. It is **not production-ready** — no CI, hosted migration deploy still needed, OTP auth missing, and real push requires an EAS/dev build.
 
-**Sprints:** Sprint 1–8 complete (through Admin edit flows). Next: Sprint 9 (quality gate).
+**Recent ship:** commit `2eac133` — recovery + resident parity (migrations `0049`–`0059`). **Next:** CI/smoke quality gate, make-good/coverage board, real Expo push.
 
 ---
 
@@ -36,8 +37,8 @@ The system is **demo-ready for operator + driver + collection agent field testin
 
 - npm workspaces monorepo with shared Zod schemas in `packages/shared`
 - PostgreSQL schema: operators, zones, staff, trucks, customers, routes, route stops, payments, attendance, incidents, fuel logs, dumpsite runs, maintenance events
-- 26 migrations (`0001`–`0026`) with RLS policies and role-aware RPCs
-- Seed data for one pilot operator, zones, trucks, customers, routes, demo users (operator, driver, collection agent)
+- Migrations through `0059` with RLS policies and role-aware RPCs (frequency make-good, unserviced recovery, resident auth/home/complaints/Paystack, notifications outbox)
+- Seed data for pilot operators, zones, trucks, customers, routes, demo users (operator, driver, collection agent); residents via Admin-provisioned customer logins
 - Local Supabase via Docker CLI; web env via Vite `envDir`
 - Pilot-mode fallbacks in web and mobile services when Supabase is not configured (live sessions no longer silently substitute pilot routes)
 
@@ -58,8 +59,8 @@ The system is **demo-ready for operator + driver + collection agent field testin
 - Strict environment validation at startup
 - CI pipeline (typecheck, migration checks)
 - Unit tests for broader shared schemas beyond Paystack helpers
-- Production deployment configuration
-- Paystack checkout initiation (webhook + RPC are ready; apps do not start charges yet)
+- Production / hosted Supabase migration + Edge Function deploy
+- Phone OTP remains open (email/password + Admin-provisioned staff/residents in place)
 
 ---
 
@@ -77,15 +78,17 @@ The system is **demo-ready for operator + driver + collection agent field testin
 | Route summaries | Per-zone route cards with stop completion counts |
 | Recent payments | Latest payment activity |
 | Fleet snapshot | Truck registration, zone, status, maintenance reserve |
-| Alerts | Operational alert strings from snapshot |
+| Alerts | Operational alert strings from snapshot (open/overdue make-goods, stale incomplete routes) |
 | Recent incidents | Incident list filtered by operations date |
+| Compliance | LAWMA P1 evidence view (`ComplianceView`, migration `0049`) |
 
 **Pending**
 
+- Dedicated make-good / coverage operator board (open recoveries, due_by, skip reason)
 - Real-time refresh (Supabase Realtime)
 - Exportable reports (P&L, collections, attendance, fleet costs)
 - Drill-down from metrics into detailed reports
-- Platform-owner / multi-operator views (Phase 3)
+- Platform-owner multi-operator polish (basic platform admin exists)
 
 ---
 
@@ -110,12 +113,17 @@ The system is **demo-ready for operator + driver + collection agent field testin
 | Inline errors | Validation errors shown near planner controls, not only top banner |
 | Status lifecycle | `scheduled` → `in_progress` → `completed` / `cancelled` |
 | Route progress reconcile | Derived stop counts synced via migrations `0014`–`0015` |
+| Frequency-aware plan | `plan_daily_routes` filters by `preferred_weekdays` and merges open recoveries (`0058`/`0059`) |
+| Make-good stops | `is_make_good` badge; linked `route_stop_make_goods` resolve on complete |
+| Close incomplete | Supervisor `finalize_route_with_unserviced` → next-calendar-day recovery + resident notice |
+| Suspended stops | Complete blocked on driver + operator; Skip still allowed |
 
 **Pending**
 
+- Make-good / coverage list UI (ADO #143 slim — no map first)
 - Full schedule builder (recurring calendar UI / loader assignment)
 - Loader staff assignment on routes (schema has `driver_id` only)
-- Expo push for route-change notices (in-app notices delivered)
+- Expo push for route-change notices (in-app notices delivered; resident recovery push infra exists)
 - Audit log for operator corrections
 - Route export / print
 - GPS / photo proof on stops
@@ -143,9 +151,10 @@ The system is **demo-ready for operator + driver + collection agent field testin
 
 **Pending**
 
-- Paystack checkout initiation from web
-- Dedicated transfer account handling
+- Dedicated transfer account / virtual account handling
 - Receipt generation (PDF/WhatsApp) — deferred
+
+**Note:** Resident Paystack **checkout + verify** Edge Functions are shipped (web + mobile). Operator Payments tab still records manual / webhook posts; resident-initiated checkout lives on the resident surfaces.
 
 ---
 
@@ -208,18 +217,20 @@ The system is **demo-ready for operator + driver + collection agent field testin
 | Capability | Detail |
 |------------|--------|
 | Shared sign-in | Email/password for provisioned staff; demo accounts available; show/hide password; keyboard-safe scroll |
-| Role routing | Profile role opens Driver or Collection Agent workspace |
+| Role routing | Profile role opens Driver, Collection Agent, or Resident workspace |
 | Assigned route | Fetches today's route with stops when driver is assigned |
 | Empty assignment | Live session with no route shows “Waiting for assignment” (no silent pilot stop list) |
 | Start shift | Transitions route to `in_progress` |
-| Stop actions | Complete or skip stops with optional note/reason |
+| Stop actions | Complete or skip stops with optional note/reason; Complete disabled when customer suspended |
+| Make-good | `isMakeGood` surfaced on stop cards |
+| Wrap-up | Driver route wrap-up without auto-completing pending stops (migration `0050`) |
 | Fuel log entry | Litres, cost, station name logged against assigned route truck |
 | Dumpsite run logging | Depart → arrive → cleared timestamps with optional tipping fee and notes |
 | Incident reporting | Type, optional stop, title, description; syncs to `incident_reports` |
 | Offline queue | Failed stop actions queued in AsyncStorage |
 | Incident offline queue | Failed incidents also persisted and retried |
 | Sync controls | Settings toggle for sync on/off; manual sync; last-sync timestamp |
-| Sign out | Top bar + settings; switch user returns to sign-in |
+| Sign out | Per-app chrome + settings; switch user returns to sign-in |
 | Safe area layout | `react-native-safe-area-context` |
 | Network resilience | LAN IP config, backend diagnostics; pilot only when explicitly offline/pilot mode |
 
@@ -230,7 +241,7 @@ The system is **demo-ready for operator + driver + collection agent field testin
 - Photo proof / Storage upload
 - MMKV for faster durable queue (AsyncStorage in use; MMKV in deps but not wired)
 - Multi-route list (single assigned route only)
-- Push notifications for route changes
+- Push notifications for route changes / handoffs
 
 ---
 
@@ -260,7 +271,33 @@ The system is **demo-ready for operator + driver + collection agent field testin
 
 ---
 
-### 9. Incident Reporting (Cross-surface)
+### 9. Resident surfaces (Web + Mobile) — shipped foundation
+
+**Location:** `apps/web` → `ResidentApp`; `apps/mobile` → `ResidentApp` (+ Pay / Issues screens)  
+**Backend:** migrations `0053`–`0059` — `get_resident_home`, complaints RPCs, Paystack Edge Functions, notifications inbox/outbox
+
+**Functional spec (delivered)**
+
+| Capability | Detail |
+|------------|--------|
+| Resident auth | Customer-linked `resident` role; Admin provisions logins |
+| Know Your PSP | Brand, operator, LAWMA ref, zone trucks |
+| Schedule | Preferred weekdays + recovery note (`makeGood.targetDate`) when active |
+| Account | Outstanding, monthly rate, paid-this-month, last payment |
+| Paystack checkout | `resident-paystack-checkout` + verify; mobile `cleanops://paystack-return` callback |
+| Complaints | Submit + history with 24h SLA copy |
+| Inbox | `resident_notifications` list + mark-read |
+| Push foundation | `resident_push_devices` + `notification_outbox` + `dispatch-resident-notifications`; Expo Go safely skips remote push (SDK 53+) |
+
+**Pending**
+
+- Real Expo push on physical device via development/production build + `EXPO_PUBLIC_EAS_PROJECT_ID`
+- Tap deep-link routing from push payload
+- Self-serve resident registration / onboarding outside Admin provision
+
+---
+
+### 10. Incident Reporting (Cross-surface)
 
 **Functional spec (delivered)**
 
@@ -279,18 +316,21 @@ The system is **demo-ready for operator + driver + collection agent field testin
 
 ---
 
-### 10. Backend RPC Inventory (Built)
+### 11. Backend RPC Inventory (Built — selected)
+
+Core Phase 1 RPCs remain as below. **Also shipped:** `finalize_route_with_unserviced`, `enqueue_collection_make_good`, `resolve_linked_make_goods`, `get_resident_home`, resident complaint/payment helpers, `register_resident_push_device`, `list_my_resident_notifications`, `claim_notification_outbox` / `complete_notification_outbox` (service_role), LAWMA compliance RPCs (`0049`), operation calendar / timezone helpers (`0051`–`0052`).
 
 | RPC | Purpose |
 |-----|---------|
-| `operator_dashboard_snapshot` | Dashboard metrics + summaries |
-| `plan_daily_routes` | Clone routes to a future date |
+| `operator_dashboard_snapshot` | Dashboard metrics + summaries (+ make-good / stale-route alerts) |
+| `plan_daily_routes` | Frequency-aware plan + recovery merge |
 | `route_planning_options` | Zones, trucks, drivers, customers for planner |
 | `update_route_plan_assignment` | Change truck/driver on scheduled route |
 | `add/remove/move_route_plan_stop` | Stop CRUD on scheduled routes |
-| `update_route_stop_status` | Stop status updates (driver + operator) |
+| `update_route_stop_status` | Stop status updates (driver + operator); enqueues/resolves make-good |
+| `finalize_route_with_unserviced` | Supervisor close incomplete → next-day recoveries |
 | `transition_route_status` | Route lifecycle transitions |
-| `driver_assigned_route` | Driver's route for a date |
+| `driver_assigned_route` | Driver's route for a date (`isMakeGood` on stops) |
 | `sync_driver_stop_action` | Idempotent driver stop sync |
 | `report_driver_incident` | Driver incident creation |
 | `record_fuel_log` | Driver fuel purchase log |
@@ -315,62 +355,61 @@ The system is **demo-ready for operator + driver + collection agent field testin
 | `provision_staff_member_login` | Create Auth login for existing staff |
 | `get_staff_password_reset_target` | Operator-scoped email for password reset |
 | `set_staff/truck_active`, `set_customer_service_status` | Deactivation |
+| `get_resident_home` | Resident portal home payload |
 
 ---
 
-## Modules Not Yet Built
+## Modules Still Pending
 
-These are in `docs/roadmap.md` and `docs/backlog.md` but have **no implementation** (or schema-only stubs):
-
-| Module | Phase | Notes |
-|--------|-------|-------|
-| **Resident mobile** | 2 | Registration, schedule, balance, payments, missed collection |
-| **Fleet operations UI** | 1–2 | Driver mobile fuel/dumpsite done; operator web fleet views still pending |
-| **Paystack integration** | 1 | Webhook verified + RPC posted; checkout initialize still pending |
-| **Twilio WhatsApp** | 1 | `send-reminders` Edge Function stub only |
-| **Termii SMS** | 1 | Not started |
-| **Expo push notifications** | 1 | Not started |
-| **Phone OTP auth** | 1 | Not started (email/password + Admin provisioned staff in place) |
-| **Exportable reports** | 1 | P&L, collections, attendance, fleet cost exports |
-| **CI / automated testing** | 1 | No `.github/` workflows; no unit/smoke tests |
-| **Real-time sync** | 1+ | Supabase Realtime not wired |
-| **Audit log** | 1 | Operator corrections not tracked |
-| **Multi-tenant SaaS onboarding** | 3 | Schema-ready; no platform admin UI |
-| **Payroll automation** | 3 | Monthly summary only |
-| **i18n (Yoruba, Pidgin, Igbo)** | 3 | Not started |
-| **LAWMA reporting API** | 3 | Not started |
+| Module | Priority | Notes |
+|--------|----------|-------|
+| **CI / quality gate** | P0 | Typecheck, migration checks, browser smoke, Android QA |
+| **Hosted deploy** | P0 | Apply `0058`/`0059` (+ peers) to hosted Supabase; deploy Edge Functions; real secrets |
+| **Make-good / Coverage board** | P1 | Operator list of open recoveries (#143 slim; map later) |
+| **Real Expo push** | P0/P1 | Dev build + EAS credentials; Expo Go cannot receive remote push on SDK 53+ |
+| **Fleet operations UI** | P1 | Operator web fuel/dumpsite/maintenance calendar (#142/#144 proximity/capacity) |
+| **Twilio WhatsApp** | P2 | `send-reminders` Edge Function stub only |
+| **Termii SMS** | P2 | Not started |
+| **Phone OTP auth** | P2 | Email/password + Admin provisioned staff/residents in place |
+| **Field proof** | P2 | GPS + photo on stops; loader assignment; multi-route driver |
+| **Exportable reports / incidents / audit / Realtime** | P2 | Still open |
+| **Multi-tenant polish / i18n / LAWMA reporting API** | P3 | Platform admin basics exist; scale work remains |
 
 ---
 
 ## Schema vs UI Gap
 
-Several tables have RLS policies but **no application layer**:
-
 - `fuel_logs` — driver RPC + mobile UI delivered; no operator web view yet
 - `dumpsite_runs` — driver RPC + mobile UI delivered; no operator web view yet
 - `maintenance_events` — schema only; no fleet maintenance calendar
+- `collection_make_goods` / `route_stop_make_goods` — backend + alerts + badges shipped; dedicated coverage board UI pending
+- `resident_notifications` / outbox / push devices — inbox shipped; live push needs dev build
 
 ---
 
 ## Immediate Next Action Steps
 
-Ordered by impact on Phase 1 go-live (*one PSP, one ward, three trucks, full staff team*):
+Ordered by impact after recovery + resident parity (`2eac133`):
 
-### 1. End-to-end pilot validation
+### 1. Production quality gate
 
-Run a full day simulation including truck handoff: propose reassignment on Routes → confirm on driver mobile → verify truck/driver update.
+Add CI (`typecheck` + migration lint), smoke coverage for close-incomplete / resident login / Paystack, and Android device QA.
 
-### 2. Quality gate before go-live
+### 2. Make-good / Coverage operator board
 
-Add CI (`typecheck` + migration lint), smoke tests for sign-in / plan routes / record payment, and one real Android device QA pass for driver and agent offline sync.
+List open recoveries with target date, due_by, attempt count, skip reason; due-today vs completed coverage (#143 without map).
 
-### 3. Paystack checkout initiate (follow-on)
+### 3. Real Expo push
 
-Apps still need a Paystack initialize/checkout that attaches `metadata.operator_id` and `metadata.customer_id` before live resident payments.
+EAS project id, platform credentials, development build, physical-device token + delivery + tap deep-link.
 
-### 4. Collection agent receipts (deferred)
+### 4. Hosted Supabase deploy
 
-WhatsApp/SMS and PDF receipt delivery after core pilot validation.
+Migrations through `0059` were applied locally via Docker/`psql`; hosted project still needs proper migration + function deploy.
+
+### 5. Deferred messaging
+
+Twilio WhatsApp / Termii SMS receipts and reminders after quality gate.
 
 ---
 
@@ -379,9 +418,17 @@ WhatsApp/SMS and PDF receipt delivery after core pilot validation.
 ```bash
 npm install
 supabase start          # or supabase db reset for fresh seed
-supabase migration up   # apply any new migrations (includes 0025 Paystack RPC)
+supabase migration up   # apply migrations through 0059 locally
 npm run dev:web         # http://localhost:5173
 npm run dev:mobile      # npx expo start -c; set LAN IP in apps/mobile/.env.local
+```
+
+Recovery smoke (local DB):
+
+```bash
+# via docker exec into supabase_db_cleanops, or psql against local DB
+# scripts/smoke_make_good.sql
+# scripts/smoke_unserviced_recovery.sql
 ```
 
 For staff password reset emails locally, open Inbucket / Mailpit at http://localhost:54324 after calling **Send reset email** in Admin.
@@ -437,14 +484,15 @@ select * from public.payments where idempotency_key like 'paystack:%' order by p
 | Operator (web) | `owner@cleanops.local` / `cleanops-demo-password` |
 | Driver (mobile) | `driver@cleanops.local` / `cleanops-driver-password` |
 | Collection agent (mobile) | `agent@cleanops.local` / `cleanops-agent-password` |
+| Resident | Admin-provisioned customer login |
 | Newly onboarded staff | Temp password shown once in Admin credentials modal |
 
 ---
 
 ## Summary
 
-CleanOps has a solid **operator command center** (dashboard, routes, payments with agent reconciliation, staff, admin with staff login provisioning) and **field apps** for drivers and collection agents with offline resilience. Sprint 1–4 are complete through driver fuel/dumpsite field logging.
+CleanOps now covers **operator command**, **driver/agent field apps**, **frequency + next-day recovery**, and a **resident portal on web and mobile** (schedule, account, Paystack, complaints, inbox). Push infrastructure exists but live remote delivery needs a development build.
 
-The highest-leverage next builds are **end-to-end pilot validation**, **driver field completeness**, and a **quality gate** before expanding into resident mobile / checkout initiate.
+Highest-leverage next work: **CI/smoke quality gate**, **make-good/coverage board**, **real Expo push**, then fleet/dumpsite operator UI and hosted deploy.
 
-See [build-plan.md](./build-plan.md) for sprint sequencing.
+See [agent-handover.md](./agent-handover.md) and [build-plan.md](./build-plan.md) for sequencing.

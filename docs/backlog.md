@@ -1,14 +1,15 @@
 # CleanOps Implementation Backlog
 
-**Last reviewed:** 9 July 2026 — see [status-report.md](./status-report.md) for delivered detail.
+**Last reviewed:** 22 July 2026 — see [status-report.md](./status-report.md) and [agent-handover.md](./agent-handover.md).
 
 ## Foundation
 
 - [x] Define database schema, enums, RLS policies, and seed data for a single pilot operator.
 - [x] Configure Supabase local development and migration workflow.
-- [ ] Implement phone OTP auth and role-aware session loading (email/password + Admin-provisioned staff done).
+- [ ] Implement phone OTP auth and role-aware session loading (email/password + Admin-provisioned staff/residents done).
 - [x] Create shared TypeScript domain models and validation schemas.
 - [ ] Add Sentry and environment validation.
+- [x] Operation calendar / operator timezone helpers (`0051`–`0052`).
 
 ## Operator Web
 
@@ -18,36 +19,48 @@
 - [x] Zone template save prompt after day-route edits + daily auto-load for operator/drivers.
 - [x] Driver login fallback to load previous/default template when operator has not planned today.
 - [x] Route-change in-app notices for affected drivers (push notifications still open).
-- [x] Truck reassignment / route takeover: operator proposes mid-route or pre-start swap; drivers confirm on mobile (Sprint 5).
+- [x] Truck reassignment / route takeover: operator proposes mid-route or pre-start swap; drivers confirm on mobile.
+- [x] Frequency-aware `plan_daily_routes` + make-good enqueue/resolve (`0058`/`0059`).
+- [x] Supervisor close-incomplete → next-calendar-day recovery (`finalize_route_with_unserviced`).
+- [x] Suspended-stop Complete guard (operator + driver).
+- [x] LAWMA P1 compliance evidence view (`0049`).
 - [x] Resident/customer ledger with status, balance, current-month tag, and payment history.
 - [x] Staff attendance and monthly payroll summary (task assignment / performance notes still open).
-- [x] Admin master-data onboarding + staff login provisioning.
-- [ ] Fleet profiles UI, fuel logs, maintenance calendar, reserve tracking beyond dashboard snapshot.
+- [x] Admin master-data onboarding + staff login provisioning + resident customer login provision.
+- [ ] Make-good / Coverage board for open recoveries (ADO #143 slim — list before map).
+- [ ] Fleet profiles UI, fuel logs, maintenance calendar, dumpsite proximity/capacity (#142/#144).
 - [ ] Exportable reports for P&L, collections, attendance, and fleet costs.
-- [x] Edit existing staff/truck/customer records.
+- [x] Edit existing staff/truck/customer records (including collection frequency fields).
 
 ## Mobile
 
 - [x] Driver route (when assigned), shift, stop marking, incident report, offline queue.
+- [x] Driver wrap-up without auto-completing pending stops (`0050`).
 - [x] Collection agent ledger lookup, payment entry, on-screen receipt, daily reconciliation.
-- [x] Email/password staff sign-in + sign out / switch user.
+- [x] Email/password sign-in for staff and residents + sign out / switch user.
 - [x] Driver dumpsite log and fuel log screens.
-- [x] Driver confirm/decline for operator-initiated truck handoffs (Sprint 5).
-- [ ] Resident registration, schedule, balance, payments, receipts, and missed collection reports.
+- [x] Driver confirm/decline for operator-initiated truck handoffs.
+- [x] Resident Home / Pay / Issues / Inbox / Profile (schedule, account, Paystack, complaints, notifications).
+- [ ] Real Expo push delivery via development/production build (Expo Go safely skipped on SDK 53+).
 - [ ] Harden offline queue with MMKV and stricter no-silent-pilot fallbacks where still needed.
+- [ ] GPS + photo proof on stops; multi-route driver view.
 
 ## Integrations
 
-- [x] Paystack webhook verification + idempotent payment posting (Sprint 3).
-- [ ] Paystack checkout initiation and dedicated transfer account handling.
+- [x] Paystack webhook verification + idempotent payment posting.
+- [x] Resident Paystack checkout initialize + verify (web + mobile callback).
+- [ ] Dedicated transfer account / virtual account handling.
 - [ ] Twilio WhatsApp reminders, receipts, and suspension notices.
 - [ ] Termii SMS fallback.
-- [ ] Expo Push Notifications for role-specific alerts.
+- [x] Resident notification inbox + outbox + Expo push dispatch function (infra).
+- [ ] Physical-device Expo push end-to-end (EAS project + credentials + tap deep-link).
 
 ## Quality
 
 - [ ] Type checks and migration checks in CI.
 - [x] Unit tests for Paystack shared validation and webhook signature / idempotency key helpers.
+- [x] SQL smoke scripts for make-good and unserviced recovery.
 - [ ] Broader unit tests for remaining shared validation schemas.
-- [ ] Browser smoke tests for critical operator flows.
-- [ ] Real-device Android QA for driver and agent workflows.
+- [ ] Browser smoke tests for critical operator + resident flows.
+- [ ] Real-device Android QA for driver, agent, and resident workflows.
+- [ ] Hosted Supabase migration + Edge Function deploy (local Docker through `0059`).

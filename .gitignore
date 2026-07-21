@@ -8,6 +8,7 @@ build/
 .expo/
 .expo-shared/
 web-build/
+*.tsbuildinfo
 
 # Environment files
 .env

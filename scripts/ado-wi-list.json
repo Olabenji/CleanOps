@@ -1,0 +1,604 @@
+﻿[
+  {
+    "fields": {
+      "System.Id": 7,
+      "System.IterationPath": "CleanOps\\Sprint 10 - Multi-tenant Phase A",
+      "System.State": "Closed",
+      "System.Title": "Phase 1 - Core Ops Pilot",
+      "System.WorkItemType": "Epic"
+    },
+    "id": 7,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/7"
+  },
+  {
+    "fields": {
+      "System.Id": 8,
+      "System.IterationPath": "CleanOps\\Sprint 0 - Foundation",
+      "System.State": "Closed",
+      "System.Title": "Foundation: schema, monorepo, local Supabase pilot",
+      "System.WorkItemType": "Feature"
+    },
+    "id": 8,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/8"
+  },
+  {
+    "fields": {
+      "System.Id": 9,
+      "System.IterationPath": "CleanOps\\Sprint 0 - Foundation",
+      "System.State": "Closed",
+      "System.Title": "Define tenant schema, enums, RLS, and seed data",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 9,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/9"
+  },
+  {
+    "fields": {
+      "System.Id": 10,
+      "System.IterationPath": "CleanOps\\Sprint 0 - Foundation",
+      "System.State": "Closed",
+      "System.Title": "Configure local Supabase + shared TypeScript schemas",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 10,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/10"
+  },
+  {
+    "fields": {
+      "System.Id": 11,
+      "System.IterationPath": "CleanOps\\Sprint 1 - Collection Agent",
+      "System.State": "Closed",
+      "System.Title": "Sprint 1: Collection agent mobile + operator reconciliation",
+      "System.WorkItemType": "Feature"
+    },
+    "id": 11,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/11"
+  },
+  {
+    "fields": {
+      "System.Id": 12,
+      "System.IterationPath": "CleanOps\\Sprint 1 - Collection Agent",
+      "System.State": "Closed",
+      "System.Title": "Agent customer search and payment entry",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 12,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/12"
+  },
+  {
+    "fields": {
+      "System.Id": 13,
+      "System.IterationPath": "CleanOps\\Sprint 1 - Collection Agent",
+      "System.State": "Closed",
+      "System.Title": "Agent daily summary + offline queue",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 13,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/13"
+  },
+  {
+    "fields": {
+      "System.Id": 14,
+      "System.IterationPath": "CleanOps\\Sprint 1 - Collection Agent",
+      "System.State": "Closed",
+      "System.Title": "Operator agent collections reconciliation",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 14,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/14"
+  },
+  {
+    "fields": {
+      "System.Id": 15,
+      "System.IterationPath": "CleanOps\\Sprint 2 - Staff Auth",
+      "System.State": "Closed",
+      "System.Title": "Sprint 2: Staff auth provisioning from Admin",
+      "System.WorkItemType": "Feature"
+    },
+    "id": 15,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/15"
+  },
+  {
+    "fields": {
+      "System.Id": 16,
+      "System.IterationPath": "CleanOps\\Sprint 2 - Staff Auth",
+      "System.State": "Closed",
+      "System.Title": "Onboard staff with Auth user + temp password",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 16,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/16"
+  },
+  {
+    "fields": {
+      "System.Id": 17,
+      "System.IterationPath": "CleanOps\\Sprint 2 - Staff Auth",
+      "System.State": "Closed",
+      "System.Title": "Provision login / password reset for existing staff",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 17,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/17"
+  },
+  {
+    "fields": {
+      "System.Id": 18,
+      "System.IterationPath": "CleanOps\\Sprint 2 - Staff Auth",
+      "System.State": "Closed",
+      "System.Title": "Mobile credential sign-in for provisioned staff",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 18,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/18"
+  },
+  {
+    "fields": {
+      "System.Id": 19,
+      "System.IterationPath": "CleanOps\\Sprint 3 - Paystack Webhook",
+      "System.State": "Closed",
+      "System.Title": "Sprint 3: Paystack charge.success webhook posting",
+      "System.WorkItemType": "Feature"
+    },
+    "id": 19,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/19"
+  },
+  {
+    "fields": {
+      "System.Id": 20,
+      "System.IterationPath": "CleanOps\\Sprint 3 - Paystack Webhook",
+      "System.State": "Closed",
+      "System.Title": "Verify signature and post Paystack payments",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 20,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/20"
+  },
+  {
+    "fields": {
+      "System.Id": 21,
+      "System.IterationPath": "CleanOps\\Sprint 3 - Paystack Webhook",
+      "System.State": "Closed",
+      "System.Title": "Shared Paystack helpers + smoke script",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 21,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/21"
+  },
+  {
+    "fields": {
+      "System.Id": 22,
+      "System.IterationPath": "CleanOps\\Sprint 4 - Driver Field Logs",
+      "System.State": "Closed",
+      "System.Title": "Sprint 4: Driver fuel + dumpsite field logging",
+      "System.WorkItemType": "Feature"
+    },
+    "id": 22,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/22"
+  },
+  {
+    "fields": {
+      "System.Id": 23,
+      "System.IterationPath": "CleanOps\\Sprint 4 - Driver Field Logs",
+      "System.State": "Closed",
+      "System.Title": "Fuel log RPC + mobile form",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 23,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/23"
+  },
+  {
+    "fields": {
+      "System.Id": 24,
+      "System.IterationPath": "CleanOps\\Sprint 4 - Driver Field Logs",
+      "System.State": "Closed",
+      "System.Title": "Dumpsite run phases on mobile",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 24,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/24"
+  },
+  {
+    "fields": {
+      "System.Id": 25,
+      "System.IterationPath": "CleanOps\\Sprint 5 - Truck Handoffs",
+      "System.State": "Closed",
+      "System.Title": "Sprint 5: Truck reassignment and route takeover",
+      "System.WorkItemType": "Feature"
+    },
+    "id": 25,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/25"
+  },
+  {
+    "fields": {
+      "System.Id": 26,
+      "System.IterationPath": "CleanOps\\Sprint 5 - Truck Handoffs",
+      "System.State": "Closed",
+      "System.Title": "Propose / confirm / reject truck handoffs",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 26,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/26"
+  },
+  {
+    "fields": {
+      "System.Id": 27,
+      "System.IterationPath": "CleanOps\\Sprint 5 - Truck Handoffs",
+      "System.State": "Closed",
+      "System.Title": "Driver mobile handoff banner",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 27,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/27"
+  },
+  {
+    "fields": {
+      "System.Id": 28,
+      "System.IterationPath": "CleanOps\\Sprint 5 - Truck Handoffs",
+      "System.State": "Closed",
+      "System.Title": "Driver cover + shift cover summaries",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 28,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/28"
+  },
+  {
+    "fields": {
+      "System.Id": 29,
+      "System.IterationPath": "CleanOps\\Sprint 6 - Floating Trucks",
+      "System.State": "Closed",
+      "System.Title": "Sprint 6: Unhook trucks from hard zone assignment",
+      "System.WorkItemType": "Feature"
+    },
+    "id": 29,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/29"
+  },
+  {
+    "fields": {
+      "System.Id": 30,
+      "System.IterationPath": "CleanOps\\Sprint 6 - Floating Trucks",
+      "System.State": "Closed",
+      "System.Title": "Floating fleet assignment in planner + Admin",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 30,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/30"
+  },
+  {
+    "fields": {
+      "System.Id": 31,
+      "System.IterationPath": "CleanOps\\Sprint 7 - Zone Templates",
+      "System.State": "Closed",
+      "System.Title": "Sprint 7: Zone templates and daily auto-load",
+      "System.WorkItemType": "Feature"
+    },
+    "id": 31,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/31"
+  },
+  {
+    "fields": {
+      "System.Id": 32,
+      "System.IterationPath": "CleanOps\\Sprint 7 - Zone Templates",
+      "System.State": "Closed",
+      "System.Title": "Save route as zone default or temporary template",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 32,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/32"
+  },
+  {
+    "fields": {
+      "System.Id": 33,
+      "System.IterationPath": "CleanOps\\Sprint 7 - Zone Templates",
+      "System.State": "Closed",
+      "System.Title": "Auto-load daily routes for operator and eligible drivers",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 33,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/33"
+  },
+  {
+    "fields": {
+      "System.Id": 34,
+      "System.IterationPath": "CleanOps\\Sprint 7 - Zone Templates",
+      "System.State": "Closed",
+      "System.Title": "In-app route-change notices for drivers",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 34,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/34"
+  },
+  {
+    "fields": {
+      "System.Id": 35,
+      "System.IterationPath": "CleanOps\\Sprint 8 - Admin Edit Flows",
+      "System.State": "Closed",
+      "System.Title": "Sprint 8: Edit staff, trucks, and customers",
+      "System.WorkItemType": "Feature"
+    },
+    "id": 35,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/35"
+  },
+  {
+    "fields": {
+      "System.Id": 36,
+      "System.IterationPath": "CleanOps\\Sprint 8 - Admin Edit Flows",
+      "System.State": "Closed",
+      "System.Title": "Admin edit RPCs + UI for staff/truck/customer",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 36,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/36"
+  },
+  {
+    "fields": {
+      "System.Id": 37,
+      "System.IterationPath": "CleanOps\\Sprint 9 - Licence and SaaS UI",
+      "System.State": "Closed",
+      "System.Title": "Sprint 9: Driver licences, profiles, SaaS operator UI",
+      "System.WorkItemType": "Feature"
+    },
+    "id": 37,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/37"
+  },
+  {
+    "fields": {
+      "System.Id": 38,
+      "System.IterationPath": "CleanOps\\Sprint 9 - Licence and SaaS UI",
+      "System.State": "Closed",
+      "System.Title": "Driver licence fields + private storage uploads",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 38,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/38"
+  },
+  {
+    "fields": {
+      "System.Id": 39,
+      "System.IterationPath": "CleanOps\\Sprint 9 - Licence and SaaS UI",
+      "System.State": "Closed",
+      "System.Title": "Self-service operator/staff profile management",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 39,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/39"
+  },
+  {
+    "fields": {
+      "System.Id": 40,
+      "System.IterationPath": "CleanOps\\Sprint 9 - Licence and SaaS UI",
+      "System.State": "Closed",
+      "System.Title": "SaaS UI redesign for operator web",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 40,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/40"
+  },
+  {
+    "fields": {
+      "System.Id": 41,
+      "System.IterationPath": "CleanOps\\Sprint 10 - Multi-tenant Phase A",
+      "System.State": "Closed",
+      "System.Title": "Sprint 10: Platform admin multi-tenant onboarding",
+      "System.WorkItemType": "Feature"
+    },
+    "id": 41,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/41"
+  },
+  {
+    "fields": {
+      "System.Id": 42,
+      "System.IterationPath": "CleanOps\\Sprint 10 - Multi-tenant Phase A",
+      "System.State": "Closed",
+      "System.Title": "Platform admin RPCs + console UI",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 42,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/42"
+  },
+  {
+    "fields": {
+      "System.Id": 43,
+      "System.IterationPath": "CleanOps\\Sprint 10 - Multi-tenant Phase A",
+      "System.State": "Closed",
+      "System.Title": "Seed Island Clean + packaging docs",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 43,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/43"
+  },
+  {
+    "fields": {
+      "System.Id": 44,
+      "System.IterationPath": "CleanOps\\Sprint 10 - Multi-tenant Phase A",
+      "System.State": "Closed",
+      "System.Title": "Remove live-mode pilot data fallbacks",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 44,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/44"
+  },
+  {
+    "fields": {
+      "System.Id": 45,
+      "System.IterationPath": "CleanOps\\Sprint 10 - Multi-tenant Phase A",
+      "System.State": "Closed",
+      "System.Title": "Restore API table grants for authenticated role",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 45,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 4,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/45"
+  },
+  {
+    "fields": {
+      "System.Id": 46,
+      "System.IterationPath": "CleanOps\\Sprint 11 - Quality Gate",
+      "System.State": "New",
+      "System.Title": "Sprint 11: Quality gate (CI + smoke + device QA)",
+      "System.WorkItemType": "Feature"
+    },
+    "id": 46,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 1,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/46"
+  },
+  {
+    "fields": {
+      "System.Id": 47,
+      "System.IterationPath": "CleanOps\\Sprint 11 - Quality Gate",
+      "System.State": "New",
+      "System.Title": "Add CI pipeline for typecheck and migration checks",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 47,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 1,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/47"
+  },
+  {
+    "fields": {
+      "System.Id": 48,
+      "System.IterationPath": "CleanOps\\Sprint 11 - Quality Gate",
+      "System.State": "New",
+      "System.Title": "Browser smoke tests for critical operator flows",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 48,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 1,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/48"
+  },
+  {
+    "fields": {
+      "System.Id": 49,
+      "System.IterationPath": "CleanOps\\Sprint 11 - Quality Gate",
+      "System.State": "New",
+      "System.Title": "Android device QA for driver and agent offline sync",
+      "System.WorkItemType": "User Story"
+    },
+    "id": 49,
+    "multilineFieldsFormat": {},
+    "relations": null,
+    "rev": 1,
+    "url": "https://benjaminbabawale-elevatedtech.visualstudio.com/_apis/wit/workItems/49"
+  }
+]

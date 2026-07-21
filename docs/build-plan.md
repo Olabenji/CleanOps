@@ -1,7 +1,7 @@
 # CleanOps Build Plan
 
-**Last updated:** 11 July 2026  
-**Reference:** [status-report.md](./status-report.md), [roadmap.md](./roadmap.md), [backlog.md](./backlog.md)
+**Last updated:** 22 July 2026  
+**Reference:** [status-report.md](./status-report.md), [roadmap.md](./roadmap.md), [backlog.md](./backlog.md), [agent-handover.md](./agent-handover.md)
 
 ---
 
@@ -196,15 +196,34 @@ Operator-initiated truck handoffs with driver confirmation for breakdowns, dumps
 - Staff edit syncs linked `profiles` name/phone/role; login email stays on provision/reset flows
 - Customer zone moves drop mismatched scheduled stops and template stops; blocked while on an in-progress route
 
-### Sprint 9 — Quality gate
+### Sprint 9–14 arc (shipped through Jul 2026) — **complete locally**
+
+Committed as `2eac133` (recovery + resident parity). Migrations `0049`–`0059`.
+
+| Theme | Deliverable |
+|-------|-------------|
+| LAWMA compliance | P1 evidence UI + migration `0049` |
+| Driver wrap-up | No auto-complete of pending stops (`0050`) |
+| Operation calendar | Timezone-aware operation date helpers (`0051`–`0052`) |
+| Resident auth/home | Customer-linked resident role, home RPC (`0053`–`0055`) |
+| Complaints + Paystack | Service complaints + checkout/verify Edge Functions (`0056`–`0057`) |
+| Frequency make-good | Preferred-weekday plan filter + `collection_make_goods` (`0058`) |
+| Unserviced recovery + push | Linked recoveries, supervisor finalize, inbox/outbox/devices (`0059`) |
+| Resident web + mobile | Portal parity: Home / Pay / Issues / Inbox / Profile |
+| Smoke scripts | `scripts/smoke_make_good.sql`, `scripts/smoke_unserviced_recovery.sql` |
+
+### Sprint 15 — Quality gate — **next**
 
 - CI: typecheck + migration lint
-- Smoke tests for sign-in, plan routes, record payment, truck handoff confirm
-- Android device QA for driver + agent offline sync
+- Smoke tests for sign-in, plan routes, close-incomplete, resident login, Paystack checkout
+- Android device QA for driver + agent + resident offline/network paths
+- Hosted Supabase migration + Edge Function deploy
 
-### Sprint 10 — Resident mobile (Phase 2 start)
+### Sprint 16 — Make-good / Coverage board + real Expo push
 
-- Registration, schedule, balance, Paystack payments, missed collection reports
+- Operator coverage list (due / completed / open recoveries) — ADO #143 slim, no map first
+- EAS project + development build for resident push end-to-end
+- Then fleet/dumpsite operator UI (#142/#144)
 
 ---
 
