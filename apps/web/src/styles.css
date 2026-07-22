@@ -812,6 +812,14 @@ h1 {
   font-weight: 700;
 }
 
+.metric-card .metric-note {
+  color: #9a6700;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.45;
+  margin: 0;
+}
+
 .metric-card strong {
   font-size: 1.35rem;
   font-weight: 800;

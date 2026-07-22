@@ -20,7 +20,9 @@ export async function getOperatorCoverage(
         completedRecent: 0,
         stopsDueToday: 0,
         stopsCompletedToday: 0,
-        makeGoodStopsToday: 0
+        makeGoodStopsToday: 0,
+        stopsClosedForRecovery: 0,
+        expectedCompletableToday: 0
       },
       items: []
     };

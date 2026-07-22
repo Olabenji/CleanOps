@@ -550,7 +550,9 @@ export const coverageMetricsSchema = z.object({
   completedRecent: z.number().int().nonnegative(),
   stopsDueToday: z.number().int().nonnegative(),
   stopsCompletedToday: z.number().int().nonnegative(),
-  makeGoodStopsToday: z.number().int().nonnegative()
+  makeGoodStopsToday: z.number().int().nonnegative(),
+  stopsClosedForRecovery: z.number().int().nonnegative().default(0),
+  expectedCompletableToday: z.number().int().nonnegative().optional()
 });
 
 export const operatorCoverageSnapshotSchema = z.object({

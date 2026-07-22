@@ -115,6 +115,17 @@ export default function CoverageView({
               ? ` · ${metrics.makeGoodStopsToday} make-good stop${metrics.makeGoodStopsToday === 1 ? "" : "s"}`
               : ""}
           </span>
+          {(metrics?.stopsClosedForRecovery ?? 0) > 0 ? (
+            <p className="metric-note">
+              {metrics!.stopsClosedForRecovery} stop
+              {metrics!.stopsClosedForRecovery === 1 ? " was" : "s were"} closed for recovery
+              tomorrow — do not expect full day coverage
+              {typeof metrics?.expectedCompletableToday === "number"
+                ? ` (expect up to ${metrics.expectedCompletableToday}/${metrics.stopsDueToday})`
+                : ""}
+              .
+            </p>
+          ) : null}
         </article>
         <article className="metric-card">
           <p className="eyebrow">Recent completions</p>
