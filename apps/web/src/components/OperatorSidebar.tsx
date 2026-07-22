@@ -1,5 +1,6 @@
 import type { UserRole } from "@cleanops/shared";
 import {
+  ClipboardList,
   LayoutDashboard,
   ClipboardCheck,
   LogOut,
@@ -12,11 +13,19 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
-export type OperatorView = "dashboard" | "routes" | "payments" | "staff" | "compliance" | "admin";
+export type OperatorView =
+  | "dashboard"
+  | "routes"
+  | "coverage"
+  | "payments"
+  | "staff"
+  | "compliance"
+  | "admin";
 
 const navItems: Array<{ id: OperatorView; label: string; icon: typeof LayoutDashboard }> = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "routes", label: "Routes", icon: Route },
+  { id: "coverage", label: "Coverage", icon: ClipboardList },
   { id: "payments", label: "Payments", icon: WalletCards },
   { id: "staff", label: "Staff", icon: Users },
   { id: "compliance", label: "Compliance", icon: ClipboardCheck },

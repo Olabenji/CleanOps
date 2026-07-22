@@ -221,7 +221,7 @@ Committed as `2eac133` (recovery + resident parity). Migrations `0049`–`0059`.
 
 ### Sprint 16 — Make-good / Coverage board + real Expo push
 
-- Operator coverage list (due / completed / open recoveries) — ADO #143 slim, no map first
+- [x] Operator coverage list (due / completed / open recoveries) — ADO #143 slim, no map first (`0061`)
 - EAS project + development build for resident push end-to-end
 - Then fleet/dumpsite operator UI (#142/#144)
 

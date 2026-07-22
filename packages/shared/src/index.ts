@@ -522,9 +522,50 @@ export const finalizeRouteWithUnservicedResultSchema = z.object({
   note: z.string().nullable().optional()
 });
 
+export const makeGoodStatuses = ["open", "scheduled", "completed", "cancelled"] as const;
+
+export const coverageMakeGoodItemSchema = z.object({
+  id: z.string().uuid(),
+  customerId: z.string().uuid(),
+  customerName: z.string(),
+  zoneName: z.string(),
+  status: z.enum(makeGoodStatuses),
+  sourceDate: z.string(),
+  targetDate: z.string(),
+  dueBy: z.string(),
+  attemptCount: z.number().int().nonnegative(),
+  skipReason: z.string().nullable().optional(),
+  openedAt: z.string(),
+  completedAt: z.string().nullable().optional(),
+  overdue: z.boolean(),
+  dueToday: z.boolean()
+});
+
+export const coverageMetricsSchema = z.object({
+  dueToday: z.number().int().nonnegative(),
+  completedToday: z.number().int().nonnegative(),
+  open: z.number().int().nonnegative(),
+  scheduled: z.number().int().nonnegative(),
+  overdue: z.number().int().nonnegative(),
+  completedRecent: z.number().int().nonnegative(),
+  stopsDueToday: z.number().int().nonnegative(),
+  stopsCompletedToday: z.number().int().nonnegative(),
+  makeGoodStopsToday: z.number().int().nonnegative()
+});
+
+export const operatorCoverageSnapshotSchema = z.object({
+  operationDate: z.string(),
+  metrics: coverageMetricsSchema,
+  items: z.array(coverageMakeGoodItemSchema)
+});
+
 export type ResidentNotification = z.infer<typeof residentNotificationSchema>;
 export type RegisterResidentPushDeviceInput = z.infer<typeof registerResidentPushDeviceInputSchema>;
 export type FinalizeRouteWithUnservicedResult = z.infer<typeof finalizeRouteWithUnservicedResultSchema>;
+export type CoverageMakeGoodItem = z.infer<typeof coverageMakeGoodItemSchema>;
+export type CoverageMetrics = z.infer<typeof coverageMetricsSchema>;
+export type OperatorCoverageSnapshot = z.infer<typeof operatorCoverageSnapshotSchema>;
+export type MakeGoodStatus = (typeof makeGoodStatuses)[number];
 
 export const residentHomeSchema = z.object({
   customerId: z.string().uuid(),

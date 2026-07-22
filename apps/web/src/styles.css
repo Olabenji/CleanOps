@@ -1290,6 +1290,84 @@ h1 {
   color: #a8550b;
 }
 
+.pill.warn {
+  background: #fff8e8;
+  color: #9a6700;
+}
+
+.panel-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.coverage-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip-button {
+  background: #f4f8f5;
+  border: 1px solid #dbe7dd;
+  border-radius: 999px;
+  color: #345041;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 8px 14px;
+}
+
+.chip-button.active {
+  background: #e7f7ed;
+  border-color: #1a7f45;
+  color: #1a7f45;
+}
+
+.coverage-list .coverage-row {
+  grid-template-columns: 1.4fr 1fr 0.8fr;
+}
+
+.coverage-row-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.coverage-row p {
+  color: #4b5f52;
+  line-height: 1.5;
+  margin: 4px 0 0;
+}
+
+.inline-warn {
+  color: #a8550b;
+  font-weight: 700;
+}
+
+.empty-panel {
+  align-items: flex-start;
+  background: #f8fbf7;
+  border: 1px dashed #dbe7dd;
+  border-radius: 18px;
+  color: #4b5f52;
+  display: flex;
+  gap: 14px;
+  padding: 20px;
+}
+
+.empty-panel strong {
+  color: #102017;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.coverage-footnote {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
 .suspension-note {
   color: #a8550b;
   display: block;
@@ -2193,12 +2271,17 @@ button.danger-outline {
   .ledger-row,
   .staff-row,
   .route-operations,
-  .payment-detail-grid {
+  .payment-detail-grid,
+  .coverage-list .coverage-row {
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 1180px) {
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .routes-workflow,
   .payment-workflow,
   .stop-row-detailed,

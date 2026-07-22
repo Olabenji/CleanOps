@@ -10,6 +10,7 @@ import type {
   CustomerUpdateInput,
   IncidentReport,
   MonthlyStaffSummary,
+  OperatorCoverageSnapshot,
   OperatorDashboard,
   OperatorProfile,
   PaymentChannel,
@@ -54,6 +55,7 @@ import { useEffect, useState } from "react";
 import AdminView from "./components/AdminView";
 import AgentCollectionsView from "./components/AgentCollectionsView";
 import ComplianceView from "./components/ComplianceView";
+import CoverageView from "./components/CoverageView";
 import OperatorSidebar from "./components/OperatorSidebar";
 import PasswordRecoveryScreen from "./components/PasswordRecoveryScreen";
 import PlatformAdminView from "./components/PlatformAdminView";
@@ -88,6 +90,7 @@ import {
   updateComplianceCaseStatus,
   updateServiceComplaintStatus
 } from "./data/lawmaComplianceService";
+import { getOperatorCoverage } from "./data/coverageService";
 import {
   addRoutePlanStop,
   cancelRouteTruckHandoff,
@@ -134,11 +137,12 @@ import { formatAppError, parseAmountNairaToKobo } from "./lib/errors";
 import { deriveRouteProgress } from "./lib/routeProgress";
 
 const metricIcons = [Truck, WalletCards, Users, AlertTriangle];
-type View = "dashboard" | "routes" | "payments" | "staff" | "compliance" | "admin";
+type View = "dashboard" | "routes" | "coverage" | "payments" | "staff" | "compliance" | "admin";
 
 const workspaceTitles: Record<View, string> = {
   dashboard: "Operations overview",
   routes: "Route operations",
+  coverage: "Make-good & coverage",
   payments: "Payments & ledger",
   staff: "Staff attendance",
   compliance: "Compliance",
@@ -229,6 +233,7 @@ export function App() {
   const [serviceComplaints, setServiceComplaints] = useState<ServiceComplaint[]>([]);
   const [complianceCases, setComplianceCases] = useState<ComplianceCase[]>([]);
   const [billDeliveries, setBillDeliveries] = useState<BillDelivery[]>([]);
+  const [coverage, setCoverage] = useState<OperatorCoverageSnapshot | null>(null);
   const [vehicleChecklists, setVehicleChecklists] = useState<VehicleBrandingChecklist[]>([]);
   const [customerLedger, setCustomerLedger] = useState<CustomerLedgerItem[]>([]);
   const [adminData, setAdminData] = useState<AdminMasterData>(emptyAdminData);
@@ -498,7 +503,8 @@ export function App() {
       complaintData,
       complianceData,
       billDeliveryData,
-      checklistData
+      checklistData,
+      coverageData
     ] = await Promise.all([
       getOperatorDashboard(targetDate),
       getRouteTruckHandoffs(targetDate),
@@ -513,7 +519,8 @@ export function App() {
       listServiceComplaints(targetDate),
       listComplianceCases(),
       listBillDeliveries(`${targetDate.slice(0, 8)}01`),
-      listVehicleBrandingChecklists(targetDate)
+      listVehicleBrandingChecklists(targetDate),
+      getOperatorCoverage(targetDate)
     ]);
 
     setDashboard(dashboardData);
@@ -531,6 +538,7 @@ export function App() {
     setComplianceCases(complianceData);
     setBillDeliveries(billDeliveryData);
     setVehicleChecklists(checklistData);
+    setCoverage(coverageData);
     setSelectedRouteId((current) => (routesData.some((route) => route.id === current) ? current : routesData[0]?.id ?? null));
     setSelectedCustomerId((current) => current ?? ledgerData[0]?.customerId ?? null);
   }
@@ -650,6 +658,7 @@ export function App() {
     setServiceComplaints([]);
     setComplianceCases([]);
     setBillDeliveries([]);
+    setCoverage(null);
     setVehicleChecklists([]);
     setCustomerLedger([]);
     setAdminData(emptyAdminData);
@@ -1375,6 +1384,14 @@ export function App() {
           onUpdateRouteStatus={handleRouteStatus}
           onFinalizeRouteWithUnserviced={handleFinalizeRouteWithUnserviced}
           onUpdateStop={handleStopStatus}
+        />
+      ) : null}
+      {activeView === "coverage" ? (
+        <CoverageView
+          coverage={coverage}
+          operationDate={operationDate}
+          onRefresh={() => void handleRefresh()}
+          refreshing={refreshing}
         />
       ) : null}
       {activeView === "payments" ? (

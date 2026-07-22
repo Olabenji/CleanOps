@@ -27,7 +27,7 @@
 - [x] Resident/customer ledger with status, balance, current-month tag, and payment history.
 - [x] Staff attendance and monthly payroll summary (task assignment / performance notes still open).
 - [x] Admin master-data onboarding + staff login provisioning + resident customer login provision.
-- [ ] Make-good / Coverage board for open recoveries (ADO #143 slim — list before map).
+- [x] Make-good / Coverage board for open recoveries (ADO #143 slim — list before map).
 - [ ] Fleet profiles UI, fuel logs, maintenance calendar, dumpsite proximity/capacity (#142/#144).
 - [ ] Exportable reports for P&L, collections, attendance, and fleet costs.
 - [x] Edit existing staff/truck/customer records (including collection frequency fields).
