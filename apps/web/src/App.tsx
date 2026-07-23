@@ -1616,7 +1616,7 @@ function DashboardView({
             <article className={isIncidents && openIncidents > 0 ? "metric-card tone-danger" : "metric-card"} key={metric.label}>
               <Icon aria-hidden="true" size={20} />
               <span>{metric.label}</span>
-              <strong>{metric.value}</strong>
+              <strong>{metric.label === "Payments" ? metric.value.replace(/^[?\uFFFD₦]+/, "NGN ") : metric.value}</strong>
               <small>{metric.helper}</small>
             </article>
           );

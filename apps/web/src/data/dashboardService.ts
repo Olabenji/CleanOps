@@ -13,7 +13,7 @@ function emptyDashboard(operatorName = "Operator"): OperatorDashboard {
       },
       {
         label: "Payments",
-        value: "₦0",
+        value: "NGN 0",
         helper: "No payments recorded for this date"
       },
       {

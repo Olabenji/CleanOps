@@ -5,7 +5,7 @@
 
 ## 1. Hosted database migrations
 
-Apply all pending migrations through `0060` to the hosted Supabase project:
+Apply all pending migrations through `0063` to the hosted Supabase project:
 
 ```bash
 npx supabase link --project-ref <PROJECT_REF>
@@ -18,6 +18,7 @@ Confirm remote includes:
 - `0058_frequency_make_good.sql`
 - `0059_unserviced_recovery_push.sql`
 - `0060_fix_compliance_case_status.sql`
+- `0061`–`0063` (coverage board + dashboard Payments `NGN` prefix)
 
 ## 2. Edge Functions
 
@@ -66,6 +67,14 @@ npm run test:paystack:idempotent
 
 Manual: operator close-incomplete → recovery notice → resident inbox.
 
+## 5. Expo push (development build)
+
+See `docs/expo-push-dev-build.md`. Summary:
+
+- EAS project `@olabenji/cleanops` / ID `0f45aaf0-43ab-47c4-9358-61ace5da1f58`
+- Set `EXPO_PUBLIC_EAS_PROJECT_ID`, run Android/iOS credentials, then `npm run eas:build:android` from `apps/mobile`
+- Deploy/keep `dispatch-resident-notifications` available for outbox flush
+
 ## Blockers for this machine
 
-Hosted project credentials / PAT and real Paystack secrets are not committed. Provide project ref + secrets when ready to execute the deploy steps above.
+Android/iOS push credentials (FCM / APNs) still need interactive `eas credentials` on a machine with the Google/Apple accounts. Physical-device install is required for end-to-end push QA.

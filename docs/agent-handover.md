@@ -48,9 +48,9 @@ This markdown mirrors the handover canvas for repo durability. Prefer migrations
 
 ## Pending (priority)
 
-**P0:** CI/smoke/device QA; hosted deploy; real Expo push (EAS + dev build)
+**P0:** Real Expo push device QA — EAS project linked; run `eas credentials` + `eas:build:android`, then checklist in `docs/expo-push-dev-build.md`
 
-**P1:** Make-good/Coverage board (#143 slim); fleet/dumpsite operator UI (#142/#144)
+**P1:** Fleet/dumpsite operator UI (#142/#144)
 
 **P2:** Twilio/Termii; OTP; GPS/photo proof; reports/incident resolution; Realtime
 

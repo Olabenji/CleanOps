@@ -24,9 +24,11 @@ import {
   markResidentNotificationRead
 } from "../data/residentService";
 import {
+  attachResidentPushResponseHandler,
   clearResidentPushRegistration,
   ensureResidentPushRegistration,
-  isExpoGoRuntime
+  isExpoGoRuntime,
+  isResidentPushSupported
 } from "../lib/residentPush";
 import { colors } from "../theme";
 import ProfileSettingsCard from "../components/ProfileSettingsCard";
@@ -144,6 +146,52 @@ export default function ResidentApp({
       .catch(() => {
         setMessage("In-app messages available. Push registration skipped on this device.");
       });
+  }, [session.mode]);
+
+  useEffect(() => {
+    if (session.mode !== "supabase" || !isResidentPushSupported()) {
+      return;
+    }
+
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
+
+    void attachResidentPushResponseHandler(({ notificationId }) => {
+      if (cancelled) {
+        return;
+      }
+
+      setTab("messages");
+      if (!notificationId) {
+        return;
+      }
+
+      setFocusNotificationId(notificationId);
+      void markResidentNotificationRead(notificationId)
+        .then(() => {
+          setNotifications((current) =>
+            current.map((item) =>
+              item.id === notificationId
+                ? { ...item, status: "read", readAt: new Date().toISOString() }
+                : item
+            )
+          );
+        })
+        .catch(() => {
+          // Inbox still opens even if mark-read fails.
+        });
+    }).then((cleanup) => {
+      if (cancelled) {
+        cleanup();
+        return;
+      }
+      unsubscribe = cleanup;
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
   }, [session.mode]);
 
   const unreadCount = notifications.filter((item) => item.status === "unread").length;

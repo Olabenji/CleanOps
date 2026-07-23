@@ -5,10 +5,11 @@
 
 ## Prerequisites
 
-- Local or hosted Supabase with migrations through `0060`
+- Local or hosted Supabase with migrations through `0063`
 - Seeded demo accounts available
 - Web: `npm run dev:web`
-- Mobile: Expo Go for UI smoke; development build for push
+- Mobile: Expo Go for UI smoke; development build for push (`docs/expo-push-dev-build.md`)
+- `EXPO_PUBLIC_EAS_PROJECT_ID=0f45aaf0-43ab-47c4-9358-61ace5da1f58`
 
 ## Demo credentials
 

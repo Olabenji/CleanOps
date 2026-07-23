@@ -6,27 +6,41 @@
     "orientation": "portrait",
     "scheme": "cleanops",
     "userInterfaceStyle": "light",
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "plugins": [
+      "expo-dev-client",
       [
         "expo-notifications",
         {
-          "color": "#1a7f45"
+          "color": "#1a7f45",
+          "defaultChannel": "resident-default"
         }
       ]
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.nexttogodliness.cleanops",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
+      }
     },
     "android": {
       "package": "com.nexttogodliness.cleanops",
       "softwareKeyboardLayoutMode": "resize",
-      "usesCleartextTraffic": true
+      "usesCleartextTraffic": true,
+      "adaptiveIcon": {
+        "backgroundColor": "#1a7f45"
+      }
     },
     "extra": {
       "eas": {
-        "projectId": ""
+        "projectId": "0f45aaf0-43ab-47c4-9358-61ace5da1f58"
       }
-    }
+    },
+    "owner": "olabenji"
   }
 }
