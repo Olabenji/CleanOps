@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "112480925110",
+    "project_id": "clean-ops-aaec8",
+    "storage_bucket": "clean-ops-aaec8.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:112480925110:android:f8c602919d5cd074fe3d17",
+        "android_client_info": {
+          "package_name": "com.cleanops.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBF4oJ24lTDx4Ck4ix-npEy2yibWftmqV4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

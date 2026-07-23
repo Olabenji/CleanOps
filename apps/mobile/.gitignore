@@ -1,0 +1,7 @@
+# Local secrets — never commit
+*-firebase-adminsdk-*.json
+fcm-service-account.json
+clean-ops-*-firebase-adminsdk-*.json
+.env
+.env.*
+!.env.example

@@ -19,6 +19,16 @@ blob-report/
 .env_PAT.local
 !.env.example
 
+# Firebase / FCM
+# google-services.json is public client config (safe to commit).
+# Service-account / adminsdk private keys must NEVER be committed.
+**/firebase-service-account*.json
+**/fcm-service-account*.json
+*-firebase-adminsdk-*.json
+**/clean-ops-*-firebase-adminsdk-*.json
+apps/mobile/*-firebase-adminsdk-*.json
+apps/mobile/fcm-service-account.json
+
 # Logs
 *.log
 npm-debug.log*

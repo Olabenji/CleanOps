@@ -21,7 +21,7 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.nexttogodliness.cleanops",
+      "bundleIdentifier": "com.cleanops.app",
       "infoPlist": {
         "UIBackgroundModes": [
           "remote-notification"
@@ -29,9 +29,10 @@
       }
     },
     "android": {
-      "package": "com.nexttogodliness.cleanops",
+      "package": "com.cleanops.app",
       "softwareKeyboardLayoutMode": "resize",
       "usesCleartextTraffic": true,
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#1a7f45"
       }

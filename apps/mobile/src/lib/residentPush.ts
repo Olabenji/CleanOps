@@ -10,6 +10,8 @@ export type ResidentPushOpenPayload = {
   notificationId?: string;
 };
 
+type NotificationsModule = typeof import("expo-notifications");
+
 /** Expo Go removed remote push in SDK 53+. Push only works in a development/production build. */
 export function isExpoGoRuntime(): boolean {
   return Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
@@ -30,7 +32,19 @@ function resolveProjectId(): string | undefined {
     return fromExtra.trim();
   }
 
+  const fromEasConfig = Constants.easConfig?.projectId;
+  if (typeof fromEasConfig === "string" && fromEasConfig.trim()) {
+    return fromEasConfig.trim();
+  }
+
   return undefined;
+}
+
+function formatPushError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
 }
 
 async function readInstallationId(): Promise<string> {
@@ -53,9 +67,14 @@ async function readInstallationId(): Promise<string> {
   return generated;
 }
 
-async function loadNotifications() {
+async function loadNotifications(): Promise<NotificationsModule> {
   // Dynamic import keeps Expo Go from crashing on module load (SDK 53+).
-  return import("expo-notifications");
+  const mod = await import("expo-notifications");
+  const resolved = (mod as { default?: NotificationsModule }).default ?? mod;
+  if (typeof resolved.setNotificationHandler !== "function") {
+    throw new Error("expo-notifications module failed to load in this build");
+  }
+  return resolved;
 }
 
 function readNotificationId(data: unknown): string | undefined {
@@ -97,18 +116,22 @@ export async function ensureResidentPushRegistration(appVersion?: string): Promi
   }
 
   if (Platform.OS === "android") {
+    const importance = Notifications.AndroidImportance?.DEFAULT ?? 5;
     await Notifications.setNotificationChannelAsync("resident-default", {
       name: "Collection updates",
-      importance: Notifications.AndroidImportance.DEFAULT
+      importance
     });
   }
 
   const projectId = resolveProjectId();
   if (!projectId) {
-    throw new Error("EXPO_PUBLIC_EAS_PROJECT_ID (or app.json extra.eas.projectId) is required for push");
+    throw new Error("Missing EAS projectId for Expo push");
   }
 
   const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });
+  if (!tokenResponse?.data) {
+    throw new Error("Expo push token was empty");
+  }
 
   const installationId = await readInstallationId();
   await registerResidentPushDevice({
@@ -146,8 +169,12 @@ export async function attachResidentPushResponseHandler(
     });
   };
 
-  const coldStart = await Notifications.getLastNotificationResponseAsync();
-  openFromResponse(coldStart);
+  try {
+    const coldStart = await Notifications.getLastNotificationResponseAsync();
+    openFromResponse(coldStart);
+  } catch {
+    // Cold-start lookup is best-effort.
+  }
 
   const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
     openFromResponse(response);
@@ -170,4 +197,4 @@ export async function clearResidentPushRegistration(installationId: string | nul
   }
 }
 
-export { INSTALLATION_KEY };
+export { INSTALLATION_KEY, formatPushError };
