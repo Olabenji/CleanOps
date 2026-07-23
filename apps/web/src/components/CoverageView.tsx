@@ -93,23 +93,37 @@ export default function CoverageView({
 
       <div className="metric-grid">
         <article className="metric-card">
+          <ClipboardList aria-hidden="true" size={20} />
           <p className="eyebrow">Recoveries due today</p>
           <strong>{metrics?.dueToday ?? 0}</strong>
-          <span>{metrics?.completedToday ?? 0} completed today</span>
+          <span className="metric-helper">{metrics?.completedToday ?? 0} completed today</span>
         </article>
         <article className="metric-card">
+          <AlertTriangle aria-hidden="true" size={20} />
           <p className="eyebrow">Overdue make-goods</p>
           <strong>{metrics?.overdue ?? 0}</strong>
-          <span>
+          <span className="metric-helper">
             {metrics?.open ?? 0} open · {metrics?.scheduled ?? 0} scheduled
           </span>
         </article>
         <article className="metric-card">
+          <div className="metric-card-head">
+            <CalendarCheck2 aria-hidden="true" size={20} />
+            {coveragePct != null ? (
+              <span
+                aria-hidden="true"
+                className="metric-ring"
+                style={{ ["--ring-progress" as string]: `${coveragePct * 3.6}deg` }}
+              >
+                {coveragePct}%
+              </span>
+            ) : null}
+          </div>
           <p className="eyebrow">Day coverage</p>
           <strong>
             {metrics?.stopsCompletedToday ?? 0}/{metrics?.stopsDueToday ?? 0}
           </strong>
-          <span>
+          <span className="metric-helper">
             {coveragePct == null ? "No stops planned" : `${coveragePct}% completed`}
             {metrics?.makeGoodStopsToday
               ? ` · ${metrics.makeGoodStopsToday} make-good stop${metrics.makeGoodStopsToday === 1 ? "" : "s"}`
@@ -128,9 +142,10 @@ export default function CoverageView({
           ) : null}
         </article>
         <article className="metric-card">
+          <RefreshCw aria-hidden="true" size={20} />
           <p className="eyebrow">Recent completions</p>
           <strong>{metrics?.completedRecent ?? 0}</strong>
-          <span>Completed in last 14 days</span>
+          <span className="metric-helper">Completed in last 14 days</span>
         </article>
       </div>
 

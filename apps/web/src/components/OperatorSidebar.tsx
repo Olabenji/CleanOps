@@ -115,8 +115,9 @@ export default function OperatorSidebar({
           <span className="avatar-chip" aria-hidden="true">
             {firstName.slice(0, 1)}
           </span>
-          <span>
-            {firstName} · {shortRole(role)}
+          <span className="sidebar-user-copy">
+            <strong>{fullName}</strong>
+            <small>{shortRole(role)}</small>
           </span>
         </button>
         <button className="sidebar-nav-item" onClick={onSignOut} type="button">

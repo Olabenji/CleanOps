@@ -27,6 +27,7 @@ import {
   attachResidentPushResponseHandler,
   clearResidentPushRegistration,
   ensureResidentPushRegistration,
+  formatPushError,
   isExpoGoRuntime,
   isResidentPushSupported
 } from "../lib/residentPush";
@@ -143,8 +144,10 @@ export default function ResidentApp({
           setMessage("In-app messages available. Push permission was not granted.");
         }
       })
-      .catch(() => {
-        setMessage("In-app messages available. Push registration skipped on this device.");
+      .catch((error) => {
+        const detail = formatPushError(error);
+        console.warn("[resident-push] registration failed", detail);
+        setMessage(`In-app messages available. Push registration failed: ${detail}`);
       });
   }, [session.mode]);
 
@@ -180,13 +183,17 @@ export default function ResidentApp({
         .catch(() => {
           // Inbox still opens even if mark-read fails.
         });
-    }).then((cleanup) => {
-      if (cancelled) {
-        cleanup();
-        return;
-      }
-      unsubscribe = cleanup;
-    });
+    })
+      .then((cleanup) => {
+        if (cancelled) {
+          cleanup();
+          return;
+        }
+        unsubscribe = cleanup;
+      })
+      .catch((error) => {
+        console.warn("[resident-push] response handler failed", formatPushError(error));
+      });
 
     return () => {
       cancelled = true;
@@ -430,54 +437,66 @@ const styles = StyleSheet.create({
     justifyContent: "space-between"
   },
   eyebrow: {
-    color: colors.muted,
+    color: colors.accent,
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "800",
+    letterSpacing: 0.8,
     textTransform: "uppercase"
   },
   title: {
     color: colors.text,
-    fontSize: 22,
-    fontWeight: "800"
+    fontSize: 26,
+    fontWeight: "800",
+    letterSpacing: -0.6
   },
   signOut: {
     color: colors.accent,
-    fontWeight: "700"
+    fontWeight: "800"
   },
   stack: {
-    gap: 12
+    gap: 14
   },
   quickActions: {
     flexDirection: "row",
-    gap: 8
+    gap: 10
   },
   quickAction: {
     backgroundColor: colors.card,
     borderColor: colors.border,
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
+    elevation: 1,
     flex: 1,
-    gap: 3,
-    minHeight: 72,
-    padding: 10
+    gap: 4,
+    minHeight: 84,
+    padding: 12,
+    shadowColor: colors.text,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6
   },
   quickActionTitle: {
     color: colors.accent,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "800"
   },
   quickActionCopy: {
     color: colors.muted,
-    fontSize: 11,
-    lineHeight: 15
+    fontSize: 12,
+    lineHeight: 16
   },
   card: {
     backgroundColor: colors.card,
     borderColor: colors.border,
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
-    gap: 6,
-    padding: 16
+    elevation: 1,
+    gap: 8,
+    padding: 16,
+    shadowColor: colors.text,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8
   },
   unreadCard: {
     borderColor: colors.accent,

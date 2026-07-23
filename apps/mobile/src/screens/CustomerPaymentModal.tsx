@@ -436,13 +436,18 @@ const styles = StyleSheet.create({
   primaryButton: {
     backgroundColor: "#1a7f45",
     borderRadius: 14,
+    elevation: 3,
     paddingHorizontal: 16,
-    paddingVertical: 14
+    paddingVertical: 15,
+    shadowColor: "#1a7f45",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10
   },
   primaryButtonText: {
     color: "#ffffff",
-    fontSize: 15,
-    fontWeight: "700",
+    fontSize: 16,
+    fontWeight: "800",
     textAlign: "center"
   },
   buttonDisabled: {

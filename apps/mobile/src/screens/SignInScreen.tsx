@@ -278,23 +278,23 @@ const styles = StyleSheet.create({
   },
   eyebrow: {
     color: "#1a7f45",
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "800",
-    letterSpacing: 1.4,
+    letterSpacing: 1.2,
     textTransform: "uppercase"
   },
   heading: {
     color: "#102017",
-    fontSize: 34,
+    fontSize: 30,
     fontWeight: "800",
-    letterSpacing: -1.2,
+    letterSpacing: -1,
     marginTop: 8
   },
   copy: {
-    color: "#4b5f52",
-    fontSize: 16,
-    lineHeight: 24,
-    marginTop: 12
+    color: "#637466",
+    fontSize: 15,
+    lineHeight: 22,
+    marginTop: 10
   },
   hint: {
     color: "#637466",
@@ -392,13 +392,18 @@ const styles = StyleSheet.create({
   primaryButton: {
     backgroundColor: "#1a7f45",
     borderRadius: 14,
+    elevation: 3,
     paddingHorizontal: 16,
-    paddingVertical: 14
+    paddingVertical: 15,
+    shadowColor: "#1a7f45",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10
   },
   primaryButtonText: {
     color: "#ffffff",
-    fontSize: 15,
-    fontWeight: "700",
+    fontSize: 16,
+    fontWeight: "800",
     textAlign: "center"
   },
   forgotLink: {

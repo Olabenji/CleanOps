@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { colors } from "../theme";
+import { colors, radii } from "../theme";
 
 export type DriverTabId = "today" | "history" | "profile";
 
@@ -21,8 +21,11 @@ export default function DriverTabBar({
       {tabs.map((tab) => {
         const active = tab.id === activeTab;
         return (
-          <Pressable key={tab.id} onPress={() => onChange(tab.id)} style={styles.tab}>
-            <View style={[styles.iconDot, active && styles.iconDotActive]} />
+          <Pressable
+            key={tab.id}
+            onPress={() => onChange(tab.id)}
+            style={[styles.tab, active && styles.tabActive]}
+          >
             <Text style={[styles.label, active && styles.labelActive]}>{tab.label}</Text>
           </Pressable>
         );
@@ -37,31 +40,26 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     borderTopWidth: 1,
     flexDirection: "row",
-    paddingBottom: 10,
+    gap: 6,
+    paddingBottom: 12,
+    paddingHorizontal: 10,
     paddingTop: 10
   },
   tab: {
     alignItems: "center",
+    borderRadius: radii.md,
     flex: 1,
-    gap: 6
+    paddingVertical: 10
   },
-  iconDot: {
-    borderColor: colors.muted,
-    borderRadius: 999,
-    borderWidth: 2,
-    height: 18,
-    width: 18
-  },
-  iconDotActive: {
-    backgroundColor: colors.accentSoft,
-    borderColor: colors.accent
+  tabActive: {
+    backgroundColor: colors.accent
   },
   label: {
     color: colors.muted,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "700"
   },
   labelActive: {
-    color: colors.accent
+    color: colors.white
   }
 });

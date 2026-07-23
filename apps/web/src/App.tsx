@@ -1592,6 +1592,25 @@ function LoginScreen({
   );
 }
 
+function parseRouteProgress(value: string): { completed: number; total: number; pct: number } | null {
+  const match = value.match(/(\d+)\s*\/\s*(\d+)/);
+  if (!match) {
+    return null;
+  }
+
+  const completed = Number(match[1]);
+  const total = Number(match[2]);
+  if (!Number.isFinite(completed) || !Number.isFinite(total) || total <= 0) {
+    return null;
+  }
+
+  return {
+    completed,
+    total,
+    pct: Math.round((completed / total) * 100)
+  };
+}
+
 function DashboardView({
   dashboard,
   incidents,
@@ -1611,13 +1630,31 @@ function DashboardView({
         {dashboard.metrics.map((metric, index) => {
           const Icon = metricIcons[index] ?? CheckCircle2;
           const isIncidents = metric.label.toLowerCase().includes("incident");
+          const displayValue =
+            metric.label === "Payments" ? metric.value.replace(/^[?\uFFFD₦]+/, "NGN ") : metric.value;
+          const routeProgress =
+            metric.label === "Route Progress" ? parseRouteProgress(metric.value) : null;
 
           return (
-            <article className={isIncidents && openIncidents > 0 ? "metric-card tone-danger" : "metric-card"} key={metric.label}>
-              <Icon aria-hidden="true" size={20} />
-              <span>{metric.label}</span>
-              <strong>{metric.label === "Payments" ? metric.value.replace(/^[?\uFFFD₦]+/, "NGN ") : metric.value}</strong>
-              <small>{metric.helper}</small>
+            <article
+              className={isIncidents && openIncidents > 0 ? "metric-card tone-danger" : "metric-card"}
+              key={metric.label}
+            >
+              <div className="metric-card-head">
+                <Icon aria-hidden="true" size={20} />
+                {routeProgress ? (
+                  <span
+                    aria-hidden="true"
+                    className="metric-ring"
+                    style={{ ["--ring-progress" as string]: `${routeProgress.pct * 3.6}deg` }}
+                  >
+                    {routeProgress.pct}%
+                  </span>
+                ) : null}
+              </div>
+              <span className="metric-label">{metric.label}</span>
+              <strong>{displayValue}</strong>
+              <small className="metric-helper">{metric.helper}</small>
             </article>
           );
         })}

@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { colors } from "../theme";
+import { colors, radii } from "../theme";
 
 export type ResidentTabId = "home" | "payments" | "issues" | "messages" | "profile";
 
@@ -26,8 +26,11 @@ export default function ResidentTabBar({
         const active = tab.id === activeTab;
         const badge = tab.id === "messages" && (unreadCount ?? 0) > 0 ? unreadCount : 0;
         return (
-          <Pressable key={tab.id} onPress={() => onChange(tab.id)} style={styles.tab}>
-            <View style={[styles.iconDot, active && styles.iconDotActive]} />
+          <Pressable
+            key={tab.id}
+            onPress={() => onChange(tab.id)}
+            style={[styles.tab, active && styles.tabActive]}
+          >
             <Text style={[styles.label, active && styles.labelActive]}>
               {tab.label}
               {badge ? ` (${badge})` : ""}
@@ -45,29 +48,26 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     borderTopWidth: 1,
     flexDirection: "row",
-    paddingBottom: 10,
-    paddingTop: 8
+    gap: 4,
+    paddingBottom: 12,
+    paddingHorizontal: 8,
+    paddingTop: 10
   },
   tab: {
     alignItems: "center",
+    borderRadius: radii.md,
     flex: 1,
-    gap: 4
+    paddingVertical: 10
   },
-  iconDot: {
-    backgroundColor: colors.border,
-    borderRadius: 4,
-    height: 8,
-    width: 8
-  },
-  iconDotActive: {
+  tabActive: {
     backgroundColor: colors.accent
   },
   label: {
     color: colors.muted,
     fontSize: 11,
-    fontWeight: "600"
+    fontWeight: "700"
   },
   labelActive: {
-    color: colors.accent
+    color: colors.white
   }
 });

@@ -1662,25 +1662,23 @@ const styles = StyleSheet.create({
     borderColor: "#e0c9a8"
   },
   eyebrow: {
-    color: "#1a7f45",
-    fontSize: 13,
+    color: colors.accent,
+    fontSize: 12,
     fontWeight: "800",
-    letterSpacing: 1.4,
-    marginBottom: 12,
+    letterSpacing: 1.2,
     textTransform: "uppercase"
   },
   heading: {
-    color: "#102017",
-    fontSize: 38,
+    color: colors.text,
+    fontSize: 28,
     fontWeight: "800",
-    letterSpacing: -1.4,
-    lineHeight: 42
+    letterSpacing: -0.8
   },
   copy: {
-    color: "#4b5f52",
-    fontSize: 17,
-    lineHeight: 27,
-    marginTop: 16
+    color: colors.muted,
+    fontSize: 15,
+    lineHeight: 22,
+    marginTop: 6
   },
   notice: {
     backgroundColor: "#ffffff",
@@ -1858,27 +1856,34 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     alignItems: "center",
-    backgroundColor: "#1a7f45",
-    borderRadius: 999,
+    backgroundColor: colors.accent,
+    borderRadius: 14,
+    elevation: 3,
     flex: 1,
     paddingHorizontal: 16,
-    paddingVertical: 12
+    paddingVertical: 14,
+    shadowColor: colors.accent,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10
   },
   primaryButtonText: {
-    color: "#ffffff",
-    fontWeight: "900"
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: "800"
   },
   secondaryButton: {
     alignItems: "center",
-    backgroundColor: "#e7f7ed",
-    borderRadius: 999,
+    backgroundColor: colors.accentSoft,
+    borderRadius: 14,
     flex: 1,
     paddingHorizontal: 16,
-    paddingVertical: 12
+    paddingVertical: 14
   },
   secondaryButtonText: {
-    color: "#1a7f45",
-    fontWeight: "900"
+    color: colors.accent,
+    fontSize: 16,
+    fontWeight: "800"
   },
   disabledButton: {
     opacity: 0.55
