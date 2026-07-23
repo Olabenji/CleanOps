@@ -17,7 +17,17 @@ Ready-to-paste brief for generating a CleanOps marketing video + jingle in Gensp
 | `cleanops-feature-driver-field.png` | Driver field routes on mobile |
 | `cleanops-feature-agent-collections.png` | Agent door-to-door payments + receipts |
 
-## Quick start
+## Built locally in Cursor
+
+| File | Duration |
+|------|----------|
+| `output/CleanOps_Marketing_Hero_30s.mp4` | 35s |
+| `output/CleanOps_Marketing_Cutdown_15s.mp4` | 15s |
+| `output/jingle.wav` | audio bed |
+
+Rebuild: `python docs/marketing/genspark/build_video.py` (needs FFmpeg + Pillow).
+
+## Quick start (Genspark)
 
 1. Upload the five PNGs in `assets/` to Genspark.
 2. Copy the fenced block under **PASTE INTO GENSPARK** in `GENSPARK_MASTER_INSTRUCTION.md`.
