@@ -1,4 +1,4 @@
-import type { AdminCustomer, AdminStaff, AdminTruck } from "@cleanops/shared";
+import type { AdminCustomer, AdminStaff, AdminTruck, CustomerLedgerItem } from "@cleanops/shared";
 
 function matchesQuery(query: string, values: Array<string | null | undefined>) {
   const normalized = query.trim().toLowerCase();
@@ -99,4 +99,18 @@ export function filterAdminCustomers(customers: AdminCustomer[], filters: Custom
       customer.customerType.replace("_", " ")
     ]);
   });
+}
+
+export function filterCustomerLedger(customers: CustomerLedgerItem[], query: string) {
+  return customers.filter((customer) =>
+    matchesQuery(query, [
+      customer.displayName,
+      customer.phone,
+      customer.address,
+      customer.zoneName,
+      customer.customerType.replace("_", " "),
+      customer.serviceStatus,
+      customer.customerId
+    ])
+  );
 }

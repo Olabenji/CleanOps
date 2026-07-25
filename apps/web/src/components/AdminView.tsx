@@ -840,7 +840,7 @@ export default function AdminView({
             <div>
               <p className="eyebrow">Trucks</p>
               <h2>Fleet registry</h2>
-              <p className="panel-subtitle">Register fleet assets and bind them to operating zones.</p>
+              <p className="panel-subtitle">Register fleet assets and bind them to operating wards.</p>
             </div>
             <div className="panel-header-actions">
               <button className="primary-button" onClick={() => openCreateModal("truck")} type="button">
@@ -855,18 +855,18 @@ export default function AdminView({
               Search
               <input
                 onChange={(event) => setTruckFilters((current) => ({ ...current, query: event.target.value }))}
-                placeholder="Registration, make, model, zone"
+                placeholder="Registration, make, model, ward"
                 type="search"
                 value={truckFilters.query}
               />
             </label>
             <label>
-              Zone
+              Ward
               <select
                 onChange={(event) => setTruckFilters((current) => ({ ...current, zoneId: event.target.value }))}
                 value={truckFilters.zoneId}
               >
-                <option value="">All zones</option>
+                <option value="">All wards</option>
                 {adminData.zones.map((zone) => (
                   <option key={zone.id} value={zone.id}>
                     {zone.name}
@@ -910,7 +910,7 @@ export default function AdminView({
                   <div className="admin-row-copy">
                     <strong>{truck.registrationNumber}</strong>
                     <span>
-                      {truck.zoneName ?? "No zone"} · {truck.status} ·{" "}
+                      {truck.zoneName ?? "No ward"} · {truck.status} ·{" "}
                       {[truck.make, truck.model, truck.year].filter(Boolean).join(" ") || "No vehicle details"}
                     </span>
                     {truckStatusErrors[truck.id] ? <p className="inline-error">{truckStatusErrors[truck.id]}</p> : null}
@@ -962,12 +962,12 @@ export default function AdminView({
               />
             </label>
             <label>
-              Zone
+              Ward
               <select
                 onChange={(event) => setCustomerFilters((current) => ({ ...current, zoneId: event.target.value }))}
                 value={customerFilters.zoneId}
               >
-                <option value="">All zones</option>
+                <option value="">All wards</option>
                 {adminData.zones.map((zone) => (
                   <option key={zone.id} value={zone.id}>
                     {zone.name}
@@ -1217,19 +1217,19 @@ export default function AdminView({
         open={activeModal === "truck"}
         subtitle={
           editingTruckId
-            ? "Update registration, home zone, vehicle details, or fleet status."
-            : "Register a fleet asset. Home zone is optional — trucks can cover any route."
+            ? "Update registration, home ward, vehicle details, or fleet status."
+            : "Register a fleet asset. Home ward is optional — trucks can cover any route."
         }
         title={editingTruckId ? "Edit truck" : "Add truck"}
       >
         <form className="entry-card admin-form admin-modal-form" onSubmit={(event) => void submitTruck(event)}>
           <label>
-            Home zone (optional)
+            Home ward (optional)
             <select
               onChange={(event) => setTruckForm((current) => ({ ...current, zoneId: event.target.value }))}
               value={truckForm.zoneId}
             >
-              <option value="">No home zone</option>
+              <option value="">No home ward</option>
               {adminData.zones.map((zone) => (
                 <option key={zone.id} value={zone.id}>
                   {zone.name}
@@ -1294,7 +1294,7 @@ export default function AdminView({
         open={activeModal === "customer"}
         subtitle={
           editingCustomerId
-            ? "Update account details. Moving zone drops this customer from other-zone scheduled stops and templates."
+            ? "Update account details. Moving ward drops this customer from other-ward scheduled stops and templates."
             : "Create a customer account for billing, route planning, and collections."
         }
         title={editingCustomerId ? "Edit customer" : "Add customer"}
@@ -1304,13 +1304,13 @@ export default function AdminView({
           onSubmit={(event) => void submitCustomer(event)}
         >
           <label>
-            Zone
+            Ward
             <select
               onChange={(event) => setCustomerForm((current) => ({ ...current, zoneId: event.target.value }))}
               required
               value={customerForm.zoneId}
             >
-              <option value="">Select zone</option>
+              <option value="">Select ward</option>
               {adminData.zones.map((zone) => (
                 <option key={zone.id} value={zone.id}>
                   {zone.name}

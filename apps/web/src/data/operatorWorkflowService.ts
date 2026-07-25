@@ -1081,7 +1081,7 @@ function mapRoute(route: any): RouteDetail | null {
   const parsed = routeDetailSchema.safeParse({
     id: route.id,
     zoneId: route.zone_id,
-    zoneName: zone?.name ?? "Unassigned zone",
+    zoneName: zone?.name ?? "Unassigned ward",
     truckId: route.truck_id,
     truckRegistration: truck?.registration_number ?? "Unassigned truck",
     driverId: route.driver_id,

@@ -54,11 +54,13 @@ import {
   loadLastSyncAt,
   loadOfflineQueue,
   loadSyncEnabled,
+  offlineStoreBackend,
   saveIncidentQueue,
   saveLastSyncAt,
   saveOfflineQueue,
   saveSyncEnabled
 } from "../data/offlineQueueStore";
+import { captureFieldProof } from "../data/fieldProof";
 
 const incidentTypeLabels: Record<IncidentType, string> = {
   blocked_access: "Blocked access",
@@ -126,6 +128,7 @@ export default function DriverApp({
   const [incidentQueue, setIncidentQueue] = useState<IncidentReportInput[]>([]);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [skipReasons, setSkipReasons] = useState<Record<string, string>>({});
+  const [skipReasonOpen, setSkipReasonOpen] = useState<Record<string, boolean>>({});
   const [incidentType, setIncidentType] = useState<IncidentType>("blocked_access");
   const [incidentStopId, setIncidentStopId] = useState<string>("");
   const [incidentTitle, setIncidentTitle] = useState("");
@@ -366,7 +369,7 @@ export default function DriverApp({
       const result = await driverEnsureDailyRoutesLoaded();
       setMessage(
         result.plannedCount > 0
-          ? `Loaded ${result.plannedCount} default zone route${result.plannedCount === 1 ? "" : "s"}.`
+          ? `Loaded ${result.plannedCount} default ward route${result.plannedCount === 1 ? "" : "s"}.`
           : result.hasAssignedRoute
             ? "Default routes were already available."
             : "Default routes loaded, but you are not assigned yet. Ask the operator to assign you."
@@ -418,12 +421,16 @@ export default function DriverApp({
     const note = notes[stop.id];
     const skipReason = skipReasons[stop.id];
 
-    if (status === "skipped" && !skipReason?.trim()) {
-      setSkipReasons((current) => ({
-        ...current,
-        [stop.id]: "Gate locked / customer unavailable"
-      }));
-      return;
+    if (status === "skipped") {
+      if (!skipReasonOpen[stop.id]) {
+        setSkipReasonOpen((current) => ({ ...current, [stop.id]: true }));
+        setMessage("Enter a skip reason, then tap Confirm skip.");
+        return;
+      }
+      if (!skipReason?.trim()) {
+        setMessage("Skip reason is required.");
+        return;
+      }
     }
 
     if (session?.mode === "pilot") {
@@ -443,21 +450,66 @@ export default function DriverApp({
       return;
     }
 
-    const action = createStopAction(route.id, stop.id, status, note, skipReason);
     setSyncingStopIds((current) => ({ ...current, [stop.id]: true }));
 
+    let includePhoto = false;
+    if (status === "completed") {
+      includePhoto = await new Promise<boolean>((resolve) => {
+        Alert.alert("Stop proof", "Add an optional photo for this completed stop? GPS is saved when available on this build.", [
+          { text: "Skip photo", style: "cancel", onPress: () => resolve(false) },
+          { text: "Take photo", onPress: () => resolve(true) }
+        ]);
+      });
+    }
+
+    let proof: Awaited<ReturnType<typeof captureFieldProof>> = {
+      latitude: null,
+      longitude: null
+    };
     try {
-      const syncResult = await syncStopAction(stop.id, status as "completed" | "skipped", note, skipReason);
+      proof = await captureFieldProof({ includePhoto });
+    } catch {
+      proof = {
+        latitude: null,
+        longitude: null,
+        photoSkippedReason: includePhoto
+          ? "Photo unavailable — stop will sync without proof."
+          : undefined
+      };
+    }
+    const action = createStopAction(route.id, stop.id, status, note, skipReason, {
+      latitude: proof.latitude,
+      longitude: proof.longitude,
+      localPhotoUri: proof.localPhotoUri
+    });
+
+    try {
+      const syncResult = await syncStopAction(stop.id, status as "completed" | "skipped", note, skipReason, {
+        latitude: proof.latitude,
+        longitude: proof.longitude,
+        localPhotoUri: proof.localPhotoUri,
+        mimeType: proof.mimeType
+      });
       const syncedAt = syncResult.syncedAt ?? new Date().toISOString();
       setLastSyncAt(syncedAt);
       await saveLastSyncAt(syncedAt);
       const refreshed = (await fetchAssignedRoute(operationDate)) ?? route;
       setRoute(refreshed);
       const remainingPending = refreshed.stops.filter((item) => item.status === "pending").length;
+      const proofBits: string[] = [];
+      if (proof.latitude != null) {
+        proofBits.push("GPS saved");
+      }
+      if (proof.localPhotoUri) {
+        proofBits.push("photo saved");
+      } else if (includePhoto && proof.photoSkippedReason) {
+        proofBits.push("photo unavailable — synced without proof");
+      }
+      const proofNote = proofBits.length > 0 ? ` ${proofBits.join(" · ")}.` : "";
       setMessage(
         remainingPending === 0
-          ? "All stops finished. Use wrap-up below for dumpsite / end route."
-          : "Stop update synced."
+          ? `All stops finished. Use wrap-up below for dumpsite / end route.${proofNote}`
+          : `Stop update synced.${proofNote}`
       );
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown sync error";
@@ -754,7 +806,18 @@ export default function DriverApp({
     try {
       for (const item of pendingActions) {
         try {
-          const syncResult = await syncStopAction(item.stopId, item.status as "completed" | "skipped", item.note, item.skipReason);
+          const syncResult = await syncStopAction(
+            item.stopId,
+            item.status as "completed" | "skipped",
+            item.note,
+            item.skipReason,
+            {
+              latitude: item.latitude,
+              longitude: item.longitude,
+              proofPhotoPath: item.proofPhotoPath,
+              localPhotoUri: item.localPhotoUri
+            }
+          );
           latestSyncAt = syncResult.syncedAt ?? new Date().toISOString();
           syncedIds.push(item.id);
         } catch (error) {
@@ -912,7 +975,7 @@ export default function DriverApp({
               </Text>
               <Text style={styles.cardCopy}>
                 {canLoadDefaults
-                  ? "The operator has not loaded today's zone templates yet. Load the default routes to get started, then pull to refresh."
+                  ? "The operator has not loaded today's ward templates yet. Load the default routes to get started, then pull to refresh."
                   : "You are signed in live, but no route is assigned to you for today. Ask the operator to set you as the driver on a scheduled route, then pull down to refresh."}
               </Text>
               {canLoadDefaults ? (
@@ -942,6 +1005,7 @@ export default function DriverApp({
                 <View style={styles.settingsTextBlock}>
                   <Text style={styles.cardTitle}>Offline queue and sync</Text>
                   <Text style={styles.cardCopy}>
+                    Store: {offlineStoreBackend()}.{" "}
                     {syncEnabled
                       ? "Failed stop updates will be saved locally and retried later."
                       : "Failed stop updates will not be queued."}
@@ -1017,6 +1081,7 @@ export default function DriverApp({
               <View style={styles.settingsTextBlock}>
                 <Text style={styles.cardTitle}>Offline queue and sync</Text>
                 <Text style={styles.cardCopy}>
+                  Store: {offlineStoreBackend()}.{" "}
                   {syncEnabled
                     ? "Failed stop updates will be saved locally and retried later."
                     : "Failed stop updates will not be queued."}
@@ -1442,14 +1507,6 @@ export default function DriverApp({
                   style={[styles.input, actionDisabled && styles.disabledInput]}
                   value={notes[stop.id] ?? ""}
                 />
-                <TextInput
-                  editable={!actionDisabled}
-                  onChangeText={(value) => setSkipReasons((current) => ({ ...current, [stop.id]: value }))}
-                  placeholder="Skip reason required to skip"
-                  placeholderTextColor="#829086"
-                  style={[styles.input, actionDisabled && styles.disabledInput]}
-                  value={skipReasons[stop.id] ?? ""}
-                />
 
                 <View style={styles.actionRow}>
                   <Pressable
@@ -1466,9 +1523,40 @@ export default function DriverApp({
                     onPress={() => handleStopAction(stop, "skipped")}
                     style={[styles.secondaryButton, actionDisabled && styles.disabledButton]}
                   >
-                    <Text style={styles.secondaryButtonText}>Skip</Text>
+                    <Text style={styles.secondaryButtonText}>
+                      {skipReasonOpen[stop.id] && !pendingAction ? "Confirm skip" : "Skip"}
+                    </Text>
                   </Pressable>
                 </View>
+
+                {skipReasonOpen[stop.id] && effectiveStatus === "pending" && !pendingAction ? (
+                  <View style={styles.skipReasonPanel}>
+                    <Text style={styles.fieldLabel}>Skip reason</Text>
+                    <TextInput
+                      autoFocus
+                      editable={!actionDisabled}
+                      onChangeText={(value) => setSkipReasons((current) => ({ ...current, [stop.id]: value }))}
+                      placeholder="Why was this stop skipped?"
+                      placeholderTextColor="#829086"
+                      style={[styles.input, styles.skipReasonInput, actionDisabled && styles.disabledInput]}
+                      value={skipReasons[stop.id] ?? ""}
+                    />
+                    <Pressable
+                      disabled={actionDisabled}
+                      onPress={() => {
+                        setSkipReasonOpen((current) => ({ ...current, [stop.id]: false }));
+                        setSkipReasons((current) => {
+                          const next = { ...current };
+                          delete next[stop.id];
+                          return next;
+                        });
+                      }}
+                      style={styles.skipCancelButton}
+                    >
+                      <Text style={styles.skipCancelButtonText}>Cancel skip</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
               </View>
             );
           })}
@@ -1853,6 +1941,27 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 10,
     marginTop: 16
+  },
+  skipReasonPanel: {
+    backgroundColor: "#fff8ef",
+    borderColor: "#f0d2a8",
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 8,
+    marginTop: 12,
+    padding: 12
+  },
+  skipReasonInput: {
+    marginTop: 0
+  },
+  skipCancelButton: {
+    alignSelf: "flex-start",
+    paddingVertical: 4
+  },
+  skipCancelButtonText: {
+    color: "#8a5a2b",
+    fontSize: 13,
+    fontWeight: "700"
   },
   primaryButton: {
     alignItems: "center",

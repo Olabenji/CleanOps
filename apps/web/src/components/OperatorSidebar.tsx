@@ -1,35 +1,46 @@
 import type { UserRole } from "@cleanops/shared";
 import {
   ClipboardList,
+  FileBarChart2,
   LayoutDashboard,
   ClipboardCheck,
   LogOut,
   Menu,
+  MessageSquare,
   Route,
   Settings,
+  Settings2,
+  Truck,
   Users,
   WalletCards,
   X
 } from "lucide-react";
 import { useState } from "react";
-
 export type OperatorView =
   | "dashboard"
   | "routes"
   | "coverage"
+  | "fleet"
   | "payments"
+  | "reports"
+  | "comms"
   | "staff"
   | "compliance"
-  | "admin";
+  | "admin"
+  | "settings";
 
 const navItems: Array<{ id: OperatorView; label: string; icon: typeof LayoutDashboard }> = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "routes", label: "Routes", icon: Route },
   { id: "coverage", label: "Coverage", icon: ClipboardList },
+  { id: "fleet", label: "Fleet", icon: Truck },
   { id: "payments", label: "Payments", icon: WalletCards },
+  { id: "reports", label: "Reports", icon: FileBarChart2 },
+  { id: "comms", label: "Comms", icon: MessageSquare },
   { id: "staff", label: "Staff", icon: Users },
   { id: "compliance", label: "Compliance", icon: ClipboardCheck },
-  { id: "admin", label: "Admin", icon: Settings }
+  { id: "admin", label: "Admin", icon: Settings },
+  { id: "settings", label: "Settings", icon: Settings2 }
 ];
 
 function shortRole(role: UserRole) {

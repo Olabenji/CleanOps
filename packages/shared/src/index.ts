@@ -561,12 +561,237 @@ export const operatorCoverageSnapshotSchema = z.object({
   items: z.array(coverageMakeGoodItemSchema)
 });
 
+export const fleetBoardPhases = ["departed", "arrived", "cleared"] as const;
+
+export const fleetTruckItemSchema = z.object({
+  id: z.string().uuid(),
+  registrationNumber: z.string(),
+  zoneName: z.string(),
+  status: z.enum(truckStatuses),
+  active: z.boolean(),
+  reserveRemainingKobo: z.number().int().nonnegative()
+});
+
+export const fleetTruckMapSources = [
+  "last_stop_gps",
+  "dumpsite",
+  "planned_stop",
+  "route_centroid"
+] as const;
+
+export const fleetTruckMapPositionSchema = z.object({
+  truckId: z.string().uuid(),
+  registrationNumber: z.string(),
+  zoneName: z.string(),
+  routeId: z.string().uuid(),
+  startedAt: z.string().nullable().optional(),
+  completedStops: z.number().int().nonnegative(),
+  totalStops: z.number().int().nonnegative(),
+  latitude: z.number().nullable().optional(),
+  longitude: z.number().nullable().optional(),
+  source: z.enum(fleetTruckMapSources).nullable().optional(),
+  label: z.string().nullable().optional(),
+  recordedAt: z.string().nullable().optional()
+});
+
+export const fleetDumpsiteRunItemSchema = z.object({
+  id: z.string().uuid(),
+  routeId: z.string().uuid(),
+  zoneName: z.string(),
+  truckRegistration: z.string(),
+  driverName: z.string(),
+  departedAt: z.string().nullable().optional(),
+  arrivedAt: z.string().nullable().optional(),
+  clearedAt: z.string().nullable().optional(),
+  dumpsiteSiteName: z.string().nullable().optional(),
+  docketNumber: z.string().nullable().optional(),
+  weighbridgeTonnes: z.number().nullable().optional(),
+  tippingFeeKobo: z.number().int().nonnegative(),
+  phase: z.enum(fleetBoardPhases)
+});
+
+export const fleetFuelLogItemSchema = z.object({
+  id: z.string().uuid(),
+  truckRegistration: z.string(),
+  driverName: z.string(),
+  litres: z.number().nonnegative(),
+  costKobo: z.number().int().nonnegative(),
+  stationName: z.string(),
+  loggedAt: z.string()
+});
+
+export const fleetMetricsSchema = z.object({
+  trucksTotal: z.number().int().nonnegative(),
+  trucksOperational: z.number().int().nonnegative(),
+  trucksStandby: z.number().int().nonnegative(),
+  trucksWorkshop: z.number().int().nonnegative(),
+  fuelLitresToday: z.number().nonnegative(),
+  fuelSpendKoboToday: z.number().int().nonnegative(),
+  dumpsiteInProgress: z.number().int().nonnegative(),
+  dumpsiteClearedToday: z.number().int().nonnegative(),
+  maintenanceEventsThisMonth: z.number().int().nonnegative().optional().default(0),
+  maintenanceSpendKoboThisMonth: z.number().int().nonnegative().optional().default(0),
+  dumpsiteSitesActive: z.number().int().nonnegative().optional().default(0),
+  trucksStartedToday: z.number().int().nonnegative().optional().default(0),
+  trucksMappedToday: z.number().int().nonnegative().optional().default(0)
+});
+
+export const fleetMaintenanceEventSchema = z.object({
+  id: z.string().uuid(),
+  truckId: z.string().uuid(),
+  truckRegistration: z.string(),
+  eventDate: z.string(),
+  workDone: z.string(),
+  workshopName: z.string().nullable().optional(),
+  costKobo: z.number().int().nonnegative()
+});
+
+export const dumpsiteSiteSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  address: z.string().nullable().optional(),
+  latitude: z.number().nullable().optional(),
+  longitude: z.number().nullable().optional(),
+  dailyCapacityTonnes: z.number().nullable().optional(),
+  notes: z.string().nullable().optional(),
+  active: z.boolean()
+});
+
+export const operatorFleetSnapshotSchema = z.object({
+  operationDate: z.string(),
+  metrics: fleetMetricsSchema,
+  trucks: z.array(fleetTruckItemSchema),
+  dumpsiteRuns: z.array(fleetDumpsiteRunItemSchema),
+  fuelLogs: z.array(fleetFuelLogItemSchema),
+  maintenanceEvents: z.array(fleetMaintenanceEventSchema).optional().default([]),
+  dumpsiteSites: z.array(dumpsiteSiteSchema).optional().default([]),
+  activeTruckPositions: z.array(fleetTruckMapPositionSchema).optional().default([])
+});
+
+export const recordMaintenanceEventInputSchema = z.object({
+  truckId: z.string().uuid(),
+  eventDate: z.string(),
+  workDone: z.string().min(2),
+  workshopName: z.string().optional().nullable(),
+  costKobo: z.number().int().nonnegative().default(0)
+});
+
+export const upsertDumpsiteSiteInputSchema = z.object({
+  siteId: z.string().uuid().optional().nullable(),
+  name: z.string().min(2),
+  address: z.string().optional().nullable(),
+  latitude: z.number().min(-90).max(90).optional().nullable(),
+  longitude: z.number().min(-180).max(180).optional().nullable(),
+  dailyCapacityTonnes: z.number().nonnegative().optional().nullable(),
+  notes: z.string().optional().nullable(),
+  active: z.boolean().optional().default(true)
+});
+
 export type ResidentNotification = z.infer<typeof residentNotificationSchema>;
 export type RegisterResidentPushDeviceInput = z.infer<typeof registerResidentPushDeviceInputSchema>;
 export type FinalizeRouteWithUnservicedResult = z.infer<typeof finalizeRouteWithUnservicedResultSchema>;
 export type CoverageMakeGoodItem = z.infer<typeof coverageMakeGoodItemSchema>;
 export type CoverageMetrics = z.infer<typeof coverageMetricsSchema>;
 export type OperatorCoverageSnapshot = z.infer<typeof operatorCoverageSnapshotSchema>;
+export type FleetBoardPhase = (typeof fleetBoardPhases)[number];
+export type FleetTruckItem = z.infer<typeof fleetTruckItemSchema>;
+export type FleetTruckMapSource = (typeof fleetTruckMapSources)[number];
+export type FleetTruckMapPosition = z.infer<typeof fleetTruckMapPositionSchema>;
+export type FleetDumpsiteRunItem = z.infer<typeof fleetDumpsiteRunItemSchema>;
+export type FleetFuelLogItem = z.infer<typeof fleetFuelLogItemSchema>;
+export type FleetMetrics = z.infer<typeof fleetMetricsSchema>;
+export type FleetMaintenanceEvent = z.infer<typeof fleetMaintenanceEventSchema>;
+export type DumpsiteSite = z.infer<typeof dumpsiteSiteSchema>;
+export type OperatorFleetSnapshot = z.infer<typeof operatorFleetSnapshotSchema>;
+export type RecordMaintenanceEventInput = z.infer<typeof recordMaintenanceEventInputSchema>;
+export type UpsertDumpsiteSiteInput = z.infer<typeof upsertDumpsiteSiteInputSchema>;
+
+export const zoneTemplateCustomerSchema = z.object({
+  customerId: z.string().uuid(),
+  displayName: z.string(),
+  address: z.string(),
+  customerType: z.enum(customerTypes),
+  serviceStatus: z.enum(["active", "suspended"]),
+  collectionsPerWeek: z.number().int().min(1).max(7),
+  preferredWeekdays: preferredWeekdaysSchema,
+  stopSequence: z.number().int().positive().optional()
+});
+
+export const zoneTemplateOptionSchema = z.object({
+  id: z.string().uuid(),
+  label: z.string(),
+  zoneId: z.string().uuid().nullable().optional()
+});
+
+export const zoneRouteTemplateSchema = z.object({
+  zoneId: z.string().uuid(),
+  zoneName: z.string(),
+  templateId: z.string().uuid().nullable().optional(),
+  truckId: z.string().uuid().nullable().optional(),
+  truckRegistration: z.string().nullable().optional(),
+  driverId: z.string().uuid().nullable().optional(),
+  driverName: z.string().nullable().optional(),
+  updatedAt: z.string().nullable().optional(),
+  stops: z.array(zoneTemplateCustomerSchema),
+  availableCustomers: z.array(zoneTemplateCustomerSchema)
+});
+
+export const operatorZoneTemplatesSnapshotSchema = z.object({
+  zones: z.array(zoneRouteTemplateSchema),
+  trucks: z.array(zoneTemplateOptionSchema),
+  drivers: z.array(zoneTemplateOptionSchema)
+});
+
+export const saveZoneDefaultTemplateInputSchema = z.object({
+  zoneId: z.string().uuid(),
+  truckId: z.string().uuid(),
+  driverId: z.string().uuid().nullable().optional(),
+  customerIds: z.array(z.string().uuid()).min(1)
+});
+
+export const saveZoneDefaultTemplateResultSchema = z.object({
+  id: z.string().uuid(),
+  zoneId: z.string().uuid(),
+  zoneName: z.string(),
+  truckId: z.string().uuid(),
+  driverId: z.string().uuid().nullable().optional(),
+  stopCount: z.number().int().nonnegative()
+});
+
+export type ZoneTemplateCustomer = z.infer<typeof zoneTemplateCustomerSchema>;
+export type ZoneRouteTemplate = z.infer<typeof zoneRouteTemplateSchema>;
+export type OperatorZoneTemplatesSnapshot = z.infer<typeof operatorZoneTemplatesSnapshotSchema>;
+export type SaveZoneDefaultTemplateInput = z.infer<typeof saveZoneDefaultTemplateInputSchema>;
+export type SaveZoneDefaultTemplateResult = z.infer<typeof saveZoneDefaultTemplateResultSchema>;
+
+export {
+  buildImportPreview,
+  customerImportColumnMappingSchema,
+  customerImportFieldKeys,
+  customerImportFieldLabels,
+  customerImportInputSchema,
+  customerImportPreviewRowSchema,
+  customerImportRequiredFields,
+  customerImportResultSchema,
+  customerImportRowSchema,
+  guessColumnMapping,
+  monthlyRateToKobo,
+  normalizeHeaderKey,
+  normalizeImportPhone,
+  parseCustomerTypeCell,
+  parseDelimitedTable,
+  parsePreferredWeekdaysCell,
+  previewRowsToImportRows
+} from "./customerImport";
+export type {
+  CustomerImportColumnMapping,
+  CustomerImportFieldKey,
+  CustomerImportInput,
+  CustomerImportPreviewRow,
+  CustomerImportResult,
+  CustomerImportRow
+} from "./customerImport";
+
 export type MakeGoodStatus = (typeof makeGoodStatuses)[number];
 
 export const residentHomeSchema = z.object({
@@ -643,7 +868,10 @@ export const routeStopSchema = z.object({
   notes: z.string().nullable(),
   skipReason: z.string().nullable(),
   serviceStatus: z.enum(["active", "suspended"]),
-  isMakeGood: z.boolean().optional()
+  isMakeGood: z.boolean().optional(),
+  proofPhotoPath: z.string().nullable().optional(),
+  latitude: z.number().nullable().optional(),
+  longitude: z.number().nullable().optional()
 });
 
 export const routeDetailSchema = routeSummarySchema.extend({
@@ -660,10 +888,259 @@ export const driverStopActionSchema = z.object({
   status: z.enum(routeStopStatuses),
   note: z.string().optional(),
   skipReason: z.string().optional(),
+  latitude: z.number().nullable().optional(),
+  longitude: z.number().nullable().optional(),
+  proofPhotoPath: z.string().nullable().optional(),
+  localPhotoUri: z.string().optional(),
   queuedAt: z.string(),
   syncedAt: z.string().nullable(),
   errorMessage: z.string().optional()
 });
+
+export const reportFleetCostTypes = ["fuel", "maintenance", "tipping"] as const;
+
+export const reportSummarySchema = z.object({
+  collectionsKobo: z.number().int(),
+  payrollEstimateKobo: z.number().int().nonnegative(),
+  fuelSpendKobo: z.number().int().nonnegative(),
+  maintenanceSpendKobo: z.number().int().nonnegative(),
+  tippingFeesKobo: z.number().int().nonnegative(),
+  opsCostKobo: z.number().int(),
+  netKobo: z.number().int()
+});
+
+export const reportCollectionItemSchema = z.object({
+  paymentId: z.string().uuid(),
+  paidAt: z.string(),
+  customerName: z.string(),
+  channel: z.string(),
+  amountKobo: z.number().int(),
+  externalReference: z.string().nullable().optional(),
+  collectedBy: z.string().nullable().optional()
+});
+
+export const reportAttendanceItemSchema = z.object({
+  attendanceId: z.string().uuid(),
+  checkedInAt: z.string(),
+  staffName: z.string(),
+  role: z.string(),
+  supervisorOverride: z.boolean(),
+  notes: z.string().nullable().optional(),
+  dayPayrollEstimateKobo: z.number().int().nonnegative()
+});
+
+export const reportFleetCostItemSchema = z.object({
+  id: z.string().uuid(),
+  costType: z.enum(reportFleetCostTypes),
+  occurredAt: z.string().nullable(),
+  label: z.string(),
+  detail: z.string().nullable().optional(),
+  amountKobo: z.number().int().nonnegative()
+});
+
+export const reportLawmaSummarySchema = z.object({
+  stopsPlanned: z.coerce.number().int().nonnegative(),
+  stopsCompleted: z.coerce.number().int().nonnegative(),
+  stopsMissed: z.coerce.number().int().nonnegative(),
+  coveragePercent: z.coerce.number().nonnegative(),
+  weighbridgeTonnes: z.coerce.number().nonnegative(),
+  disposalTips: z.coerce.number().int().nonnegative(),
+  tipsWithDocket: z.coerce.number().int().nonnegative(),
+  complaintsOpened: z.coerce.number().int().nonnegative(),
+  complaintsResolved: z.coerce.number().int().nonnegative(),
+  complaintsSlaBreached: z.coerce.number().int().nonnegative(),
+  makeGoodsOpened: z.coerce.number().int().nonnegative(),
+  makeGoodsCompleted: z.coerce.number().int().nonnegative(),
+  makeGoodsOpenNow: z.coerce.number().int().nonnegative()
+});
+
+export const reportWardCoverageItemSchema = z.object({
+  wardId: z.string().uuid(),
+  wardName: z.string(),
+  stopsPlanned: z.coerce.number().int().nonnegative(),
+  stopsCompleted: z.coerce.number().int().nonnegative(),
+  stopsMissed: z.coerce.number().int().nonnegative(),
+  makeGoodStops: z.coerce.number().int().nonnegative(),
+  coveragePercent: z.coerce.number().nonnegative()
+});
+
+export const reportDisposalTipItemSchema = z.object({
+  runId: z.string().uuid(),
+  occurredAt: z.string().nullable(),
+  wardName: z.string().nullable().optional(),
+  truckRegistration: z.string().nullable().optional(),
+  dumpsiteSiteName: z.string().nullable().optional(),
+  docketNumber: z.string().nullable().optional(),
+  weighbridgeTonnes: z
+    .union([z.number(), z.string(), z.null()])
+    .optional()
+    .transform((value) => {
+      if (value == null || value === "") {
+        return null;
+      }
+      const parsed = typeof value === "number" ? value : Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    }),
+  tippingFeeKobo: z.coerce.number().int().nonnegative(),
+  cleared: z.boolean()
+});
+
+export const reportServiceComplaintItemSchema = z.object({
+  complaintId: z.string().uuid(),
+  createdAt: z.string(),
+  category: z.string(),
+  title: z.string(),
+  status: z.string(),
+  wardName: z.string().nullable().optional(),
+  customerName: z.string().nullable().optional(),
+  slaDueAt: z.string(),
+  resolvedAt: z.string().nullable().optional(),
+  slaBreached: z.boolean()
+});
+
+export const reportMakeGoodItemSchema = z.object({
+  makeGoodId: z.string().uuid(),
+  customerName: z.string(),
+  wardName: z.string(),
+  status: z.string(),
+  sourceDate: z.string(),
+  targetDate: z.string(),
+  dueBy: z.string(),
+  attemptCount: z.number().int().nonnegative(),
+  openedAt: z.string(),
+  completedAt: z.string().nullable().optional(),
+  skipReason: z.string().nullable().optional()
+});
+
+export const operatorReportsSnapshotSchema = z.object({
+  fromDate: z.string(),
+  toDate: z.string(),
+  summary: reportSummarySchema,
+  lawmaSummary: reportLawmaSummarySchema.optional(),
+  collections: z.array(reportCollectionItemSchema),
+  attendance: z.array(reportAttendanceItemSchema),
+  fleetCosts: z.array(reportFleetCostItemSchema),
+  wardCoverage: z.array(reportWardCoverageItemSchema).optional(),
+  disposalTips: z.array(reportDisposalTipItemSchema).optional(),
+  serviceComplaints: z.array(reportServiceComplaintItemSchema).optional(),
+  makeGoods: z.array(reportMakeGoodItemSchema).optional()
+});
+
+export type ReportSummary = z.infer<typeof reportSummarySchema>;
+export type ReportLawmaSummary = z.infer<typeof reportLawmaSummarySchema>;
+export type ReportCollectionItem = z.infer<typeof reportCollectionItemSchema>;
+export type ReportAttendanceItem = z.infer<typeof reportAttendanceItemSchema>;
+export type ReportFleetCostItem = z.infer<typeof reportFleetCostItemSchema>;
+export type ReportWardCoverageItem = z.infer<typeof reportWardCoverageItemSchema>;
+export type ReportDisposalTipItem = z.infer<typeof reportDisposalTipItemSchema>;
+export type ReportServiceComplaintItem = z.infer<typeof reportServiceComplaintItemSchema>;
+export type ReportMakeGoodItem = z.infer<typeof reportMakeGoodItemSchema>;
+export type OperatorReportsSnapshot = z.infer<typeof operatorReportsSnapshotSchema>;
+
+export const commsMessageKinds = [
+  "payment_reminder",
+  "payment_receipt",
+  "suspension_notice",
+  "unserviced_recovery",
+  "recovery_resolved"
+] as const;
+
+export const commsOutboxStatuses = [
+  "queued",
+  "processing",
+  "sent",
+  "failed",
+  "cancelled"
+] as const;
+
+export const reminderCandidateSchema = z.object({
+  customerId: z.string().uuid(),
+  customerName: z.string(),
+  wardName: z.string().optional(),
+  phone: z.string().nullable().optional(),
+  phoneE164: z.string().nullable().optional(),
+  monthlyRateKobo: z.number().int().nonnegative().optional(),
+  paidThisMonthKobo: z.number().int().nonnegative().optional(),
+  outstandingKobo: z.number().int().nonnegative(),
+  serviceStatus: z.string().optional()
+});
+
+export const reminderPreviewSchema = z.object({
+  asOf: z.string().optional(),
+  dueDate: z.string(),
+  daysBeforeDue: z.number().int(),
+  targetDate: z.string(),
+  windowMatchesToday: z.boolean(),
+  candidates: z.array(reminderCandidateSchema)
+});
+
+export const queueRemindersResultSchema = z.object({
+  queued: z.number().int().nonnegative(),
+  skipped: z.number().int().nonnegative().optional(),
+  candidateCount: z.number().int().nonnegative().optional(),
+  dueDate: z.string().optional(),
+  targetDate: z.string().optional(),
+  windowMatchesToday: z.boolean().optional(),
+  daysBeforeDue: z.number().int().optional(),
+  message: z.string().optional()
+});
+
+export const commsMetricsSchema = z.object({
+  queued: z.number().int().nonnegative(),
+  sentToday: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  remindersQueued: z.number().int().nonnegative()
+});
+
+export const commsOutboxItemSchema = z.object({
+  id: z.string().uuid(),
+  notificationId: z.string().uuid().nullable().optional(),
+  customerId: z.string().uuid(),
+  customerName: z.string(),
+  wardName: z.string().nullable().optional(),
+  kind: z.string().nullable().optional(),
+  channel: z.string(),
+  channelUsed: z.string().nullable().optional(),
+  status: z.enum(commsOutboxStatuses),
+  title: z.string().nullable().optional(),
+  body: z.string().nullable().optional(),
+  phoneE164: z.string().nullable().optional(),
+  attemptCount: z.number().int().nonnegative(),
+  lastError: z.string().nullable().optional(),
+  providerTicketId: z.string().nullable().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string()
+});
+
+export const operatorCommsSnapshotSchema = z.object({
+  metrics: commsMetricsSchema,
+  reminderPreview5: reminderPreviewSchema,
+  reminderPreview2: reminderPreviewSchema,
+  recent: z.array(commsOutboxItemSchema)
+});
+
+export const dispatchCommsResultSchema = z.object({
+  claimed: z.number().int().nonnegative().optional(),
+  sent: z.number().int().nonnegative().optional(),
+  failed: z.number().int().nonnegative().optional(),
+  viaWhatsApp: z.number().int().nonnegative().optional(),
+  viaSms: z.number().int().nonnegative().optional(),
+  providers: z
+    .object({
+      twilioConfigured: z.boolean().optional(),
+      termiiConfigured: z.boolean().optional()
+    })
+    .optional(),
+  error: z.string().optional()
+});
+
+export type ReminderCandidate = z.infer<typeof reminderCandidateSchema>;
+export type ReminderPreview = z.infer<typeof reminderPreviewSchema>;
+export type QueueRemindersResult = z.infer<typeof queueRemindersResultSchema>;
+export type CommsMetrics = z.infer<typeof commsMetricsSchema>;
+export type CommsOutboxItem = z.infer<typeof commsOutboxItemSchema>;
+export type OperatorCommsSnapshot = z.infer<typeof operatorCommsSnapshotSchema>;
+export type DispatchCommsResult = z.infer<typeof dispatchCommsResultSchema>;
 
 export const incidentReportInputSchema = z.object({
   routeId: z.string().uuid(),
@@ -812,7 +1289,7 @@ export const customerPasswordResetTargetSchema = z.object({
 });
 
 export const truckOnboardingInputSchema = z.object({
-  /** Optional home/preferred zone — trucks float across routes. */
+  /** Optional home/preferred ward — trucks float across routes. */
   zoneId: z.string().uuid().optional().nullable(),
   registrationNumber: z.string().min(3),
   make: z.string().optional(),
@@ -846,7 +1323,7 @@ export const staffUpdateInputSchema = z.object({
 
 export const truckUpdateInputSchema = z.object({
   truckId: z.string().uuid(),
-  /** Optional home/preferred zone — trucks float across routes. */
+  /** Optional home/preferred ward — trucks float across routes. */
   zoneId: z.string().uuid().optional().nullable(),
   registrationNumber: z.string().min(3),
   make: z.string().optional(),

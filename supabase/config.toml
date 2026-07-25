@@ -46,5 +46,11 @@ verify_jwt = true
 [functions.dispatch-resident-notifications]
 verify_jwt = false
 
+[functions.dispatch-resident-comms]
+verify_jwt = false
+
+[functions.send-reminders]
+verify_jwt = false
+
 [storage]
 enabled = true

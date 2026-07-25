@@ -6,7 +6,7 @@ export const pilotDashboard: OperatorDashboard = {
     {
       label: "Route Progress",
       value: "42 / 90 stops",
-      helper: "3 trucks active across Zones A-C"
+      helper: "3 trucks active across Wards A-C"
     },
     {
       label: "Payments Today",
@@ -27,7 +27,7 @@ export const pilotDashboard: OperatorDashboard = {
   routes: [
     {
       id: "11111111-1111-4111-8111-111111111111",
-      zoneName: "Zone A",
+      zoneName: "Ward A",
       truckRegistration: "LAG-001-PSP",
       driverName: "Adewale Johnson",
       status: "in_progress",
@@ -37,7 +37,7 @@ export const pilotDashboard: OperatorDashboard = {
     },
     {
       id: "22222222-2222-4222-8222-222222222222",
-      zoneName: "Zone B",
+      zoneName: "Ward B",
       truckRegistration: "LAG-002-PSP",
       driverName: "Chinedu Okafor",
       status: "in_progress",
@@ -47,7 +47,7 @@ export const pilotDashboard: OperatorDashboard = {
     },
     {
       id: "33333333-3333-4333-8333-333333333333",
-      zoneName: "Zone C",
+      zoneName: "Ward C",
       truckRegistration: "LAG-003-PSP",
       driverName: "Musa Balogun",
       status: "scheduled",
@@ -87,25 +87,25 @@ export const pilotDashboard: OperatorDashboard = {
   fleet: [
     {
       registrationNumber: "LAG-001-PSP",
-      zoneName: "Zone A",
+      zoneName: "Ward A",
       status: "operational",
       reserveRemainingKobo: 14500000
     },
     {
       registrationNumber: "LAG-002-PSP",
-      zoneName: "Zone B",
+      zoneName: "Ward B",
       status: "operational",
       reserveRemainingKobo: 9800000
     },
     {
       registrationNumber: "LAG-003-PSP",
-      zoneName: "Zone C",
+      zoneName: "Ward C",
       status: "standby",
       reserveRemainingKobo: 20000000
     }
   ],
   alerts: [
-    "Zone B is more than 20% behind expected route pace.",
+    "Ward B is more than 20% behind expected route pace.",
     "Two staff members have not checked in for today's shift.",
     "LAG-002-PSP quarterly service is due within seven days."
   ]

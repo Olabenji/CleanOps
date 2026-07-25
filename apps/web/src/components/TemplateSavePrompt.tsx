@@ -32,7 +32,7 @@ export function TemplatePendingBanner({
         <p className="eyebrow">Pending template decision</p>
         <strong>{summary}</strong>
         <p>
-          Keep iterating on today&apos;s plan. When you are ready, save to the zone default, save a temporary template, or
+          Keep iterating on today&apos;s plan. When you are ready, save to the ward default, save a temporary template, or
           discard these template updates.
         </p>
         <label>
@@ -47,7 +47,7 @@ export function TemplatePendingBanner({
       </div>
       <div className="button-row">
         <button className="primary-button" disabled={busy} onClick={onSaveZoneDefault} type="button">
-          Save to zone template{labels.length > 1 ? "s" : ""}
+          Save to ward template{labels.length > 1 ? "s" : ""}
         </button>
         <button disabled={busy} onClick={onSaveTemporary} type="button">
           Save as temp template{labels.length > 1 ? "s" : ""}
@@ -99,8 +99,8 @@ export default function TemplateSavePrompt({
     >
       <div className="stack-list template-save-prompt">
         <p className="panel-subtitle">
-          Pending: {labels.length === 0 ? "route plan edits" : labels.join(", ")}. Zone templates become the daily
-          default. Temporary templates keep a one-off plan without replacing the zone default.
+          Pending: {labels.length === 0 ? "route plan edits" : labels.join(", ")}. Ward templates become the daily
+          default. Temporary templates keep a one-off plan without replacing the ward default.
         </p>
         <label>
           Temporary template name
@@ -113,7 +113,7 @@ export default function TemplateSavePrompt({
         </label>
         <div className="button-row">
           <button className="primary-button" disabled={busy} onClick={onSaveZoneDefault} type="button">
-            Save to zone template{labels.length > 1 ? "s" : ""} and continue
+            Save to ward template{labels.length > 1 ? "s" : ""} and continue
           </button>
           <button disabled={busy} onClick={onSaveTemporary} type="button">
             Save as temp and continue

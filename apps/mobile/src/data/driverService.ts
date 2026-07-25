@@ -172,7 +172,14 @@ export async function syncStopAction(
   stopId: string,
   status: "completed" | "skipped",
   note?: string,
-  skipReason?: string
+  skipReason?: string,
+  proof?: {
+    latitude?: number | null;
+    longitude?: number | null;
+    proofPhotoPath?: string | null;
+    localPhotoUri?: string;
+    mimeType?: string;
+  }
 ) {
   if (!supabase) {
     return {
@@ -186,18 +193,37 @@ export async function syncStopAction(
     throw new Error("Driver is not signed in to Supabase");
   }
 
+  let proofPhotoPath = proof?.proofPhotoPath ?? null;
+  if (!proofPhotoPath && proof?.localPhotoUri) {
+    const { getOwnAccountProfile } = await import("./profileService");
+    const { uploadStopProofFromUri } = await import("./fieldProof");
+    const profile = await getOwnAccountProfile();
+    if (!profile.operatorId) {
+      throw new Error("Operator profile required for proof photo upload");
+    }
+    proofPhotoPath = await uploadStopProofFromUri({
+      operatorId: profile.operatorId,
+      stopId,
+      uri: proof.localPhotoUri,
+      mimeType: proof.mimeType
+    });
+  }
+
   const { data, error } = await supabase.rpc("sync_driver_stop_action", {
     input_stop_id: stopId,
     next_status: status,
     input_notes: note ?? null,
-    input_skip_reason: skipReason ?? null
+    input_skip_reason: skipReason ?? null,
+    input_latitude: proof?.latitude ?? null,
+    input_longitude: proof?.longitude ?? null,
+    input_proof_photo_path: proofPhotoPath
   });
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return data as { syncedAt: string };
+  return data as { syncedAt: string; proofPhotoPath?: string | null };
 }
 
 export async function transitionAssignedRoute(routeId: string, status: RouteStatus) {

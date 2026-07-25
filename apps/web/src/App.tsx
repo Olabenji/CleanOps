@@ -12,6 +12,12 @@ import type {
   MonthlyStaffSummary,
   OperatorCoverageSnapshot,
   OperatorDashboard,
+  OperatorFleetSnapshot,
+  OperatorCommsSnapshot,
+  OperatorReportsSnapshot,
+  RecordMaintenanceEventInput,
+  OperatorZoneTemplatesSnapshot,
+  UpsertDumpsiteSiteInput,
   OperatorProfile,
   PaymentChannel,
   PaymentEntry,
@@ -56,7 +62,12 @@ import AdminView from "./components/AdminView";
 import AgentCollectionsView from "./components/AgentCollectionsView";
 import ComplianceView from "./components/ComplianceView";
 import CoverageView from "./components/CoverageView";
+import DashboardRouteMonitor, { DashboardBrandFooter } from "./components/DashboardRouteMonitor";
+import FleetView from "./components/FleetView";
+import CommsView from "./components/CommsView";
 import OperatorSidebar from "./components/OperatorSidebar";
+import ReportsView from "./components/ReportsView";
+import SettingsView from "./components/SettingsView";
 import PasswordRecoveryScreen from "./components/PasswordRecoveryScreen";
 import PlatformAdminView from "./components/PlatformAdminView";
 import ProfileModal from "./components/ProfileModal";
@@ -91,6 +102,15 @@ import {
   updateServiceComplaintStatus
 } from "./data/lawmaComplianceService";
 import { getOperatorCoverage } from "./data/coverageService";
+import { getOperatorFleet, recordMaintenanceEvent, upsertDumpsiteSite } from "./data/fleetService";
+import {
+  dispatchResidentComms,
+  getOperatorComms,
+  queuePaymentReminders,
+  sendPaymentReminders
+} from "./data/commsService";
+import { getOperatorReports } from "./data/reportsService";
+import { getOperatorZoneTemplates, importCustomersBulk, saveZoneDefaultTemplate } from "./data/settingsService";
 import {
   addRoutePlanStop,
   cancelRouteTruckHandoff,
@@ -133,20 +153,25 @@ import {
   updateTruck
 } from "./data/operatorWorkflowService";
 import { demoCredentials } from "./data/pilotWorkflows";
+import { filterCustomerLedger } from "./lib/adminFilters";
 import { formatAppError, parseAmountNairaToKobo } from "./lib/errors";
 import { deriveRouteProgress } from "./lib/routeProgress";
 
 const metricIcons = [Truck, WalletCards, Users, AlertTriangle];
-type View = "dashboard" | "routes" | "coverage" | "payments" | "staff" | "compliance" | "admin";
+type View = "dashboard" | "routes" | "coverage" | "fleet" | "payments" | "reports" | "comms" | "staff" | "compliance" | "admin" | "settings";
 
 const workspaceTitles: Record<View, string> = {
   dashboard: "Operations overview",
   routes: "Route operations",
   coverage: "Make-good & coverage",
+  fleet: "Fleet, fuel & dumpsite",
   payments: "Payments & ledger",
+  reports: "Ops & LAWMA reports",
+  comms: "WhatsApp & SMS",
   staff: "Staff attendance",
   compliance: "Compliance",
-  admin: "Admin master data"
+  admin: "Admin master data",
+  settings: "Operator settings"
 };
 type RouteInlineError = {
   area: "assignment" | "addStop" | "stopCorrection" | "routeAction";
@@ -234,6 +259,15 @@ export function App() {
   const [complianceCases, setComplianceCases] = useState<ComplianceCase[]>([]);
   const [billDeliveries, setBillDeliveries] = useState<BillDelivery[]>([]);
   const [coverage, setCoverage] = useState<OperatorCoverageSnapshot | null>(null);
+  const [fleet, setFleet] = useState<OperatorFleetSnapshot | null>(null);
+  const [reports, setReports] = useState<OperatorReportsSnapshot | null>(null);
+  const [comms, setComms] = useState<OperatorCommsSnapshot | null>(null);
+  const [zoneTemplates, setZoneTemplates] = useState<OperatorZoneTemplatesSnapshot | null>(null);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsImporting, setSettingsImporting] = useState(false);
+  const [fleetSaving, setFleetSaving] = useState(false);
+  const [reportsRefreshing, setReportsRefreshing] = useState(false);
+  const [commsBusy, setCommsBusy] = useState(false);
   const [vehicleChecklists, setVehicleChecklists] = useState<VehicleBrandingChecklist[]>([]);
   const [customerLedger, setCustomerLedger] = useState<CustomerLedgerItem[]>([]);
   const [adminData, setAdminData] = useState<AdminMasterData>(emptyAdminData);
@@ -474,14 +508,14 @@ export function App() {
   async function loadWorkspace(targetDate = operationDate) {
     let routesData = await getRoutes(targetDate);
 
-    // Auto-load zone templates at start of day when nothing is planned yet.
+    // Auto-load ward templates at start of day when nothing is planned yet.
     if (targetDate === todayIso && routesData.length === 0) {
       try {
         const ensured = await ensureDailyRoutesLoaded(targetDate);
         if (ensured.plannedCount > 0) {
           routesData = await getRoutes(targetDate);
           setStatusMessage(
-            `Auto-loaded ${ensured.plannedCount} zone route template${ensured.plannedCount === 1 ? "" : "s"} for today.`
+            `Auto-loaded ${ensured.plannedCount} ward route template${ensured.plannedCount === 1 ? "" : "s"} for today.`
           );
         }
       } catch (autoLoadError) {
@@ -504,7 +538,9 @@ export function App() {
       complianceData,
       billDeliveryData,
       checklistData,
-      coverageData
+      coverageData,
+      fleetData,
+      zoneTemplatesData
     ] = await Promise.all([
       getOperatorDashboard(targetDate),
       getRouteTruckHandoffs(targetDate),
@@ -520,7 +556,9 @@ export function App() {
       listComplianceCases(),
       listBillDeliveries(`${targetDate.slice(0, 8)}01`),
       listVehicleBrandingChecklists(targetDate),
-      getOperatorCoverage(targetDate)
+      getOperatorCoverage(targetDate),
+      getOperatorFleet(targetDate),
+      getOperatorZoneTemplates()
     ]);
 
     setDashboard(dashboardData);
@@ -539,6 +577,8 @@ export function App() {
     setBillDeliveries(billDeliveryData);
     setVehicleChecklists(checklistData);
     setCoverage(coverageData);
+    setFleet(fleetData);
+    setZoneTemplates(zoneTemplatesData);
     setSelectedRouteId((current) => (routesData.some((route) => route.id === current) ? current : routesData[0]?.id ?? null));
     setSelectedCustomerId((current) => current ?? ledgerData[0]?.customerId ?? null);
   }
@@ -577,7 +617,7 @@ export function App() {
       clearTemplatePending();
       setStatusMessage(
         kind === "zone_default"
-          ? `Saved ${results.length} zone default template${results.length === 1 ? "" : "s"}.`
+          ? `Saved ${results.length} ward default template${results.length === 1 ? "" : "s"}.`
           : `Saved ${results.length} temporary template${results.length === 1 ? "" : "s"}.`
       );
 
@@ -634,6 +674,9 @@ export function App() {
     setStatusMessage(null);
     setError(null);
     setActiveView(nextView);
+    if (nextView === "comms") {
+      void handleLoadComms();
+    }
   }
 
   async function handleSignOut() {
@@ -659,6 +702,8 @@ export function App() {
     setComplianceCases([]);
     setBillDeliveries([]);
     setCoverage(null);
+    setFleet(null);
+    setZoneTemplates(null);
     setVehicleChecklists([]);
     setCustomerLedger([]);
     setAdminData(emptyAdminData);
@@ -1230,6 +1275,169 @@ export function App() {
     setStatusMessage("Vehicle branding / PPE checklist saved.");
   }
 
+  async function handleSaveZoneTemplate(input: {
+    zoneId: string;
+    truckId: string;
+    driverId: string | null;
+    customerIds: string[];
+  }) {
+    setSettingsSaving(true);
+    setError(null);
+    setStatusMessage(null);
+    try {
+      const result = await saveZoneDefaultTemplate(input);
+      const nextTemplates = await getOperatorZoneTemplates();
+      setZoneTemplates(nextTemplates);
+      setStatusMessage(
+        `Saved ${result.zoneName} template with ${result.stopCount} stop${result.stopCount === 1 ? "" : "s"}.`
+      );
+    } finally {
+      setSettingsSaving(false);
+    }
+  }
+
+  async function handleImportCustomers(input: {
+    rows: Parameters<typeof importCustomersBulk>[0]["rows"];
+    addToZoneTemplates: boolean;
+  }) {
+    setSettingsImporting(true);
+    setError(null);
+    setStatusMessage(null);
+    try {
+      const result = await importCustomersBulk({
+        rows: input.rows,
+        addToZoneTemplates: input.addToZoneTemplates,
+        importMarker: "bulk-import"
+      });
+      const [nextTemplates, nextAdminData, nextLedger] = await Promise.all([
+        getOperatorZoneTemplates(),
+        getAdminMasterData(),
+        getCustomerLedger()
+      ]);
+      setZoneTemplates(nextTemplates);
+      setAdminData(nextAdminData);
+      setCustomerLedger(nextLedger);
+      setStatusMessage(
+        `Imported ${result.inserted} customer${result.inserted === 1 ? "" : "s"}` +
+          (result.skippedDuplicates > 0
+            ? ` (${result.skippedDuplicates} duplicate phone${result.skippedDuplicates === 1 ? "" : "s"} skipped)`
+            : "") +
+          "."
+      );
+      return result;
+    } finally {
+      setSettingsImporting(false);
+    }
+  }
+
+  async function handleRecordMaintenance(input: RecordMaintenanceEventInput) {
+    setFleetSaving(true);
+    setError(null);
+    setStatusMessage(null);
+    try {
+      const result = await recordMaintenanceEvent(input);
+      setFleet(await getOperatorFleet(operationDate));
+      setStatusMessage(`Recorded maintenance for ${result.truckRegistration}.`);
+    } finally {
+      setFleetSaving(false);
+    }
+  }
+
+  async function handleUpsertDumpsiteSite(input: UpsertDumpsiteSiteInput) {
+    setFleetSaving(true);
+    setError(null);
+    setStatusMessage(null);
+    try {
+      const result = await upsertDumpsiteSite(input);
+      setFleet(await getOperatorFleet(operationDate));
+      setStatusMessage(`Saved dumpsite site ${result.name}.`);
+    } finally {
+      setFleetSaving(false);
+    }
+  }
+
+  async function handleLoadReports(fromDate: string, toDate: string) {
+    setReportsRefreshing(true);
+    setError(null);
+    try {
+      setReports(await getOperatorReports(fromDate, toDate));
+    } finally {
+      setReportsRefreshing(false);
+    }
+  }
+
+  async function handleLoadComms() {
+    setCommsBusy(true);
+    setError(null);
+    try {
+      setComms(await getOperatorComms());
+    } finally {
+      setCommsBusy(false);
+    }
+  }
+
+  async function handleQueueReminders(daysBeforeDue: 2 | 5, force: boolean) {
+    setCommsBusy(true);
+    setError(null);
+    setStatusMessage(null);
+    try {
+      const result = await queuePaymentReminders(daysBeforeDue, force);
+      setComms(await getOperatorComms());
+      if (result.message && result.queued === 0) {
+        setStatusMessage(result.message);
+      } else {
+        setStatusMessage(
+          `Queued ${result.queued} ${daysBeforeDue}-day reminder${result.queued === 1 ? "" : "s"}.`
+        );
+      }
+    } catch (queueError) {
+      setError(queueError instanceof Error ? queueError.message : "Failed to queue reminders");
+    } finally {
+      setCommsBusy(false);
+    }
+  }
+
+  async function handleSendReminders(daysBeforeDue: 2 | 5, force: boolean) {
+    setCommsBusy(true);
+    setError(null);
+    setStatusMessage(null);
+    try {
+      const result = await sendPaymentReminders(daysBeforeDue, { force, dispatch: true });
+      setComms(await getOperatorComms());
+      const queued = result.queue.queued ?? 0;
+      const sent = result.dispatch?.sent ?? 0;
+      const failed = result.dispatch?.failed ?? 0;
+      if (result.queue.message && queued === 0) {
+        setStatusMessage(result.queue.message);
+      } else {
+        setStatusMessage(
+          `Queued ${queued} reminder${queued === 1 ? "" : "s"}; sent ${sent}, failed ${failed}.`
+        );
+      }
+    } catch (sendError) {
+      setError(sendError instanceof Error ? sendError.message : "Failed to send reminders");
+    } finally {
+      setCommsBusy(false);
+    }
+  }
+
+  async function handleDispatchComms() {
+    setCommsBusy(true);
+    setError(null);
+    setStatusMessage(null);
+    try {
+      const result = await dispatchResidentComms();
+      setComms(await getOperatorComms());
+      setStatusMessage(
+        `Flushed queue: claimed ${result.claimed ?? 0}, sent ${result.sent ?? 0}, failed ${result.failed ?? 0}.`
+      );
+    } catch (dispatchError) {
+      setError(dispatchError instanceof Error ? dispatchError.message : "Failed to flush message queue");
+    } finally {
+      setCommsBusy(false);
+    }
+  }
+
   async function handleUpdateOwnProfile(input: { fullName: string; phone: string }) {
     setStatusMessage(null);
     const updated = await updateOwnProfile(input);
@@ -1357,10 +1565,18 @@ export function App() {
 
       {activeView === "dashboard" && dashboard ? (
         <DashboardView
+          brandName={auth.profile.brandName ?? auth.profile.operatorName}
           dashboard={dashboard}
           incidents={incidents}
           operationDate={operationDate}
+          routes={routes}
           todayIso={todayIso}
+          onOpenRoutes={(routeId) => {
+            if (routeId) {
+              setSelectedRouteId(routeId);
+            }
+            requestViewChange("routes");
+          }}
         />
       ) : null}
       {activeView === "routes" ? (
@@ -1394,6 +1610,17 @@ export function App() {
           refreshing={refreshing}
         />
       ) : null}
+      {activeView === "fleet" ? (
+        <FleetView
+          fleet={fleet}
+          operationDate={operationDate}
+          onRefresh={() => void handleRefresh()}
+          onRecordMaintenance={handleRecordMaintenance}
+          onUpsertDumpsiteSite={handleUpsertDumpsiteSite}
+          refreshing={refreshing}
+          saving={fleetSaving}
+        />
+      ) : null}
       {activeView === "payments" ? (
         <PaymentsView
           customerLedger={customerLedger}
@@ -1403,6 +1630,25 @@ export function App() {
           onRecordPayment={handleRecordPayment}
           onSelectCustomer={setSelectedCustomerId}
           onUpdateCustomerStatus={handleCustomerStatus}
+        />
+      ) : null}
+      {activeView === "reports" ? (
+        <ReportsView
+          operationDate={operationDate}
+          onLoad={handleLoadReports}
+          refreshing={reportsRefreshing}
+          reports={reports}
+        />
+      ) : null}
+      {activeView === "comms" ? (
+        <CommsView
+          busy={commsBusy}
+          comms={comms}
+          onDispatch={handleDispatchComms}
+          onQueueReminders={handleQueueReminders}
+          onRefresh={handleLoadComms}
+          onSendReminders={handleSendReminders}
+          refreshing={commsBusy}
         />
       ) : null}
       {activeView === "staff" ? (
@@ -1453,6 +1699,17 @@ export function App() {
           onUpdateCustomer={handleUpdateCustomer}
           onUpdateStaff={handleUpdateStaff}
           onUpdateTruck={handleUpdateTruck}
+        />
+      ) : null}
+      {activeView === "settings" ? (
+        <SettingsView
+          templates={zoneTemplates}
+          onRefresh={() => void handleRefresh()}
+          onSaveZoneTemplate={handleSaveZoneTemplate}
+          onImportCustomers={handleImportCustomers}
+          refreshing={refreshing}
+          saving={settingsSaving}
+          importing={settingsImporting}
         />
       ) : null}
       </div>
@@ -1612,17 +1869,25 @@ function parseRouteProgress(value: string): { completed: number; total: number; 
 }
 
 function DashboardView({
+  brandName,
   dashboard,
   incidents,
   operationDate,
-  todayIso
+  routes,
+  todayIso,
+  onOpenRoutes
 }: {
+  brandName?: string | null;
   dashboard: OperatorDashboard;
   incidents: IncidentReport[];
   operationDate: string;
+  routes: RouteDetail[];
   todayIso: string;
+  onOpenRoutes: (routeId?: string) => void;
 }) {
   const openIncidents = incidents.filter((incident) => !incident.resolvedAt).length;
+  const activeVehicleCount = dashboard.fleet.filter((truck) => truck.status === "operational").length;
+  const zoneHint = routes[0]?.zoneName ?? null;
 
   return (
     <>
@@ -1659,6 +1924,12 @@ function DashboardView({
           );
         })}
       </section>
+
+      <DashboardRouteMonitor
+        activeVehicleCount={activeVehicleCount}
+        routes={routes}
+        onOpenRoutes={onOpenRoutes}
+      />
 
       {(dashboard.alerts.length > 0 || incidents.length > 0) && (
         <section className="dashboard-grid" aria-label="Secondary operations">
@@ -1741,6 +2012,12 @@ function DashboardView({
           )}
         </div>
       </section>
+
+      <DashboardBrandFooter
+        brandName={brandName}
+        operatorName={dashboard.operatorName}
+        zoneHint={zoneHint}
+      />
     </>
   );
 }
@@ -1809,7 +2086,7 @@ function RoutesView({
       }
       return a.label.localeCompare(b.label);
     });
-  // Floating fleet: any active truck can be assigned; soft-sort home-zone matches first.
+  // Floating fleet: any active truck can be assigned; soft-sort home-ward matches first.
   const availableTrucks = [...planningOptions.trucks].sort((a, b) => {
     const aHome = a.zoneId === selectedRoute?.zoneId ? 0 : 1;
     const bHome = b.zoneId === selectedRoute?.zoneId ? 0 : 1;
@@ -1838,7 +2115,7 @@ function RoutesView({
               : "No routes planned for this date yet."}
           </span>
           <button className="primary-button" onClick={onPlanDailyRoutes} type="button">
-            Plan selected date from zone templates
+            Plan selected date from ward templates
           </button>
         </div>
         {routeCovers.length > 0 ? (
@@ -1999,7 +2276,7 @@ function RoutesView({
                   <h3>Plan Assignment</h3>
                   <p>
                     Change driver or truck before field work starts. Trucks and drivers are floaters — any available unit
-                    can cover this zone. Home-zone trucks are listed first.
+                    can cover this ward. Home ward trucks are listed first.
                   </p>
                 </div>
                 <div className="planner-grid">
@@ -2260,6 +2537,7 @@ function PaymentsView({
   ) => Promise<void>;
 }) {
   const [activeSection, setActiveSection] = useState<"ledger" | "agents">("ledger");
+  const [customerSearch, setCustomerSearch] = useState("");
   const [amountNaira, setAmountNaira] = useState("");
   const [channel, setChannel] = useState<PaymentChannel>("agent_cash");
   const [externalReference, setExternalReference] = useState("");
@@ -2282,6 +2560,7 @@ function PaymentsView({
     payments
   ]);
 
+  const filteredCustomerLedger = filterCustomerLedger(customerLedger, customerSearch);
   const totalOutstanding = customerLedger.reduce((sum, customer) => sum + customer.outstandingKobo, 0);
   const suspendedCount = customerLedger.filter((customer) => customer.serviceStatus === "suspended").length;
 
@@ -2369,29 +2648,54 @@ function PaymentsView({
           <WalletCards aria-hidden="true" />
         </div>
 
+        <div className="admin-toolbar">
+          <div className="admin-toolbar-filters">
+            <label>
+              Search customers
+              <input
+                onChange={(event) => setCustomerSearch(event.target.value)}
+                placeholder="Name, phone, address, or ward"
+                type="search"
+                value={customerSearch}
+              />
+            </label>
+          </div>
+          <span className="admin-result-count">
+            Showing {filteredCustomerLedger.length} of {customerLedger.length}
+          </span>
+        </div>
+
         <div className="stack-list">
-          {customerLedger.map((customer) => (
-            <button
-              className={`route-selector ${selectedCustomer?.customerId === customer.customerId ? "active" : ""}`}
-              key={customer.customerId}
-              onClick={() => onSelectCustomer(customer.customerId)}
-              type="button"
-            >
-              <strong>{customer.displayName}</strong>
-              <span>
-                {customer.zoneName} · {formatKobo(customer.outstandingKobo)} outstanding
-              </span>
-              <span>
-                {formatCollectionFrequency(customer.collectionsPerWeek, customer.preferredWeekdays)}
-              </span>
-              <span className={`pill ${customer.serviceStatus === "suspended" ? "danger" : ""}`}>
-                {customer.serviceStatus}
-              </span>
-              {customer.serviceStatus === "suspended" && customer.suspensionReason ? (
-                <span className="suspension-note">{customer.suspensionReason}</span>
-              ) : null}
-            </button>
-          ))}
+          {filteredCustomerLedger.length === 0 ? (
+            <p className="admin-empty">
+              {customerLedger.length === 0
+                ? "No customers in the ledger yet."
+                : "No customers match your search."}
+            </p>
+          ) : (
+            filteredCustomerLedger.map((customer) => (
+              <button
+                className={`route-selector ${selectedCustomer?.customerId === customer.customerId ? "active" : ""}`}
+                key={customer.customerId}
+                onClick={() => onSelectCustomer(customer.customerId)}
+                type="button"
+              >
+                <strong>{customer.displayName}</strong>
+                <span>
+                  {customer.zoneName} · {formatKobo(customer.outstandingKobo)} outstanding
+                </span>
+                <span>
+                  {formatCollectionFrequency(customer.collectionsPerWeek, customer.preferredWeekdays)}
+                </span>
+                <span className={`pill ${customer.serviceStatus === "suspended" ? "danger" : ""}`}>
+                  {customer.serviceStatus}
+                </span>
+                {customer.serviceStatus === "suspended" && customer.suspensionReason ? (
+                  <span className="suspension-note">{customer.suspensionReason}</span>
+                ) : null}
+              </button>
+            ))
+          )}
         </div>
       </article>
 

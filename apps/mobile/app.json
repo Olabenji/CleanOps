@@ -17,12 +17,22 @@
           "color": "#1a7f45",
           "defaultChannel": "resident-default"
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Allow CleanOps to take stop proof photos for completed collections.",
+          "photosPermission": "Allow CleanOps to attach stop proof photos from your library.",
+          "microphonePermission": false
+        }
       ]
     ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.cleanops.app",
       "infoPlist": {
+        "NSCameraUsageDescription": "CleanOps uses the camera for stop proof photos on completed collections.",
+        "NSPhotoLibraryUsageDescription": "CleanOps uses your photo library for stop proof and licence uploads.",
         "UIBackgroundModes": [
           "remote-notification"
         ]
@@ -32,6 +42,10 @@
       "package": "com.cleanops.app",
       "softwareKeyboardLayoutMode": "resize",
       "usesCleartextTraffic": true,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_MEDIA_IMAGES"
+      ],
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#1a7f45"

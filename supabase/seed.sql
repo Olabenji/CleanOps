@@ -305,19 +305,19 @@ values
   (
     '00000000-0000-4000-8000-000000000101',
     '00000000-0000-4000-8000-000000000001',
-    'Zone A',
+    'Ward A',
     'Ward 7 northern route'
   ),
   (
     '00000000-0000-4000-8000-000000000102',
     '00000000-0000-4000-8000-000000000001',
-    'Zone B',
+    'Ward B',
     'Ward 7 central route'
   ),
   (
     '00000000-0000-4000-8000-000000000103',
     '00000000-0000-4000-8000-000000000001',
-    'Zone C',
+    'Ward C',
     'Ward 7 southern route'
   )
 on conflict (operator_id, name) do nothing;
@@ -403,6 +403,20 @@ values
   ('00000000-0000-4000-8000-000000000404', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000102', 'Blue Gate Mini Mart', '+2348000000404', '25 Market Road, Surulere', 'small_business', 1500000, 'suspended', null, 'Outstanding monthly balance unpaid', 1, array[2]::smallint[], null),
   ('00000000-0000-4000-8000-000000000405', '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000103', 'Block C Residents Association', '+2348000000405', 'Block C Estate, Surulere', 'estate', 7500000, 'active', date_trunc('month', current_date)::date, null, 1, array[3]::smallint[], null)
 on conflict (id) do nothing;
+
+-- Approximate Surulere pins so Fleet map can place started trucks without live GPS.
+update public.customers
+set location = st_setsrid(st_makepoint(v.lng, v.lat), 4326)::geography
+from (
+  values
+    ('00000000-0000-4000-8000-000000000401'::uuid, 6.498100::float8, 3.354200::float8),
+    ('00000000-0000-4000-8000-000000000402'::uuid, 6.498600::float8, 3.354800::float8),
+    ('00000000-0000-4000-8000-000000000403'::uuid, 6.501200::float8, 3.358100::float8),
+    ('00000000-0000-4000-8000-000000000404'::uuid, 6.501700::float8, 3.358700::float8),
+    ('00000000-0000-4000-8000-000000000405'::uuid, 6.494200::float8, 3.360200::float8)
+) as v(id, lat, lng)
+where customers.id = v.id
+  and customers.location is null;
 
 -- Deterministic resident account for local and CI login smoke tests.
 insert into auth.users (
@@ -595,7 +609,7 @@ values
     '00000000-0000-4000-8000-000000000502',
     '00000000-0000-4000-8000-000000000302',
     '00000000-0000-4000-8000-000000000202',
-    'Zone B running behind expected pace',
+    'Ward B running behind expected pace',
     'Traffic delay around Market Road has slowed stop completion.'
   )
 on conflict (id) do nothing;

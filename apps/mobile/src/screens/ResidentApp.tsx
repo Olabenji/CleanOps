@@ -67,7 +67,7 @@ export default function ResidentApp({
         phone: session.phone ?? null,
         email: null,
         customerType: "residential",
-        zoneName: "Zone A",
+        zoneName: "Ward A",
         serviceStatus: "active",
         collectionsPerWeek: 1,
         preferredWeekdays: [1],
@@ -295,7 +295,7 @@ export default function ResidentApp({
                   ))}
                 </View>
               ) : (
-                <Text style={styles.muted}>No zone trucks listed.</Text>
+                <Text style={styles.muted}>No ward trucks listed.</Text>
               )}
             </View>
 

@@ -29,6 +29,8 @@ npx supabase functions deploy paystack-webhook --no-verify-jwt
 npx supabase functions deploy resident-paystack-checkout
 npx supabase functions deploy resident-paystack-verify
 npx supabase functions deploy dispatch-resident-notifications --no-verify-jwt
+npx supabase functions deploy dispatch-resident-comms --no-verify-jwt
+npx supabase functions deploy send-reminders --no-verify-jwt
 ```
 
 ## 3. Secrets and environment
@@ -38,6 +40,8 @@ Set hosted function secrets:
 ```bash
 npx supabase secrets set PAYSTACK_SECRET_KEY=sk_live_or_sk_test_...
 npx supabase secrets set SITE_URL=https://<operator-web-host>
+npx supabase secrets set TWILIO_ACCOUNT_SID=... TWILIO_AUTH_TOKEN=... TWILIO_WHATSAPP_FROM=whatsapp:+1...
+npx supabase secrets set TERMII_API_KEY=... TERMII_SENDER_ID=CleanOps
 ```
 
 Validate production app env before release:

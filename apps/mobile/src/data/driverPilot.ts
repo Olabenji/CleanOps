@@ -9,7 +9,7 @@ export const pilotDriver = {
 
 export const pilotDriverRoute: RouteDetail = {
   id: "00000000-0000-4000-8000-000000000501",
-  zoneName: "Zone A",
+  zoneName: "Ward A",
   truckRegistration: "LAG-001-PSP",
   driverName: pilotDriver.fullName,
   status: "in_progress",
@@ -83,7 +83,13 @@ export function createStopAction(
   stopId: string,
   status: RouteStopStatus,
   note?: string,
-  skipReason?: string
+  skipReason?: string,
+  proof?: {
+    latitude?: number | null;
+    longitude?: number | null;
+    proofPhotoPath?: string | null;
+    localPhotoUri?: string;
+  }
 ): DriverStopAction {
   return {
     id: `${Date.now()}-${stopId}`,
@@ -92,6 +98,10 @@ export function createStopAction(
     status,
     note: note?.trim() || undefined,
     skipReason: skipReason?.trim() || undefined,
+    latitude: proof?.latitude ?? null,
+    longitude: proof?.longitude ?? null,
+    proofPhotoPath: proof?.proofPhotoPath ?? null,
+    localPhotoUri: proof?.localPhotoUri,
     queuedAt: new Date().toISOString(),
     syncedAt: null
   };

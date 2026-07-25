@@ -225,7 +225,7 @@ export default function ResidentApp({
             </p>
             <div className="resident-truck-row">
               {home.zoneTrucks.length === 0 ? (
-                <span className="pill">No zone trucks listed yet</span>
+                <span className="pill">No ward trucks listed yet</span>
               ) : (
                 home.zoneTrucks.map((truck) => (
                   <span className="pill" key={truck.registrationNumber}>

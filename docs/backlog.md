@@ -1,6 +1,6 @@
 # CleanOps Implementation Backlog
 
-**Last reviewed:** 22 July 2026 — see [status-report.md](./status-report.md) and [agent-handover.md](./agent-handover.md).
+**Last reviewed:** 25 July 2026 — see [status-report.md](./status-report.md) and [agent-handover.md](./agent-handover.md).
 
 ## Foundation
 
@@ -28,8 +28,10 @@
 - [x] Staff attendance and monthly payroll summary (task assignment / performance notes still open).
 - [x] Admin master-data onboarding + staff login provisioning + resident customer login provision.
 - [x] Make-good / Coverage board for open recoveries (ADO #143 slim — list before map).
-- [ ] Fleet profiles UI, fuel logs, maintenance calendar, dumpsite proximity/capacity (#142/#144).
-- [ ] Exportable reports for P&L, collections, attendance, and fleet costs.
+- [x] Fleet board (#142/#144): trucks + day fuel/dumpsite (`0065`) plus dumpsite registry, site map/proximity, and maintenance calendar (`0069`). Live truck GPS proximity still deferred.
+- [x] Settings console with ward default template planning (`0066`/`0067`) — edit stops/truck/driver without depending on ops date.
+- [x] Settings **Customer data load** — CSV/TSV bulk import with column mapping, preview/validation, phone-skip idempotency, optional ward template append (`0072`).
+- [x] Exportable reports for P&L, collections, attendance, and fleet costs (`0070`).
 - [x] Edit existing staff/truck/customer records (including collection frequency fields).
 
 ## Mobile
@@ -42,16 +44,16 @@
 - [x] Driver confirm/decline for operator-initiated truck handoffs.
 - [x] Resident Home / Pay / Issues / Inbox / Profile (schedule, account, Paystack, complaints, notifications).
 - [ ] Real Expo push delivery via development/production build (Expo Go safely skipped on SDK 53+).
-- [ ] Harden offline queue with MMKV and stricter no-silent-pilot fallbacks where still needed.
-- [ ] GPS + photo proof on stops; multi-route driver view.
+- [x] Harden offline queue with MMKV (AsyncStorage fallback) and default queue-on.
+- [x] GPS + optional photo proof on stop complete/skip (`0071`); multi-route driver view still open.
 
 ## Integrations
 
 - [x] Paystack webhook verification + idempotent payment posting.
 - [x] Resident Paystack checkout initialize + verify (web + mobile callback).
 - [ ] Dedicated transfer account / virtual account handling.
-- [ ] Twilio WhatsApp reminders, receipts, and suspension notices.
-- [ ] Termii SMS fallback.
+- [x] Twilio WhatsApp reminders, receipts, and suspension notices.
+- [x] Termii SMS fallback.
 - [x] Resident notification inbox + outbox + Expo push dispatch function (infra).
 - [ ] Physical-device Expo push end-to-end (EAS project + credentials + tap deep-link).
 

@@ -15,7 +15,7 @@ Target: Weeks 1-8 — **largely complete locally**
 - Truck reassignment / route takeover (operator initiate, driver confirm). **(done)**
 - Frequency-aware routing + make-good / next-day unserviced recovery. **(done — coverage board UI open)**
 - LAWMA P1 compliance evidence. **(done)**
-- WhatsApp reminders and receipts through Twilio. **(deferred)**
+- WhatsApp reminders and receipts through Twilio. **(done — Termii SMS fallback; needs provider secrets)**
 - CI / quality gate + hosted deploy. **(pending — next)**
 
 Go-live trigger: one PSP operator live on one ward with three trucks and the full staff team.
