@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CleanOps — Pitch Deck</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --green: #1a7f45;
+      --green-deep: #0f5c30;
+      --mint: #d8eee0;
+      --bg: #eef5ef;
+      --ink: #102017;
+      --muted: #637466;
+      --cream: #f7fbf8;
+      --danger: #a33b2d;
+      --card: rgba(255, 255, 255, 0.72);
+      --shadow: 0 18px 50px rgba(16, 32, 23, 0.12);
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Manrope, system-ui, sans-serif;
+    }
+
+    body {
+      overflow: hidden;
+      background:
+        radial-gradient(1200px 600px at 10% -10%, #cfead8 0%, transparent 55%),
+        radial-gradient(900px 500px at 100% 0%, #b9dcc5 0%, transparent 45%),
+        linear-gradient(160deg, #eef5ef 0%, #e3efe6 48%, #d8e8dc 100%);
+    }
+
+    .deck {
+      height: 100%;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.85rem 1.25rem;
+      border-bottom: 1px solid rgba(16, 32, 23, 0.08);
+      backdrop-filter: blur(10px);
+      background: rgba(247, 251, 248, 0.7);
+    }
+
+    .brand {
+      display: flex;
+      align-items: baseline;
+      gap: 0.65rem;
+    }
+
+    .brand strong {
+      font-size: 1.15rem;
+      letter-spacing: -0.02em;
+      color: var(--green-deep);
+    }
+
+    .brand span {
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    button {
+      font: inherit;
+      cursor: pointer;
+      border: 1px solid rgba(16, 32, 23, 0.12);
+      background: white;
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 0.45rem 0.9rem;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    }
+
+    button:hover { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(16,32,23,0.08); }
+    button.primary {
+      background: var(--green);
+      border-color: var(--green);
+      color: white;
+      font-weight: 600;
+    }
+    button:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    .stage {
+      position: relative;
+      overflow: hidden;
+      padding: 1.25rem;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 1.25rem;
+      display: none;
+      border-radius: 24px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      background: var(--cream);
+      animation: rise 0.45s ease;
+    }
+
+    .slide.active { display: grid; }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(12px) scale(0.985); }
+      to { opacity: 1; transform: none; }
+    }
+
+    .slide-inner {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      min-height: 100%;
+      height: 100%;
+    }
+
+    .slide.single .slide-inner { grid-template-columns: 1fr; }
+
+    .copy {
+      padding: clamp(1.5rem, 4vw, 3.5rem);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 1rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    .visual {
+      position: relative;
+      min-height: 280px;
+      background:
+        linear-gradient(160deg, rgba(26,127,69,0.88), rgba(15,92,48,0.92)),
+        url("../marketing/genspark/assets/cleanops-feature-workload-fleet.png") center/cover;
+      color: white;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      padding: 1.75rem;
+    }
+
+    .visual::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, transparent 20%, rgba(8, 24, 14, 0.55) 100%);
+      pointer-events: none;
+    }
+
+    .visual > * { position: relative; z-index: 1; }
+
+    .eyebrow {
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--green);
+    }
+
+    h1, h2 {
+      margin: 0;
+      letter-spacing: -0.03em;
+      line-height: 1.05;
+      font-family: Fraunces, Georgia, serif;
+      font-weight: 700;
+    }
+
+    h1 { font-size: clamp(2.4rem, 5vw, 4.2rem); color: var(--green-deep); }
+    h2 { font-size: clamp(1.8rem, 3.5vw, 3rem); }
+
+    .lede {
+      margin: 0;
+      max-width: 38rem;
+      font-size: clamp(1rem, 1.5vw, 1.2rem);
+      line-height: 1.55;
+      color: var(--muted);
+    }
+
+    .cta-row { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.5rem; }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      border-radius: 999px;
+      padding: 0.35rem 0.75rem;
+      background: var(--mint);
+      color: var(--green-deep);
+      font-size: 0.82rem;
+      font-weight: 600;
+    }
+
+    .list {
+      margin: 0.25rem 0 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 0.65rem;
+    }
+
+    .list li {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.75rem;
+      align-items: start;
+      padding: 0.85rem 1rem;
+      border-radius: 16px;
+      background: rgba(216, 238, 224, 0.45);
+      border: 1px solid rgba(26, 127, 69, 0.12);
+    }
+
+    .list .num {
+      width: 1.6rem;
+      height: 1.6rem;
+      border-radius: 50%;
+      background: var(--green);
+      color: white;
+      display: grid;
+      place-items: center;
+      font-size: 0.8rem;
+      font-weight: 700;
+      margin-top: 0.1rem;
+    }
+
+    .list strong { display: block; margin-bottom: 0.15rem; }
+    .list span { color: var(--muted); font-size: 0.95rem; line-height: 1.4; }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.85rem;
+      margin-top: 0.5rem;
+    }
+
+    .card {
+      background: white;
+      border: 1px solid rgba(16, 32, 23, 0.08);
+      border-radius: 18px;
+      padding: 1rem 1.1rem;
+      box-shadow: 0 10px 24px rgba(16, 32, 23, 0.04);
+    }
+
+    .card h3 {
+      margin: 0 0 0.4rem;
+      font-size: 1rem;
+      color: var(--green-deep);
+    }
+
+    .card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+      line-height: 1.45;
+    }
+
+    .metric-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+    }
+
+    .metric {
+      background: white;
+      border-radius: 16px;
+      padding: 1rem;
+      border: 1px solid rgba(16, 32, 23, 0.08);
+    }
+
+    .metric span { display: block; color: var(--muted); font-size: 0.78rem; margin-bottom: 0.35rem; }
+    .metric strong { font-size: 1.35rem; letter-spacing: -0.02em; color: var(--green-deep); }
+
+    .visual.alt-1 {
+      background:
+        linear-gradient(160deg, rgba(26,127,69,0.78), rgba(15,92,48,0.88)),
+        url("../marketing/genspark/assets/cleanops-feature-operator-dashboard.png") center/cover;
+    }
+    .visual.alt-2 {
+      background:
+        linear-gradient(160deg, rgba(26,127,69,0.78), rgba(15,92,48,0.88)),
+        url("../marketing/genspark/assets/cleanops-feature-driver-field.png") center/cover;
+    }
+    .visual.alt-3 {
+      background:
+        linear-gradient(160deg, rgba(26,127,69,0.78), rgba(15,92,48,0.88)),
+        url("../marketing/genspark/assets/cleanops-feature-agent-collections.png") center/cover;
+    }
+    .visual.alt-4 {
+      background:
+        linear-gradient(160deg, rgba(26,127,69,0.78), rgba(15,92,48,0.88)),
+        url("../marketing/genspark/assets/cleanops-feature-problem-to-solution.png") center/cover;
+    }
+
+    .quote {
+      font-family: Fraunces, Georgia, serif;
+      font-size: clamp(1.35rem, 2.4vw, 1.85rem);
+      line-height: 1.25;
+      margin: 0;
+    }
+
+    .footerbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0.75rem 1.25rem 1rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    .progress {
+      flex: 1;
+      height: 6px;
+      background: rgba(16, 32, 23, 0.08);
+      border-radius: 999px;
+      overflow: hidden;
+      max-width: 280px;
+    }
+
+    .progress > i {
+      display: block;
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--green), #2aa85c);
+      border-radius: inherit;
+      transition: width 0.3s ease;
+    }
+
+    .kbd {
+      font-size: 0.75rem;
+      opacity: 0.8;
+    }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.92rem;
+      margin-top: 0.5rem;
+    }
+
+    .table th, .table td {
+      text-align: left;
+      padding: 0.65rem 0.5rem;
+      border-bottom: 1px solid rgba(16, 32, 23, 0.08);
+    }
+
+    .table th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; }
+    .check { color: var(--green); font-weight: 700; }
+    .dash { color: #b0bbb3; }
+
+    .hero-slide .copy { max-width: 48rem; }
+    .tagline {
+      font-family: Fraunces, Georgia, serif;
+      font-size: clamp(1.4rem, 2.5vw, 2rem);
+      color: var(--ink);
+      margin: 0;
+    }
+
+    body.presenting .topbar,
+    body.presenting .footerbar { display: none; }
+    body.presenting .stage { padding: 0; }
+    body.presenting .slide {
+      inset: 0;
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    @media (max-width: 900px) {
+      .slide-inner { grid-template-columns: 1fr; }
+      .visual { min-height: 180px; }
+      .grid-3, .metric-row { grid-template-columns: 1fr 1fr; }
+      .copy { padding: 1.25rem; }
+    }
+
+    @media (max-width: 560px) {
+      .grid-3, .metric-row { grid-template-columns: 1fr; }
+      .brand span { display: none; }
+    }
+
+    @media print {
+      body { overflow: visible; background: white; }
+      .topbar, .footerbar, .controls { display: none !important; }
+      .deck { display: block; }
+      .stage { padding: 0; }
+      .slide {
+        position: relative !important;
+        inset: auto !important;
+        display: grid !important;
+        page-break-after: always;
+        min-height: 100vh;
+        box-shadow: none;
+        border-radius: 0;
+        animation: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="deck">
+    <header class="topbar">
+      <div class="brand">
+        <strong>CleanOps</strong>
+        <span>Pitch deck · Lagos PSP waste ops</span>
+      </div>
+      <div class="controls">
+        <button type="button" id="prevBtn" aria-label="Previous slide">←</button>
+        <button type="button" id="nextBtn" aria-label="Next slide">→</button>
+        <button type="button" class="primary" id="presentBtn">Present</button>
+      </div>
+    </header>
+
+    <main class="stage" id="stage" tabindex="0" aria-live="polite">
+
+      <!-- 1 Hero -->
+      <section class="slide active single hero-slide" data-title="CleanOps">
+        <div class="slide-inner">
+          <div class="copy">
+            <p class="eyebrow">LAWMA PSP operations platform</p>
+            <h1>CleanOps</h1>
+            <p class="tagline">Next to Godliness.</p>
+            <p class="lede">
+              Digitizes daily waste collection for Lagos Private Sector Participants —
+              routes, fleet, field stops, door-to-door cash, attendance, and resident pay —
+              so owners stop running the ward from paper, WhatsApp, and guesswork.
+            </p>
+            <div class="cta-row">
+              <span class="pill">Operator web</span>
+              <span class="pill">Driver &amp; agent mobile</span>
+              <span class="pill">Resident pay &amp; schedule</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2 Problem -->
+      <section class="slide" data-title="The problem">
+        <div class="slide-inner">
+          <div class="copy">
+            <p class="eyebrow">Ward reality today</p>
+            <h2>Paper routes. Missing cash. Guesswork at the dumpsite.</h2>
+            <ul class="list">
+              <li><span class="num">1</span><div><strong>Fragmented ops</strong><span>Route sheets, WhatsApp groups, and notebooks that never reconcile at day-end.</span></div></li>
+              <li><span class="num">2</span><div><strong>Missed collections</strong><span>No system of record for skips, make-goods, or next-day recovery.</span></div></li>
+              <li><span class="num">3</span><div><strong>Cash leakage</strong><span>Agent envelopes and bank transfers without a live customer ledger.</span></div></li>
+              <li><span class="num">4</span><div><strong>Compliance pressure</strong><span>LAWMA expects evidence of coverage, frequency, and service quality — hard on paper.</span></div></li>
+            </ul>
+          </div>
+          <aside class="visual alt-4" aria-hidden="true">
+            <p class="quote">From chaos to one command centre.</p>
+          </aside>
+        </div>
+      </section>
+
+      <!-- 3 Solution -->
+      <section class="slide" data-title="Solution">
+        <div class="slide-inner">
+          <div class="copy">
+            <p class="eyebrow">One product, three surfaces</p>
+            <h2>Routes. Collections. Cash. One system.</h2>
+            <div class="grid-3">
+              <article class="card">
+                <h3>Operator command centre</h3>
+                <p>Dashboard, route planning, coverage board, fleet, payments, reports, comms, compliance, and admin.</p>
+              </article>
+              <article class="card">
+                <h3>Field mobile</h3>
+                <p>Drivers complete/skip stops with GPS &amp; photo proof; agents search customers and post cash with receipts.</p>
+              </article>
+              <article class="card">
+                <h3>Resident portal</h3>
+                <p>Know your PSP, see schedule &amp; make-goods, pay with Paystack, raise complaints, read inbox notices.</p>
+              </article>
+            </div>
+          </div>
+          <aside class="visual alt-1" aria-hidden="true">
+            <p class="quote">Run the ward from one screen.</p>
+          </aside>
+        </div>
+      </section>
+
+      <!-- 4 Who -->
+      <section class="slide single" data-title="Who it's for">
+        <div class="slide-inner">
+          <div class="copy">
+            <p class="eyebrow">Primary buyer</p>
+            <h2>Built for Lagos LAWMA PSP operators</h2>
+            <div class="metric-row">
+              <div class="metric"><span>Buyer</span><strong>PSP owners</strong></div>
+              <div class="metric"><span>Day-to-day</span><strong>Supervisors</strong></div>
+              <div class="metric"><span>Field</span><strong>Drivers &amp; agents</strong></div>
+              <div class="metric"><span>Service</span><strong>Residents</strong></div>
+            </div>
+            <ul class="list" style="margin-top:1rem">
+              <li><span class="num">→</span><div><strong>Pilot shape</strong><span>One operator, one ward, three trucks, full crew — then expand zones and seats.</span></div></li>
+              <li><span class="num">→</span><div><strong>SaaS path</strong><span>Multi-tenant from day one. Plans: Basic → Growth → Pro (Paystack + branding).</span></div></li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- 5 Product tour -->
+      <section class="slide" data-title="Operator">
+        <div class="slide-inner">
+          <div class="copy">
+            <p class="eyebrow">Operator web</p>
+            <h2>Command centre for the morning shift</h2>
+            <ul class="list">
+              <li><span class="num">1</span><div><strong>Dashboard</strong><span>Route progress, revenue, attendance, fleet status, incidents, alerts.</span></div></li>
+              <li><span class="num">2</span><div><strong>Routes + Coverage</strong><span>Plan from ward templates, reassign trucks/drivers, close incomplete → next-day make-goods.</span></div></li>
+              <li><span class="num">3</span><div><strong>Fleet + Reports</strong><span>Fuel, dumpsite runs, maintenance, exportable finance / LAWMA coverage packs.</span></div></li>
+              <li><span class="num">4</span><div><strong>Payments + Comms</strong><span>Customer ledger, agent reconciliation, WhatsApp/SMS reminders &amp; receipts.</span></div></li>
+            </ul>
+          </div>
+          <aside class="visual alt-1" aria-hidden="true">
+            <p class="quote">Live metrics. Live routes. Live cash.</p>
+          </aside>
+        </div>
+      </section>
+
+      <!-- 6 Field -->
+      <section class="slide" data-title="Field">
+        <div class="slide-inner">
+          <div class="copy">
+            <p class="eyebrow">Driver &amp; collection agent</p>
+            <h2>Works when Lagos network dips</h2>
+            <div class="grid-3" style="grid-template-columns:1fr 1fr">
+              <article class="card">
+                <h3>Driver Field</h3>
+                <p>Start shift, complete/skip stops, make-good badges, fuel &amp; dumpsite logs, incident reports, GPS/photo proof, offline queue.</p>
+              </article>
+              <article class="card">
+                <h3>Agent Collect</h3>
+                <p>Search by name/phone/address, post cash / OPay / bank, on-screen receipt, day totals, auto-reactivate on full payment.</p>
+              </article>
+            </div>
+          </div>
+          <aside class="visual alt-2" aria-hidden="true">
+            <p class="quote">Phone in the street. Books in sync.</p>
+          </aside>
+        </div>
+      </section>
+
+      <!-- 7 Differentiation -->
+      <section class="slide single" data-title="Why CleanOps">
+        <div class="slide-inner">
+          <div class="copy">
+            <p class="eyebrow">Why us</p>
+            <h2>Purpose-built for PSP waste ops — not generic FSM</h2>
+            <div class="grid-3">
+              <article class="card">
+                <h3>Frequency + recovery</h3>
+                <p>Preferred weekdays, make-good enqueue, supervisor close-incomplete, resident notices.</p>
+              </article>
+              <article class="card">
+                <h3>Cash meets ledger</h3>
+                <p>Agent field cash and Paystack webhooks post to the same customer balance with idempotency.</p>
+              </article>
+              <article class="card">
+                <h3>LAWMA-ready evidence</h3>
+                <p>Compliance cases, coverage board, ward reports, exportable packs for regulators.</p>
+              </article>
+              <article class="card">
+                <h3>Multi-tenant SaaS</h3>
+                <p>RLS-scoped operators, plan codes, platform admin onboarding — no rewrite to scale.</p>
+              </article>
+              <article class="card">
+                <h3>Offline-first field</h3>
+                <p>Queued stop actions and payments survive intermittent connectivity; sync is idempotent.</p>
+              </article>
+              <article class="card">
+                <h3>Lagos channel fit</h3>
+                <p>Paystack, Twilio WhatsApp, Termii SMS — the rails PSPs already trust.</p>
+              </article>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 8 Business model -->
+      <section class="slide single" data-title="Business model">
+        <div class="slide-inner">
+          <div class="copy">
+            <p class="eyebrow">Packaging</p>
+            <h2>One codebase. Plan-gated modules.</h2>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Capability</th>
+                  <th>Basic</th>
+                  <th>Growth</th>
+                  <th>Pro</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>Dashboard, routes, attendance, ledger, field apps</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+                <tr><td>Route reassignment, templates, truck float, licence vault</td><td class="dash">—</td><td class="check">✓</td><td class="check">✓</td></tr>
+                <tr><td>Paystack collections + custom branding</td><td class="dash">—</td><td class="dash">—</td><td class="check">✓</td></tr>
+                <tr><td>Soft seats / wards</td><td>~15 / 3</td><td>~40 / 8</td><td>Custom</td></tr>
+              </tbody>
+            </table>
+            <p class="lede" style="margin-top:1rem">Sales motion: platform admin onboards the PSP → owner credentials → upsell by changing plan code.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 9 Traction / status -->
+      <section class="slide" data-title="Status">
+        <div class="slide-inner">
+          <div class="copy">
+            <p class="eyebrow">Product status</p>
+            <h2>Pilot-ready stack. Production hardening next.</h2>
+            <ul class="list">
+              <li><span class="num">✓</span><div><strong>Shipped</strong><span>Operator suite through fleet, coverage, reports, comms; driver/agent/resident apps; Paystack; recovery; LAWMA compliance.</span></div></li>
+              <li><span class="num">→</span><div><strong>Near-term</strong><span>Hosted Supabase deploy, live Expo push on device builds, CI quality gate already started.</span></div></li>
+              <li><span class="num">◎</span><div><strong>Go-live trigger</strong><span>One PSP live on one ward with three trucks and the full staff team.</span></div></li>
+            </ul>
+          </div>
+          <aside class="visual alt-3" aria-hidden="true">
+            <p class="quote">Demo today. Deploy this month.</p>
+          </aside>
+        </div>
+      </section>
+
+      <!-- 10 Ask / close -->
+      <section class="slide" data-title="Next step">
+        <div class="slide-inner">
+          <div class="copy">
+            <p class="eyebrow">Call to action</p>
+            <h2>Let’s put your ward on CleanOps</h2>
+            <ul class="list">
+              <li><span class="num">1</span><div><strong>45-minute live demo</strong><span>Operator morning board → driver stop → agent cash → resident Paystack.</span></div></li>
+              <li><span class="num">2</span><div><strong>Pilot scoping</strong><span>Wards, trucks, seat counts, Paystack &amp; WhatsApp credentials.</span></div></li>
+              <li><span class="num">3</span><div><strong>Go-live plan</strong><span>Data import (bulk customers), training, first collection week with coverage board.</span></div></li>
+            </ul>
+            <p class="tagline" style="margin-top:1rem">Next to Godliness.</p>
+            <p class="lede">Routes. Collections. Cash. One system.</p>
+          </div>
+          <aside class="visual" aria-hidden="true">
+            <p class="quote">CleanOps</p>
+            <p style="margin:0.35rem 0 0;opacity:0.9">PSP waste ops for Lagos wards</p>
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footerbar">
+      <span id="slideLabel">1 / 10 · CleanOps</span>
+      <div class="progress" aria-hidden="true"><i id="progressBar"></i></div>
+      <span class="kbd">← → to navigate · F present · Esc exit · P print</span>
+    </footer>
+  </div>
+
+  <script>
+    const slides = Array.from(document.querySelectorAll(".slide"));
+    const label = document.getElementById("slideLabel");
+    const bar = document.getElementById("progressBar");
+    const prevBtn = document.getElementById("prevBtn");
+    const nextBtn = document.getElementById("nextBtn");
+    const presentBtn = document.getElementById("presentBtn");
+    let index = 0;
+
+    function show(i) {
+      index = Math.max(0, Math.min(slides.length - 1, i));
+      slides.forEach((s, n) => s.classList.toggle("active", n === index));
+      const title = slides[index].dataset.title || "Slide";
+      label.textContent = `${index + 1} / ${slides.length} · ${title}`;
+      bar.style.width = `${((index + 1) / slides.length) * 100}%`;
+      prevBtn.disabled = index === 0;
+      nextBtn.disabled = index === slides.length - 1;
+    }
+
+    function togglePresent() {
+      document.body.classList.toggle("presenting");
+      presentBtn.textContent = document.body.classList.contains("presenting") ? "Exit" : "Present";
+      document.getElementById("stage").focus();
+    }
+
+    prevBtn.addEventListener("click", () => show(index - 1));
+    nextBtn.addEventListener("click", () => show(index + 1));
+    presentBtn.addEventListener("click", togglePresent);
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown") {
+        e.preventDefault();
+        show(index + 1);
+      } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
+        e.preventDefault();
+        show(index - 1);
+      } else if (e.key === "f" || e.key === "F") {
+        togglePresent();
+      } else if (e.key === "Escape" && document.body.classList.contains("presenting")) {
+        togglePresent();
+      } else if (e.key === "Home") {
+        show(0);
+      } else if (e.key === "End") {
+        show(slides.length - 1);
+      }
+    });
+
+    let touchX = null;
+    document.getElementById("stage").addEventListener("touchstart", (e) => {
+      touchX = e.changedTouches[0].screenX;
+    }, { passive: true });
+    document.getElementById("stage").addEventListener("touchend", (e) => {
+      if (touchX == null) return;
+      const dx = e.changedTouches[0].screenX - touchX;
+      if (Math.abs(dx) > 50) show(index + (dx < 0 ? 1 : -1));
+      touchX = null;
+    }, { passive: true });
+
+    show(0);
+  </script>
+</body>
+</html>
