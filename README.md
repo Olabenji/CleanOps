@@ -44,3 +44,11 @@ Set your machine's LAN IP in `apps/mobile/.env.local` so physical devices can re
 Copy `.env.example` to `.env` and fill in Supabase, Paystack, Twilio, Termii, and Sentry values before connecting live services.
 
 See [docs/status-report.md](./docs/status-report.md) and [docs/build-plan.md](./docs/build-plan.md) for current module status and sprint plan (Sprint 1–2 complete; Sprint 3 next).
+
+## Go-to-market pack
+
+Pitch deck, user manual, and technical diligence docs:
+
+- [docs/go-to-market/](./docs/go-to-market/) — open `pitch-deck.html` in a browser to present
+- [User manual](./docs/go-to-market/user-manual.md)
+- [Technical information](./docs/go-to-market/technical-information.md)
