@@ -60,7 +60,16 @@ export async function listResidentNotifications(limit = 50): Promise<ResidentNot
     throw new Error(error.message);
   }
 
-  return z.array(residentNotificationSchema).parse(data ?? []);
+  // Per-item safe parse: unknown/future kinds must not wipe Pay/Home/Inbox.
+  const rows = Array.isArray(data) ? data : [];
+  const notifications: ResidentNotification[] = [];
+  for (const row of rows) {
+    const parsed = residentNotificationSchema.safeParse(row);
+    if (parsed.success) {
+      notifications.push(parsed.data);
+    }
+  }
+  return notifications;
 }
 
 export async function markResidentNotificationRead(notificationId: string): Promise<void> {

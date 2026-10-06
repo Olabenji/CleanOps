@@ -4,11 +4,15 @@ import {
   operatorZoneTemplatesSnapshotSchema,
   saveZoneDefaultTemplateInputSchema,
   saveZoneDefaultTemplateResultSchema,
+  updateOperatorBannerConfigInputSchema,
+  updateOperatorBannerConfigResultSchema,
   type CustomerImportInput,
   type CustomerImportResult,
   type OperatorZoneTemplatesSnapshot,
   type SaveZoneDefaultTemplateInput,
-  type SaveZoneDefaultTemplateResult
+  type SaveZoneDefaultTemplateResult,
+  type UpdateOperatorBannerConfigInput,
+  type UpdateOperatorBannerConfigResult
 } from "@cleanops/shared";
 import { supabase } from "../lib/supabase";
 
@@ -66,4 +70,24 @@ export async function importCustomersBulk(input: CustomerImportInput): Promise<C
   }
 
   return customerImportResultSchema.parse(data);
+}
+
+export async function updateOperatorBannerConfig(
+  input: UpdateOperatorBannerConfigInput
+): Promise<UpdateOperatorBannerConfigResult> {
+  const parsed = updateOperatorBannerConfigInputSchema.parse(input);
+
+  if (!supabase) {
+    throw new Error("Supabase is not configured");
+  }
+
+  const { data, error } = await supabase.rpc("update_operator_banner_config", {
+    input_banner_config: parsed.bannerConfig
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return updateOperatorBannerConfigResultSchema.parse(data);
 }

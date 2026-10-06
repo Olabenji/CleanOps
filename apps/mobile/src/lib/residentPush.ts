@@ -197,4 +197,69 @@ export async function clearResidentPushRegistration(installationId: string | nul
   }
 }
 
+/**
+ * Sends a one-off Expo push to this device (QA only).
+ * Verifies Expo → FCM/APNs delivery without operator close-incomplete.
+ */
+export async function sendResidentTestPush(): Promise<void> {
+  if (!isResidentPushSupported()) {
+    throw new Error("Test push requires a physical development/production build (not Expo Go)");
+  }
+
+  const Notifications = await loadNotifications();
+  const permissions = await Notifications.getPermissionsAsync();
+  if (permissions.status !== "granted") {
+    throw new Error("Notification permission is not granted");
+  }
+
+  const projectId = resolveProjectId();
+  if (!projectId) {
+    throw new Error("Missing EAS projectId for Expo push");
+  }
+
+  const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });
+  const token = tokenResponse?.data;
+  if (!token) {
+    throw new Error("Expo push token was empty");
+  }
+
+  const response = await fetch("https://exp.host/--/api/v2/push/send", {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify([
+      {
+        to: token,
+        title: "CleanOps push QA",
+        body: `Test push at ${new Date().toISOString()}`,
+        data: { kind: "push_qa" },
+        sound: "default",
+        channelId: "resident-default"
+      }
+    ])
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`Expo push HTTP ${response.status}: ${text}`);
+  }
+
+  let tickets: Array<{ status?: string; message?: string; details?: { error?: string } }> = [];
+  try {
+    const payload = JSON.parse(text) as { data?: typeof tickets };
+    tickets = payload.data ?? [];
+  } catch {
+    throw new Error(`Expo push returned non-JSON: ${text}`);
+  }
+
+  const failed = tickets.filter((ticket) => ticket.status && ticket.status !== "ok");
+  if (failed.length > 0) {
+    throw new Error(
+      failed.map((ticket) => ticket.message ?? ticket.details?.error ?? "push failed").join("; ")
+    );
+  }
+}
+
 export { INSTALLATION_KEY, formatPushError };

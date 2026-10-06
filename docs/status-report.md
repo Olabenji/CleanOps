@@ -1,31 +1,31 @@
 # CleanOps Status Report
 
-**As of:** 22 July 2026  
-**Phase:** Phase 1 complete locally; Phase 2 resident + recovery foundations shipped  
+**As of:** 19 September 2026 (executive summary refresh; module sections below may lag — prefer [progress-snapshot.md](./progress-snapshot.md) and [agent-handover.md](./agent-handover.md))  
+**Phase:** Phase 1 complete; Phase 2 largely shipped; pilot-ready / near production  
 **Workspace:** TypeScript monorepo (`apps/web`, `apps/mobile`, `packages/shared`, `supabase/`)  
-**Canonical handover:** [agent-handover.md](./agent-handover.md) (and Cursor handover canvas)
+**Canonical handover:** [agent-handover.md](./agent-handover.md) · [progress-snapshot.md](./progress-snapshot.md)
 
 ---
 
 ## Executive Summary
 
-CleanOps has a working **local pilot stack** through migrations **0059**: operator web (dashboard, routes, payments, staff, compliance, admin), shared Expo mobile for **driver / collection agent / resident**, frequency-aware routing with next-day make-good recovery, resident Paystack checkout + verify, complaints with 24h SLA, and push/inbox foundations (live remote push needs an Expo development build — not Expo Go).
+CleanOps is **past demo and into pilot-ready / near production**. Operator web covers dashboard, routes, payments, staff, coverage, compliance, fleet, reports, comms, settings, and admin. Shared Expo mobile covers **driver / collection agent / resident** with frequency-aware routing, make-good recovery, field GPS/photo proof, live truck GPS pings (`0080`), Paystack, complaints, and Android push E2E (29 Jul). Phone OTP is implemented (`0078`); live SMS QA is parked on Termii secrets.
 
 **Rough completion:**
 
 | Area | Status |
 |------|--------|
-| Foundation (schema, shared types, local dev) | ~95% (migrations `0001`–`0059` locally) |
-| Operator web (dashboard, routes, payments, staff, compliance, admin) | ~90% (make-good board / fleet UI still open) |
-| Driver mobile | ~80% (wrap-up, suspended-stop guard, make-good badges) |
-| Collection agent mobile | ~90% (WhatsApp/PDF receipts deferred) |
-| Resident web + mobile | ~85% (auth, home, schedule, account, Paystack, complaints, inbox) |
-| Integrations (Paystack, Twilio, Termii, push) | ~60% (Paystack webhook + checkout/verify shipped; Twilio/Termii stub; Expo push infra only) |
-| Quality (CI, tests, device QA) | ~20% (shared unit/smoke SQL scripts; no CI workflows yet) |
+| Foundation (schema, shared types, local/hosted) | ~98% (local through `0080`; hosted through `0079`) |
+| Operator web (incl. fleet, reports, comms, settings, coverage) | ~95% |
+| Driver mobile | ~90% (multi-route view still open) |
+| Collection agent mobile | ~90% (PDF receipts deferred) |
+| Resident web + mobile | ~90% (push E2E done; polish remains) |
+| Integrations (Paystack, Twilio, Termii, push, OTP) | ~85% (live Termii/Twilio secrets + OTP human QA open) |
+| Quality (CI, tests, device QA) | ~70% (local quality-gate green; remote `gh` CI not verified; driver/agent device QA open) |
 
-The system is **demo-ready** for operator, driver, agent, and resident flows on local Supabase. It is **not production-ready** — no CI, hosted migration deploy still needed, OTP auth missing, and real push requires an EAS/dev build.
-
-**Recent ship:** commit `2eac133` — recovery + resident parity (migrations `0049`–`0059`). **Next:** CI/smoke quality gate, make-good/coverage board, real Expo push.
+**Go-live trigger:** one PSP, one ward, ~3 trucks, full staff on hosted — not more features.  
+**Next human gates:** Termii/Twilio secrets → OTP/Comms QA → confirm hosted `0080` → first design-partner ward pilot (meter WhatsApp/SMS).  
+**Recent tip:** `5df9593` fleet/reports/field proof/bulk import/comms; local may also hold banner + OTP + live GPS until committed.
 
 ---
 

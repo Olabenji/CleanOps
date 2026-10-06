@@ -1,17 +1,21 @@
 # CleanOps Agent Handover
 
-**Date:** 25 July 2026  
+**Date:** 19 September 2026 (progress refresh) · prior detail pass 29 July 2026  
+**Progress snapshot:** [progress-snapshot.md](./progress-snapshot.md)  
 **Canvas (primary):** `~/.cursor/projects/c-Users-Administrator-Clean-Ops/canvases/cleanops-handover.canvas.tsx`  
 **Prior chat:** [Frequency make-good routing](c8346825-81e3-469a-9123-a409f9793c01)  
-**Feature commit:** `2eac133` — Complete LAWMA recovery and resident service parity
+**Feature commit:** `2eac133` — Complete LAWMA recovery and resident service parity · later tip `5df9593` fleet/reports/comms
 
-This markdown mirrors the handover canvas for repo durability. Prefer migrations `0058`/`0059` if anything conflicts.
+This markdown mirrors the handover canvas for repo durability. Prefer migrations `0058`/`0059` if anything conflicts. For “where are we / what’s left / what now”, use [progress-snapshot.md](./progress-snapshot.md).
 
 ## Branch / workspace
 
-- Branch: `main` (local work may be ahead of `origin/main`)
-- Local DB: Docker `supabase_db_cleanops`; migrations through **0075** applied locally
-- Hosted Supabase (`mpklygwxjskeiebtbdws`): migrations through **0075** when linked push succeeds; Edge Functions redeployed as needed
+- Branch: `main` (local work may be ahead of `origin/main`; uncommitted local may include `0076`–`0080` + OTP/GPS)
+- Local DB: Docker `supabase_db_cleanops`; migrations through **0080** (truck live GPS) when applied
+- Hosted Supabase (`mpklygwxjskeiebtbdws`): migrations through **0079** + Edge Functions redeployed 29 Jul; confirm **0080** push; Termii/Twilio secrets still required for live SMS/WhatsApp
+- Local Edge: `npm run dev:functions` (uses `.env.functions.local`) — required for close→outbox auto-dispatch
+- Quality gate: `.github/workflows/quality-gate.yml` — **local green 29 Jul** (typecheck, tests, build, db:lint, recovery/resident/Paystack/browser smokes). GitHub Actions run not verified here (`gh` unauthenticated).
+- **Verdict:** pilot-ready / near production — go-live = one PSP ward on hosted, not more features
 
 ## Locked product defaults
 
@@ -41,6 +45,7 @@ This markdown mirrors the handover canvas for repo durability. Prefer migrations
 13. Driver stop field proof — GPS + optional photo; MMKV offline queue fallback (`0071`)
 14. Settings **Customer data load** — CSV/TSV bulk import with preview, phone-skip idempotency, optional ward template append (`0072`)
 15. Operator **Comms** — Twilio WhatsApp reminders/receipts/suspension + Termii SMS fallback (`0075`)
+16. **Phone OTP auth** — Implemented (`0078` + Edge Function `phone-otp` + Termii); web + mobile UI. **Live SMS / human QA deferred** (walkthrough Step 5 skipped) — blocked on `TERMII_API_KEY`; optional A=`PHONE_OTP_DEV_REVEAL` / B=real SMS
 
 ## Key paths
 
@@ -55,7 +60,12 @@ This markdown mirrors the handover canvas for repo durability. Prefer migrations
 - `supabase/migrations/0071_stop_field_proof.sql`
 - `supabase/migrations/0072_bulk_customer_import.sql`
 - `supabase/migrations/0075_operator_comms_twilio_termii.sql`
+- `supabase/migrations/0078_phone_otp_auth.sql`
+- `supabase/functions/phone-otp/`
+- `docs/phone-otp-auth.md`
+- `scripts/smoke_phone_otp.sql`
 - `packages/shared/src/customerImport.ts`
+- `packages/shared/src/phoneOtp.ts`
 - `apps/web/src/components/FleetView.tsx`
 - `apps/web/src/components/ReportsView.tsx`
 - `apps/web/src/components/CommsView.tsx`
@@ -78,24 +88,40 @@ This markdown mirrors the handover canvas for repo durability. Prefer migrations
 - `apps/web/src/components/ResidentApp.tsx`
 - `apps/mobile/src/screens/ResidentApp.tsx`
 - `apps/mobile/src/lib/residentPush.ts`
+- `scripts/ensure-eas-fcm-v1.mjs`
+- `scripts/send-test-resident-push.mjs`
+- `docs/expo-push-dev-build.md`
 - `scripts/smoke_make_good.sql`
 - `scripts/smoke_unserviced_recovery.sql`
 
 ## Pending (priority)
 
-**P0:** Real Expo push device QA — EAS project linked; run `eas credentials` + `eas:build:android`, then checklist in `docs/expo-push-dev-build.md`
+**P0 (production polish):** Termii/Twilio secrets for live SMS/WhatsApp/OTP QA; push hosted to **0080** if missing; commit/push local sync; optional `gh auth` for remote CI; Sentry + stricter production env checks.
 
-**P1:** Live truck GPS proximity still deferred (#142/#144 remainder); dumpsite registry + maintenance UI shipped (`0069`)
+**P0 done earlier:** ~~Real Expo push device QA~~ **DONE 29 Jul**. ~~CI quality gate~~ **DONE local 29 Jul**. ~~Hosted migrate through 0079 + Edge deploy~~ **DONE 29 Jul**.
 
-**P2:** OTP; multi-route driver view; reports/incident resolution polish; Realtime
+**P1:** ~~Live truck GPS proximity~~ **DONE 29 Jul** (`0080` driver publish + Fleet prefer live ≤15 min; Lagos demo still remaps for AU testing). Confirm hosted has `0080`.
 
-**P3:** Multi-PSP scale, i18n, LAWMA API
+**P2:** **Phone OTP live SMS / human QA** (deferred from walkthrough Step 5) — code shipped; needs `TERMII_API_KEY` (+ optional A=DEV_REVEAL / B=real SMS). See `docs/phone-otp-auth.md`. Also: multi-route driver view; driver/agent device QA; reports/incident resolution polish; Realtime; virtual accounts/USSD; plan-code enforcement.
+
+**P3:** Multi-PSP scale, i18n, LAWMA API, payroll automation
+
+## Next human gates
+
+1. ~~Expo push close→outbox tray + tap→Inbox~~ **done 29 Jul**
+2. ~~Hosted Supabase through `0079` + Edge deploy~~ **done 29 Jul**
+3. **Phone OTP / Comms** — set `TERMII_API_KEY` (+ Twilio), then walkthrough A (DEV_REVEAL) or B (real SMS) — parked
+4. Optional: `gh auth login` so GitHub Actions quality-gate runs can be inspected from CLI
+5. ~~Live truck GPS (code)~~ **done 29 Jul** (`0080`) — confirm hosted push
+6. **First paid/design-partner ward pilot** on hosted (Growth packaging; meter WhatsApp/SMS)
 
 ## ADO
 
 - Epic #127 LAWMA build order
 - Feature #166 frequency + make-good; stories #167–#170
 - #143 coverage list (no map yet)
+- Status sync: `node scripts/ado-sync-pilot-status.js` (needs valid `.env_PAT.local`)
+- Progress doc: [progress-snapshot.md](./progress-snapshot.md)
 - PAT: `.env_PAT.local`
 - Snapshots: `docs/ado-snapshots/`; helpers under `scripts/ado-*.js`
 

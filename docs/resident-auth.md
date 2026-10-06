@@ -54,10 +54,11 @@ Operator Complaints inbox continues to show resident-sourced rows for ack/resolv
 
 ## Out of scope
 
-- Phone-as-username / SMS OTP login
 - Public unauthenticated ward lookup page
 - Make-good route stop from a resident complaint
-- Native mobile resident app
+- Native mobile resident app (mobile resident shell exists; phone OTP now shared with staff)
+
+Phone OTP sign-in for provisioned profiles: see [phone-otp-auth.md](./phone-otp-auth.md).
 
 ## Session gate
 

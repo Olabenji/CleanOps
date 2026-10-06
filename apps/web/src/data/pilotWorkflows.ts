@@ -14,7 +14,7 @@ import type {
   RouteStopStatus,
   StaffAttendanceRow
 } from "@cleanops/shared";
-import { getOperationDate, getOperationMonth } from "@cleanops/shared";
+import { defaultOperatorBannerConfig, getOperationDate, getOperationMonth } from "@cleanops/shared";
 import { pilotDashboard } from "./pilotDashboard";
 import { deriveRouteProgress } from "../lib/routeProgress";
 
@@ -31,6 +31,7 @@ export const pilotProfile: OperatorProfile = {
   operatorStatus: "active",
   planCode: "pro",
   timezone: "Africa/Lagos",
+  bannerConfig: defaultOperatorBannerConfig,
   fullName: "Lanre Operator",
   phone: "+2348000000011",
   role: "operator_owner"

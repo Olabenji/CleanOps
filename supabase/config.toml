@@ -52,5 +52,8 @@ verify_jwt = false
 [functions.send-reminders]
 verify_jwt = false
 
+[functions.phone-otp]
+verify_jwt = false
+
 [storage]
 enabled = true

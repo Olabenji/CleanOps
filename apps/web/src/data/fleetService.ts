@@ -30,7 +30,8 @@ export async function getOperatorFleet(operationDate?: string): Promise<Operator
         maintenanceSpendKoboThisMonth: 0,
         dumpsiteSitesActive: 0,
         trucksStartedToday: 0,
-        trucksMappedToday: 0
+        trucksMappedToday: 0,
+        trucksLiveGpsToday: 0
       },
       trucks: [],
       dumpsiteRuns: [],

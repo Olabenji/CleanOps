@@ -2,6 +2,9 @@ import * as ImagePicker from "expo-image-picker";
 import { supabase } from "../lib/supabase";
 
 const STOP_PROOF_BUCKET = "stop-proofs";
+/** Keep proofs small — full-res camera buffers routinely OOM Android after capture. */
+const CAMERA_QUALITY = 0.25;
+const MAX_UPLOAD_BYTES = 1_800_000;
 
 export type FieldProofCapture = {
   latitude: number | null;
@@ -58,7 +61,9 @@ async function pickFromLibrary(): Promise<{ uri: string; mimeType: string } | nu
 
     const result = await ImagePicker.launchImageLibraryAsync({
       allowsEditing: false,
-      quality: 0.7,
+      quality: CAMERA_QUALITY,
+      exif: false,
+      selectionLimit: 1,
       mediaTypes: ["images"]
     });
 
@@ -75,13 +80,41 @@ async function pickFromLibrary(): Promise<{ uri: string; mimeType: string } | nu
   }
 }
 
-export async function captureStopProofPhoto(): Promise<{ uri: string; mimeType: string } | null> {
+/** Let the Alert / UI settle before opening the camera (reduces Android activity crashes). */
+async function settleUi(ms = 250) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function warmStopProofPermissions() {
+  try {
+    await ImagePicker.requestMediaLibraryPermissionsAsync();
+  } catch {
+    // ignore
+  }
+  try {
+    await ImagePicker.requestCameraPermissionsAsync();
+  } catch {
+    // ignore
+  }
+}
+
+export async function captureStopProofPhoto(
+  source: "camera" | "library" = "library"
+): Promise<{ uri: string; mimeType: string } | null> {
+  if (source === "library") {
+    return pickFromLibrary();
+  }
+
+  await settleUi();
+
   try {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (permission.granted) {
       const result = await ImagePicker.launchCameraAsync({
         allowsEditing: false,
-        quality: 0.7
+        quality: CAMERA_QUALITY,
+        exif: false,
+        cameraType: ImagePicker.CameraType.back
       });
 
       if (!result.canceled && result.assets[0]?.uri) {
@@ -91,7 +124,6 @@ export async function captureStopProofPhoto(): Promise<{ uri: string; mimeType: 
         };
       }
 
-      // User canceled camera — don't force library.
       if (result.canceled) {
         return null;
       }
@@ -117,8 +149,31 @@ export async function uploadStopProofFromUri(input: {
   const ext = mimeType.includes("png") ? "png" : mimeType.includes("webp") ? "webp" : "jpg";
   const objectPath = `${input.operatorId}/${input.stopId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
 
+  // Prefer RN FormData file upload (avoids loading the whole image as ArrayBuffer).
+  const formFile = {
+    uri: input.uri,
+    name: `stop-proof.${ext}`,
+    type: mimeType
+  } as unknown as Blob;
+
+  try {
+    const { error } = await supabase.storage.from(STOP_PROOF_BUCKET).upload(objectPath, formFile, {
+      cacheControl: "3600",
+      contentType: mimeType,
+      upsert: false
+    });
+    if (!error) {
+      return objectPath;
+    }
+  } catch {
+    // Fall through to bounded ArrayBuffer upload.
+  }
+
   const response = await fetch(input.uri);
   const bytes = await response.arrayBuffer();
+  if (bytes.byteLength > MAX_UPLOAD_BYTES) {
+    throw new Error("Photo is too large to upload — stop is already saved without the photo.");
+  }
 
   const { error } = await supabase.storage.from(STOP_PROOF_BUCKET).upload(objectPath, bytes, {
     cacheControl: "3600",

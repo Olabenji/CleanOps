@@ -20,6 +20,8 @@
     "db:lint": "node scripts/validate-db-lint.mjs",
     "test:recovery": "node scripts/run-db-smokes.mjs",
     "test:resident": "node scripts/resident-login-smoke.mjs",
+    "test:push": "node scripts/send-test-resident-push.mjs",
+    "eas:fcm:ensure": "node scripts/ensure-eas-fcm-v1.mjs",
     "test:browser": "playwright test",
     "test:pilot": "node scripts/pilot-validation.mjs",
     "test:pilot:cleanup": "node scripts/pilot-validation.mjs --cleanup",

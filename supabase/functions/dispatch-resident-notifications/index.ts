@@ -108,7 +108,8 @@ Deno.serve(async (request) => {
         title,
         body: bodyText,
         data,
-        sound: "default"
+        sound: "default",
+        channelId: "resident-default"
       }));
 
       const results = await sendExpoPush(messages);

@@ -1,4 +1,12 @@
-import { operatorProfileSchema, type OperatorProfile } from "@cleanops/shared";
+import {
+  normalizeNgPhone,
+  operatorProfileSchema,
+  phoneOtpRequestResultSchema,
+  phoneOtpVerifyResultSchema,
+  type OperatorProfile,
+  type PhoneOtpRequestResult,
+  type PhoneOtpVerifyResult
+} from "@cleanops/shared";
 import { supabase } from "../lib/supabase";
 import { demoCredentials, pilotProfile } from "./pilotWorkflows";
 
@@ -80,6 +88,80 @@ export async function signInOperator(email = demoCredentials.email, password = d
   }
 
   return loadProfile(data.user.id);
+}
+
+function functionsErrorMessage(error: { message?: string } | null, data: unknown): string {
+  if (data && typeof data === "object" && "error" in data && typeof (data as { error: unknown }).error === "string") {
+    return (data as { error: string }).error;
+  }
+
+  return error?.message ?? "Phone OTP request failed";
+}
+
+/** Request an SMS OTP for a provisioned CleanOps login (Termii). */
+export async function requestPhoneOtp(phone: string): Promise<PhoneOtpRequestResult> {
+  if (!supabase) {
+    throw new Error("Phone OTP requires a live Supabase connection.");
+  }
+
+  const normalized = normalizeNgPhone(phone);
+  if (!normalized) {
+    throw new Error("Enter a valid Nigerian mobile number (e.g. 0803… or +234…).");
+  }
+
+  const { data, error } = await supabase.functions.invoke("phone-otp", {
+    body: { action: "request", phone: normalized }
+  });
+
+  const parsed = phoneOtpRequestResultSchema.safeParse(data ?? {});
+  if (!parsed.success) {
+    throw new Error(functionsErrorMessage(error, data));
+  }
+
+  if (!parsed.data.ok && !parsed.data.devCode) {
+    throw new Error(parsed.data.error ?? functionsErrorMessage(error, data));
+  }
+
+  return parsed.data;
+}
+
+/** Verify SMS OTP and establish a Supabase session via magic-link token hash. */
+export async function verifyPhoneOtp(phone: string, code: string): Promise<AuthState> {
+  if (!supabase) {
+    throw new Error("Phone OTP requires a live Supabase connection.");
+  }
+
+  const normalized = normalizeNgPhone(phone);
+  if (!normalized) {
+    throw new Error("Enter a valid Nigerian mobile number (e.g. 0803… or +234…).");
+  }
+
+  if (!/^\d{6}$/.test(code.trim())) {
+    throw new Error("Enter the 6-digit code from SMS.");
+  }
+
+  const { data, error } = await supabase.functions.invoke("phone-otp", {
+    body: { action: "verify", phone: normalized, code: code.trim() }
+  });
+
+  const parsed = phoneOtpVerifyResultSchema.safeParse(data ?? {});
+  if (!parsed.success || !parsed.data.ok || !parsed.data.tokenHash) {
+    throw new Error(
+      (parsed.success ? parsed.data.error : null) ?? functionsErrorMessage(error, data)
+    );
+  }
+
+  const verifyResult: PhoneOtpVerifyResult = parsed.data;
+  const { data: sessionData, error: verifyError } = await supabase.auth.verifyOtp({
+    token_hash: verifyResult.tokenHash!,
+    type: "email"
+  });
+
+  if (verifyError || !sessionData.user) {
+    throw new Error(verifyError?.message ?? "Unable to complete phone sign-in.");
+  }
+
+  return loadProfile(sessionData.user.id);
 }
 
 export async function signOutOperator() {

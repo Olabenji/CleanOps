@@ -2,6 +2,7 @@ import type {
   CustomerImportFieldKey,
   CustomerImportPreviewRow,
   CustomerImportResult,
+  OperatorBannerConfig,
   OperatorZoneTemplatesSnapshot,
   ZoneRouteTemplate,
   ZoneTemplateCustomer
@@ -10,6 +11,7 @@ import {
   buildImportPreview,
   customerImportFieldKeys,
   customerImportFieldLabels,
+  defaultOperatorBannerConfig,
   formatCollectionFrequency,
   guessColumnMapping,
   parseDelimitedTable,
@@ -24,10 +26,12 @@ import {
   RefreshCw,
   Save,
   Settings2,
+  Sparkles,
   Trash2,
   Upload
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { DashboardBrandFooter } from "./DashboardRouteMonitor";
 
 type DraftTemplate = {
   zoneId: string;
@@ -36,7 +40,16 @@ type DraftTemplate = {
   stopIds: string[];
 };
 
-type SettingsTab = "templates" | "import";
+type SettingsTab = "branding" | "templates" | "import";
+
+function cloneBannerConfig(config: OperatorBannerConfig | null | undefined): OperatorBannerConfig {
+  const source = config ?? defaultOperatorBannerConfig;
+  return {
+    mission: source.mission,
+    vision: source.vision,
+    licenseNumber: source.licenseNumber
+  };
+}
 
 function toDraft(zone: ZoneRouteTemplate): DraftTemplate {
   const templateStopIds = zone.stops.map((stop) => stop.customerId);
@@ -62,14 +75,20 @@ const SAMPLE_CSV = [
 
 export default function SettingsView({
   templates,
+  brandName,
+  bannerConfig,
   onRefresh,
   onSaveZoneTemplate,
   onImportCustomers,
+  onSaveBanner,
   refreshing,
   saving,
-  importing
+  importing,
+  bannerSaving
 }: {
   templates: OperatorZoneTemplatesSnapshot | null;
+  brandName?: string | null;
+  bannerConfig?: OperatorBannerConfig | null;
   onRefresh: () => void;
   onSaveZoneTemplate: (input: {
     zoneId: string;
@@ -81,18 +100,22 @@ export default function SettingsView({
     rows: ReturnType<typeof previewRowsToImportRows>;
     addToZoneTemplates: boolean;
   }) => Promise<CustomerImportResult>;
+  onSaveBanner: (input: { bannerConfig: OperatorBannerConfig }) => Promise<void>;
   refreshing?: boolean;
   saving?: boolean;
   importing?: boolean;
+  bannerSaving?: boolean;
 }) {
   const zones = templates?.zones ?? [];
   const trucks = templates?.trucks ?? [];
   const drivers = templates?.drivers ?? [];
-  const [tab, setTab] = useState<SettingsTab>("templates");
+  const [tab, setTab] = useState<SettingsTab>("branding");
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
   const [draft, setDraft] = useState<DraftTemplate | null>(null);
   const [customerToAdd, setCustomerToAdd] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [bannerDraft, setBannerDraft] = useState(() => cloneBannerConfig(bannerConfig));
+  const [bannerError, setBannerError] = useState<string | null>(null);
 
   const [rawText, setRawText] = useState("");
   const [headers, setHeaders] = useState<string[]>([]);
@@ -102,6 +125,11 @@ export default function SettingsView({
   const [importError, setImportError] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<CustomerImportResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setBannerDraft(cloneBannerConfig(bannerConfig));
+    setBannerError(null);
+  }, [bannerConfig]);
 
   const selectedZone = useMemo(
     () => zones.find((zone) => zone.zoneId === (selectedZoneId ?? zones[0]?.zoneId)) ?? null,
@@ -211,6 +239,21 @@ export default function SettingsView({
     }
   }
 
+  async function handleSaveBanner() {
+    setBannerError(null);
+    try {
+      await onSaveBanner({
+        bannerConfig: {
+          mission: bannerDraft.mission.trim(),
+          vision: bannerDraft.vision.trim(),
+          licenseNumber: bannerDraft.licenseNumber.trim()
+        }
+      });
+    } catch (err) {
+      setBannerError(err instanceof Error ? err.message : "Unable to save banner details");
+    }
+  }
+
   function moveStop(customerId: string, direction: "up" | "down") {
     if (!draft) {
       return;
@@ -235,7 +278,8 @@ export default function SettingsView({
           <p className="eyebrow">Settings</p>
           <h2>Operator configuration</h2>
           <p className="panel-subtitle">
-            Configure ward default templates and bulk-load customer data — independent of today&apos;s ops date.
+            Set mission, vision, and licence number for the dashboard banner, plus ward default templates and
+            bulk-load customer data — independent of today&apos;s ops date.
           </p>
         </div>
         <button className="secondary-button" disabled={refreshing} onClick={onRefresh} type="button">
@@ -245,6 +289,14 @@ export default function SettingsView({
       </header>
 
       <div className="coverage-filter-row">
+        <button
+          className={tab === "branding" ? "chip-button active" : "chip-button"}
+          onClick={() => setTab("branding")}
+          type="button"
+        >
+          <Sparkles aria-hidden="true" size={14} />
+          Banner details
+        </button>
         <button
           className={tab === "templates" ? "chip-button active" : "chip-button"}
           onClick={() => setTab("templates")}
@@ -262,6 +314,82 @@ export default function SettingsView({
           Customer data load
         </button>
       </div>
+
+      {tab === "branding" ? (
+        <article className="panel">
+          <header className="panel-header">
+            <div>
+              <p className="eyebrow">Branding</p>
+              <h3>Mission, vision &amp; licence</h3>
+              <p className="panel-subtitle">
+                These three fields appear in a dedicated slot on the dashboard banner. The four value pillars stay
+                fixed for every operator.
+              </p>
+            </div>
+            <button
+              className="primary-button"
+              disabled={bannerSaving}
+              onClick={() => void handleSaveBanner()}
+              type="button"
+            >
+              <Save aria-hidden="true" size={16} />
+              {bannerSaving ? "Saving..." : "Save details"}
+            </button>
+          </header>
+
+          {bannerError ? <p className="notice error">{bannerError}</p> : null}
+
+          <div className="entry-card admin-form">
+            <label>
+              Mission
+              <textarea
+                maxLength={280}
+                onChange={(event) =>
+                  setBannerDraft((current) => ({ ...current, mission: event.target.value }))
+                }
+                placeholder="What your PSP stands for day to day"
+                rows={3}
+                value={bannerDraft.mission}
+              />
+            </label>
+            <label>
+              Vision
+              <textarea
+                maxLength={280}
+                onChange={(event) =>
+                  setBannerDraft((current) => ({ ...current, vision: event.target.value }))
+                }
+                placeholder="Where you want your service to take the community"
+                rows={3}
+                value={bannerDraft.vision}
+              />
+            </label>
+            <label className="admin-form-full">
+              Operator licence number
+              <input
+                maxLength={80}
+                onChange={(event) =>
+                  setBannerDraft((current) => ({ ...current, licenseNumber: event.target.value }))
+                }
+                placeholder="e.g. LAWMA/PSP/1234"
+                value={bannerDraft.licenseNumber}
+              />
+            </label>
+          </div>
+
+          <div style={{ marginTop: "1.25rem" }}>
+            <p className="panel-subtitle" style={{ marginBottom: "0.65rem" }}>
+              Live preview
+            </p>
+            <DashboardBrandFooter
+              bannerConfig={bannerDraft}
+              brandName={brandName}
+              operatorName={brandName?.trim() || "Operator"}
+              zoneHint="Ward A"
+            />
+          </div>
+        </article>
+      ) : null}
 
       {tab === "import" ? (
         <article className="panel">
@@ -461,7 +589,10 @@ export default function SettingsView({
             </>
           ) : null}
         </article>
-      ) : zones.length === 0 ? (
+      ) : null}
+
+      {tab === "templates" ? (
+        zones.length === 0 ? (
         <article className="empty-panel">
           <Settings2 aria-hidden="true" size={22} />
           <div>
@@ -518,7 +649,7 @@ export default function SettingsView({
 
                 {error ? <p className="notice error">{error}</p> : null}
 
-                <div className="planner-panel">
+                <div className="entry-card admin-form">
                   <label>
                     Default truck
                     <select
@@ -549,8 +680,8 @@ export default function SettingsView({
                   </label>
                 </div>
 
-                <div className="planner-panel" style={{ marginTop: "1rem" }}>
-                  <label>
+                <div className="entry-card admin-form">
+                  <label className="admin-form-full">
                     Add customer stop
                     <select value={customerToAdd} onChange={(event) => setCustomerToAdd(event.target.value)}>
                       <option value="">Select customer</option>
@@ -562,7 +693,7 @@ export default function SettingsView({
                     </select>
                   </label>
                   <button
-                    className="secondary-button"
+                    className="secondary-button admin-form-full"
                     disabled={!customerToAdd}
                     onClick={() => {
                       if (!customerToAdd || !draft) {
@@ -650,7 +781,8 @@ export default function SettingsView({
             )}
           </article>
         </div>
-      )}
+      )
+      ) : null}
     </section>
   );
 }

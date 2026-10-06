@@ -131,6 +131,122 @@ export async function signInWithCredentials(email: string, password: string): Pr
   }
 }
 
+export type PhoneOtpRequestOutcome = {
+  phoneE164: string;
+  expiresAt?: string;
+  message?: string;
+  /** Present only when PHONE_OTP_DEV_REVEAL=true and Termii is unset. */
+  devCode?: string;
+};
+
+function phoneOtpInvokeError(data: unknown, fallback: string): string {
+  if (data && typeof data === "object" && "error" in data && typeof (data as { error: unknown }).error === "string") {
+    return (data as { error: string }).error;
+  }
+  return fallback;
+}
+
+/** Request SMS OTP for a provisioned field/resident login (Termii via phone-otp function). */
+export async function requestPhoneOtp(phone: string): Promise<PhoneOtpRequestOutcome> {
+  if (!supabase || forcePilotModeEnabled()) {
+    throw new Error("Phone OTP requires a live Supabase connection.");
+  }
+
+  const trimmed = phone.trim();
+  if (trimmed.length < 7) {
+    throw new Error("Enter a valid Nigerian mobile number.");
+  }
+
+  try {
+    const { data, error } = await withTimeout(
+      supabase.functions.invoke("phone-otp", {
+        body: { action: "request", phone: trimmed }
+      }),
+      SIGN_IN_TIMEOUT_MS,
+      "Timed out while requesting OTP"
+    );
+
+    const payload = (data ?? {}) as {
+      ok?: boolean;
+      phoneE164?: string;
+      expiresAt?: string;
+      message?: string;
+      error?: string;
+      devCode?: string;
+    };
+
+    if ((!payload.ok && !payload.devCode) || error) {
+      if (error && isUnreachableBackendError(error)) {
+        throw new Error(`Cannot reach Supabase (${error.message}). Check Wi‑Fi and backend URL.`);
+      }
+      throw new Error(phoneOtpInvokeError(data, error?.message ?? "Unable to send OTP."));
+    }
+
+    return {
+      phoneE164: payload.phoneE164 ?? trimmed,
+      expiresAt: payload.expiresAt,
+      message: payload.message,
+      devCode: typeof payload.devCode === "string" ? payload.devCode : undefined
+    };
+  } catch (error) {
+    if (isUnreachableBackendError(error)) {
+      throw new Error(error instanceof Error ? error.message : "Cannot reach Supabase.");
+    }
+    throw error;
+  }
+}
+
+/** Verify SMS OTP and restore a field session. */
+export async function verifyPhoneOtp(phone: string, code: string): Promise<FieldSession> {
+  if (!supabase || forcePilotModeEnabled()) {
+    throw new Error("Phone OTP requires a live Supabase connection.");
+  }
+
+  const trimmedCode = code.trim();
+  if (!/^\d{6}$/.test(trimmedCode)) {
+    throw new Error("Enter the 6-digit code from SMS.");
+  }
+
+  try {
+    const { data, error } = await withTimeout(
+      supabase.functions.invoke("phone-otp", {
+        body: { action: "verify", phone: phone.trim(), code: trimmedCode }
+      }),
+      SIGN_IN_TIMEOUT_MS,
+      "Timed out while verifying OTP"
+    );
+
+    const payload = (data ?? {}) as { ok?: boolean; tokenHash?: string; error?: string };
+
+    if (!payload.ok || !payload.tokenHash || error) {
+      if (error && isUnreachableBackendError(error)) {
+        throw new Error(`Cannot reach Supabase (${error.message}). Check Wi‑Fi and backend URL.`);
+      }
+      throw new Error(phoneOtpInvokeError(data, error?.message ?? "Unable to verify OTP."));
+    }
+
+    const { error: verifyError } = await withTimeout(
+      supabase.auth.verifyOtp({
+        token_hash: payload.tokenHash,
+        type: "email"
+      }),
+      SIGN_IN_TIMEOUT_MS,
+      "Timed out while completing phone sign-in"
+    );
+
+    if (verifyError) {
+      throw new Error(verifyError.message);
+    }
+
+    return loadFieldSessionFromAuth("driver");
+  } catch (error) {
+    if (isUnreachableBackendError(error)) {
+      throw new Error(error instanceof Error ? error.message : "Cannot reach Supabase.");
+    }
+    throw error;
+  }
+}
+
 export async function signInFieldUser(role: FieldRole): Promise<FieldSession> {
   if (role === "resident") {
     if (!supabase || forcePilotModeEnabled()) {

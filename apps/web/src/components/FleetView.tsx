@@ -12,6 +12,14 @@ import type {
 } from "@cleanops/shared";
 import { CalendarDays, ExternalLink, Fuel, MapPin, Plus, RefreshCw, Truck, Wrench } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
+import {
+  demoLagosCoordsForId,
+  isInNigeria,
+  readFleetDemoLagosPreference,
+  resolveFleetDemoLagos,
+  writeFleetDemoLagosPreference,
+  type LatLng
+} from "../lib/fleetDemoLagos";
 import FleetMap, { type FleetMapMarker } from "./FleetMap";
 
 type TruckFilter = "all" | TruckStatus | "inactive";
@@ -80,6 +88,8 @@ function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number) {
 
 function mapSourceLabel(source: FleetTruckMapSource | null | undefined) {
   switch (source) {
+    case "live_gps":
+      return "Live GPS";
     case "last_stop_gps":
       return "Last stop GPS";
     case "dumpsite":
@@ -130,6 +140,14 @@ export default function FleetView({
     active: true
   });
   const [formError, setFormError] = useState<string | null>(null);
+  const [demoLagosPreference, setDemoLagosPreference] = useState<boolean | null>(() =>
+    readFleetDemoLagosPreference()
+  );
+
+  const demoLagos = useMemo(
+    () => resolveFleetDemoLagos(demoLagosPreference),
+    [demoLagosPreference]
+  );
 
   const metrics = fleet?.metrics;
   const trucks = fleet?.trucks ?? [];
@@ -160,85 +178,158 @@ export default function FleetView({
     return dumpsiteRuns.filter((run) => run.phase === dumpsiteFilter);
   }, [dumpsiteFilter, dumpsiteRuns]);
 
-  const mappedTrucks = useMemo(
+  /** Tip anchors used for demo jitter (Nigeria tip coords only). */
+  const tipAnchors = useMemo((): LatLng[] => {
+    return dumpsiteSites
+      .filter((site) => site.active && site.latitude != null && site.longitude != null)
+      .map((site) => ({
+        latitude: Number(site.latitude),
+        longitude: Number(site.longitude)
+      }))
+      .filter((coords) => isInNigeria(coords.latitude, coords.longitude));
+  }, [dumpsiteSites]);
+
+  const displayTruckPositions = useMemo(() => {
+    return activeTruckPositions.map((truck) => {
+      if (!demoLagos.enabled) {
+        return {
+          truck,
+          latitude: truck.latitude ?? null,
+          longitude: truck.longitude ?? null,
+          demo: false as const
+        };
+      }
+
+      // Demo mode: always use stable Lagos dummies (ignore AU / device GPS / dumpsite stack).
+      const demo = demoLagosCoordsForId(truck.truckId, tipAnchors);
+      return {
+        truck,
+        latitude: demo.latitude,
+        longitude: demo.longitude,
+        demo: true as const
+      };
+    });
+  }, [activeTruckPositions, demoLagos.enabled, tipAnchors]);
+
+  const mappedDisplayTrucks = useMemo(
     () =>
-      activeTruckPositions.filter(
-        (truck): truck is FleetTruckMapPosition & { latitude: number; longitude: number } =>
-          truck.latitude != null && truck.longitude != null
+      displayTruckPositions.filter(
+        (
+          row
+        ): row is {
+          truck: FleetTruckMapPosition;
+          latitude: number;
+          longitude: number;
+          demo: boolean;
+        } => row.latitude != null && row.longitude != null
       ),
-    [activeTruckPositions]
+    [displayTruckPositions]
   );
 
   const mapMarkers = useMemo((): FleetMapMarker[] => {
     const sites: FleetMapMarker[] = dumpsiteSites
-      .filter((site) => site.active && site.latitude != null && site.longitude != null)
-      .map((site) => ({
-        id: `site-${site.id}`,
-        latitude: Number(site.latitude),
-        longitude: Number(site.longitude),
-        kind: "site" as const,
-        title: site.name,
-        subtitle: site.address ?? undefined
-      }));
-    const trucksOnMap: FleetMapMarker[] = mappedTrucks.map((truck) => ({
-      id: `truck-${truck.routeId}`,
-      latitude: truck.latitude,
-      longitude: truck.longitude,
+      .filter((site) => site.active)
+      .flatMap((site) => {
+        const hasCoords = site.latitude != null && site.longitude != null;
+        if (hasCoords && isInNigeria(Number(site.latitude), Number(site.longitude))) {
+          return [
+            {
+              id: `site-${site.id}`,
+              latitude: Number(site.latitude),
+              longitude: Number(site.longitude),
+              kind: "site" as const,
+              title: site.name,
+              subtitle: site.address ?? undefined
+            }
+          ];
+        }
+        if (demoLagos.enabled && (!hasCoords || !isInNigeria(Number(site.latitude), Number(site.longitude)))) {
+          const demo = demoLagosCoordsForId(`site-${site.id}`);
+          return [
+            {
+              id: `site-${site.id}`,
+              latitude: demo.latitude,
+              longitude: demo.longitude,
+              kind: "site" as const,
+              title: site.name,
+              subtitle: site.address
+                ? `${site.address} · Lagos demo pin`
+                : "Lagos demo pin (no tip coords)",
+              demo: true
+            }
+          ];
+        }
+        if (hasCoords) {
+          return [
+            {
+              id: `site-${site.id}`,
+              latitude: Number(site.latitude),
+              longitude: Number(site.longitude),
+              kind: "site" as const,
+              title: site.name,
+              subtitle: site.address ?? undefined
+            }
+          ];
+        }
+        return [];
+      });
+
+    const trucksOnMap: FleetMapMarker[] = mappedDisplayTrucks.map((row) => ({
+      id: `truck-${row.truck.routeId}`,
+      latitude: row.latitude,
+      longitude: row.longitude,
       kind: "truck" as const,
-      title: truck.registrationNumber,
-      subtitle: `${truck.zoneName} · ${mapSourceLabel(truck.source)}${
-        truck.label ? ` · ${truck.label}` : ""
-      }`
+      title: row.truck.registrationNumber,
+      subtitle: row.demo
+        ? `${row.truck.zoneName} · Lagos demo location`
+        : `${row.truck.zoneName} · ${mapSourceLabel(row.truck.source)}${
+            row.truck.label ? ` · ${row.truck.label}` : ""
+          }`,
+      demo: row.demo
     }));
     return [...sites, ...trucksOnMap];
-  }, [dumpsiteSites, mappedTrucks]);
+  }, [demoLagos.enabled, dumpsiteSites, mappedDisplayTrucks, tipAnchors]);
 
   const siteProximityPairs = useMemo(() => {
-    const withCoords = dumpsiteSites.filter(
-      (site) => site.active && site.latitude != null && site.longitude != null
-    );
+    const withCoords = mapMarkers.filter((marker) => marker.kind === "site");
     const pairs: Array<{ from: string; to: string; km: number }> = [];
     for (let i = 0; i < withCoords.length; i += 1) {
       for (let j = i + 1; j < withCoords.length; j += 1) {
         const a = withCoords[i];
         const b = withCoords[j];
         pairs.push({
-          from: a.name,
-          to: b.name,
-          km: haversineKm(
-            Number(a.latitude),
-            Number(a.longitude),
-            Number(b.latitude),
-            Number(b.longitude)
-          )
+          from: a.title,
+          to: b.title,
+          km: haversineKm(a.latitude, a.longitude, b.latitude, b.longitude)
         });
       }
     }
     return pairs.sort((a, b) => a.km - b.km);
-  }, [dumpsiteSites]);
+  }, [mapMarkers]);
 
   const truckSiteProximity = useMemo(() => {
-    const sites = dumpsiteSites.filter(
-      (site) => site.active && site.latitude != null && site.longitude != null
-    );
-    return mappedTrucks
-      .map((truck) => {
+    const sites = mapMarkers.filter((marker) => marker.kind === "site");
+    return mappedDisplayTrucks
+      .map((row) => {
         let nearest: { name: string; km: number } | null = null;
         for (const site of sites) {
-          const km = haversineKm(
-            truck.latitude,
-            truck.longitude,
-            Number(site.latitude),
-            Number(site.longitude)
-          );
+          const km = haversineKm(row.latitude, row.longitude, site.latitude, site.longitude);
           if (!nearest || km < nearest.km) {
-            nearest = { name: site.name, km };
+            nearest = { name: site.title, km };
           }
         }
-        return { truck, nearest };
+        return { truck: row.truck, nearest, latitude: row.latitude, longitude: row.longitude, demo: row.demo };
       })
       .sort((a, b) => (a.nearest?.km ?? Number.POSITIVE_INFINITY) - (b.nearest?.km ?? Number.POSITIVE_INFINITY));
-  }, [dumpsiteSites, mappedTrucks]);
+  }, [mapMarkers, mappedDisplayTrucks]);
+
+  function handleDemoLagosToggle(enabled: boolean) {
+    if (demoLagos.forcedByEnv) {
+      return;
+    }
+    writeFleetDemoLagosPreference(enabled);
+    setDemoLagosPreference(enabled);
+  }
 
   async function handleMaintenanceSubmit(event: FormEvent) {
     event.preventDefault();
@@ -345,7 +436,11 @@ export default function FleetView({
             {metrics?.trucksOperational ?? 0} operational · {metrics?.trucksStandby ?? 0} standby ·{" "}
             {metrics?.trucksWorkshop ?? 0} workshop
             {(metrics?.trucksStartedToday ?? 0) > 0
-              ? ` · ${metrics?.trucksMappedToday ?? 0}/${metrics?.trucksStartedToday ?? 0} on map`
+              ? ` · ${metrics?.trucksMappedToday ?? 0}/${metrics?.trucksStartedToday ?? 0} on map${
+                  (metrics?.trucksLiveGpsToday ?? 0) > 0
+                    ? ` · ${metrics?.trucksLiveGpsToday} live`
+                    : ""
+                }`
               : ""}
           </span>
         </article>
@@ -609,24 +704,41 @@ export default function FleetView({
           <p className="eyebrow">Dumpsite registry</p>
           <h3>Sites &amp; proximity</h3>
           <p className="panel-subtitle">
-            Tip sites (green) and started ward trucks (amber). Truck pins use last stop GPS when
-            available, otherwise dumpsite / planned route stop. Not live GPS tracking.
+            Interactive map: green tip sites and amber started trucks. Production pins use last stop
+            GPS → dumpsite → planned stop (not continuous tracking). Use Lagos demo pins when
+            developing from outside Nigeria so AU device GPS does not pull trucks off the map.
           </p>
         </div>
         <MapPin aria-hidden="true" />
       </header>
 
+      <label className="checkbox-row fleet-demo-lagos-toggle">
+        <input
+          checked={demoLagos.enabled}
+          disabled={demoLagos.forcedByEnv}
+          onChange={(event) => handleDemoLagosToggle(event.target.checked)}
+          type="checkbox"
+        />
+        <span>
+          Use Lagos demo locations
+          {demoLagos.forcedByEnv
+            ? " (locked by VITE_FLEET_DEMO_LAGOS_PINS)"
+            : demoLagos.enabled
+              ? " — stable dummy coords near tip sites; ignores AU / missing GPS"
+              : " — show real snapshot GPS when available"}
+        </span>
+      </label>
+
       {mapMarkers.length > 0 ? (
-        <FleetMap markers={mapMarkers} />
+        <FleetMap demoMode={demoLagos.enabled} markers={mapMarkers} />
       ) : (
         <article className="empty-panel">
           <MapPin aria-hidden="true" size={22} />
           <div>
             <strong>No map pins yet</strong>
             <p>
-              Add latitude/longitude on a tip site, or start a ward route with stop GPS / customer
-              coordinates to populate the map. Metrics show mapped trucks even when pins share a
-              location with a tip site.
+              Add latitude/longitude on a tip site, or start a ward route. With Lagos demo mode on,
+              started trucks appear on the Lagos map even without stop GPS.
             </p>
           </div>
         </article>
@@ -636,14 +748,15 @@ export default function FleetView({
         <div className="table-like coverage-list fleet-truck-map-list">
           {activeTruckPositions.map((truck) => {
             const proximity = truckSiteProximity.find((row) => row.truck.truckId === truck.truckId);
-            const mapped = truck.latitude != null && truck.longitude != null;
+            const display = displayTruckPositions.find((row) => row.truck.routeId === truck.routeId);
+            const mapped = display?.latitude != null && display?.longitude != null;
             return (
               <article className="stack-row coverage-row" key={truck.routeId}>
                 <div>
                   <div className="coverage-row-head">
                     <strong>{truck.registrationNumber}</strong>
-                    <span className={mapped ? "pill" : "pill warn"}>
-                      {mapSourceLabel(truck.source)}
+                    <span className={display?.demo ? "pill warn" : mapped ? "pill" : "pill warn"}>
+                      {display?.demo ? "Lagos demo" : mapSourceLabel(truck.source)}
                     </span>
                   </div>
                   <p>
@@ -651,13 +764,15 @@ export default function FleetView({
                     {truck.completedStops}/{truck.totalStops} stops
                   </p>
                   <p className="muted">
-                    {truck.label
-                      ? mapped
-                        ? `Pin near ${truck.label}`
-                        : truck.label
-                      : mapped
-                        ? "Mapped from route data"
-                        : "No GPS or planned stop coordinates yet"}
+                    {display?.demo
+                      ? "Demo pin in Lagos (device GPS ignored for map display)"
+                      : truck.label
+                        ? mapped
+                          ? `Pin near ${truck.label}`
+                          : truck.label
+                        : mapped
+                          ? "Mapped from route data"
+                          : "No GPS or planned stop coordinates yet"}
                   </p>
                 </div>
                 <div>
@@ -669,7 +784,7 @@ export default function FleetView({
                   </strong>
                   <p>
                     {mapped
-                      ? `${Number(truck.latitude).toFixed(4)}, ${Number(truck.longitude).toFixed(4)}`
+                      ? `${Number(display?.latitude).toFixed(4)}, ${Number(display?.longitude).toFixed(4)}`
                       : "Not on map"}
                   </p>
                 </div>
@@ -828,9 +943,10 @@ export default function FleetView({
       )}
 
       <p className="muted coverage-footnote">
-        <Truck aria-hidden="true" size={14} /> Truck CRUD remains in Admin. Pins are not continuous
-        live GPS — they update from stop proofs, tip-site coords, or planned stops. Click a pin for
-        source detail; stacked locations are spread slightly on the map.
+        <Truck aria-hidden="true" size={14} /> Truck CRUD remains in Admin. Started trucks prefer{" "}
+        <strong>live driver GPS</strong> (fresh ≤15 min), then stop proofs, tip sites, or planned
+        stops. Click a pin for source detail; stacked locations are spread slightly. Use Lagos demo
+        mode when testing from outside Nigeria.
       </p>
     </section>
   );

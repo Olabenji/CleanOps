@@ -5,7 +5,7 @@ test("resident can sign in and load account surfaces", async ({ page }) => {
 
   await page.getByLabel("Email").fill("resident@cleanops.local");
   await page.getByLabel("Password").fill("cleanops-resident-password");
-  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
 
   await expect(page.getByText("CleanOps Resident")).toBeVisible();
   await expect(page.getByText("Your collection schedule")).toBeVisible();

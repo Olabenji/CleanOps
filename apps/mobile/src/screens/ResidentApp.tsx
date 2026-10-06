@@ -29,7 +29,8 @@ import {
   ensureResidentPushRegistration,
   formatPushError,
   isExpoGoRuntime,
-  isResidentPushSupported
+  isResidentPushSupported,
+  sendResidentTestPush
 } from "../lib/residentPush";
 import { colors } from "../theme";
 import ProfileSettingsCard from "../components/ProfileSettingsCard";
@@ -57,6 +58,7 @@ export default function ResidentApp({
   const [message, setMessage] = useState<string | null>(null);
   const [installationId, setInstallationId] = useState<string | null>(null);
   const [focusNotificationId, setFocusNotificationId] = useState<string | null>(null);
+  const [testPushBusy, setTestPushBusy] = useState(false);
 
   async function load(isRefresh = false) {
     if (session.mode === "pilot") {
@@ -227,6 +229,19 @@ export default function ResidentApp({
   async function handleSignOut() {
     await clearResidentPushRegistration(installationId);
     onSignOut();
+  }
+
+  async function handleSendTestPush() {
+    setError(null);
+    setTestPushBusy(true);
+    try {
+      await sendResidentTestPush();
+      setMessage("Test push sent. Check the notification tray, then tap it if shown.");
+    } catch (pushError) {
+      setError(pushError instanceof Error ? pushError.message : "Unable to send test push");
+    } finally {
+      setTestPushBusy(false);
+    }
   }
 
   if (loading) {
@@ -403,6 +418,20 @@ export default function ResidentApp({
               onProfileUpdated={(next) => onSessionUpdated(next)}
               session={session}
             />
+            {session.mode === "supabase" && isResidentPushSupported() ? (
+              <Pressable
+                disabled={testPushBusy}
+                onPress={() => void handleSendTestPush()}
+                style={styles.card}
+              >
+                <Text style={styles.cardTitle}>
+                  {testPushBusy ? "Sending test push…" : "Send test push"}
+                </Text>
+                <Text style={styles.body}>
+                  QA: delivers a remote Expo notification to this device (needs FCM/APNs on EAS).
+                </Text>
+              </Pressable>
+            ) : null}
             <Pressable onPress={() => void handleSignOut()} style={styles.card}>
               <Text style={styles.signOut}>Sign out and switch user</Text>
             </Pressable>

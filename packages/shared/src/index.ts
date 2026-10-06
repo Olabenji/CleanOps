@@ -347,6 +347,27 @@ export const staffMemberSchema = z.object({
 export const operatorStatuses = ["trial", "active", "suspended"] as const;
 export const operatorPlanCodes = ["basic", "growth", "pro"] as const;
 
+export const operatorBannerConfigSchema = z.object({
+  mission: z.string().trim().max(280),
+  vision: z.string().trim().max(280),
+  licenseNumber: z.string().trim().max(80)
+});
+
+export const defaultOperatorBannerConfig: z.infer<typeof operatorBannerConfigSchema> = {
+  mission: "",
+  vision: "",
+  licenseNumber: ""
+};
+
+export const updateOperatorBannerConfigInputSchema = z.object({
+  bannerConfig: operatorBannerConfigSchema
+});
+
+export const updateOperatorBannerConfigResultSchema = z.object({
+  id: z.string().uuid(),
+  bannerConfig: operatorBannerConfigSchema
+});
+
 export const operatorProfileSchema = z.object({
   id: z.string().uuid(),
   operatorId: z.string().uuid().nullable(),
@@ -356,6 +377,7 @@ export const operatorProfileSchema = z.object({
   planCode: z.enum(operatorPlanCodes).nullable().optional(),
   timezone: z.string().nullable().optional(),
   customerId: z.string().uuid().nullable().optional(),
+  bannerConfig: operatorBannerConfigSchema.nullable().optional(),
   fullName: z.string(),
   phone: z.string(),
   role: z.enum(userRoles)
@@ -491,7 +513,14 @@ export const residentHomeMakeGoodSchema = z.object({
   status: z.enum(["open", "scheduled"])
 });
 
-export const residentNotificationKinds = ["unserviced_recovery", "recovery_resolved"] as const;
+/** Must stay aligned with `resident_notifications_kind_check` (see migration 0075). */
+export const residentNotificationKinds = [
+  "unserviced_recovery",
+  "recovery_resolved",
+  "payment_reminder",
+  "payment_receipt",
+  "suspension_notice"
+] as const;
 export const residentNotificationStatuses = ["unread", "read", "resolved"] as const;
 
 export const residentNotificationSchema = z.object({
@@ -573,6 +602,7 @@ export const fleetTruckItemSchema = z.object({
 });
 
 export const fleetTruckMapSources = [
+  "live_gps",
   "last_stop_gps",
   "dumpsite",
   "planned_stop",
@@ -633,7 +663,8 @@ export const fleetMetricsSchema = z.object({
   maintenanceSpendKoboThisMonth: z.number().int().nonnegative().optional().default(0),
   dumpsiteSitesActive: z.number().int().nonnegative().optional().default(0),
   trucksStartedToday: z.number().int().nonnegative().optional().default(0),
-  trucksMappedToday: z.number().int().nonnegative().optional().default(0)
+  trucksMappedToday: z.number().int().nonnegative().optional().default(0),
+  trucksLiveGpsToday: z.number().int().nonnegative().optional().default(0)
 });
 
 export const fleetMaintenanceEventSchema = z.object({
@@ -1037,13 +1068,7 @@ export type ReportServiceComplaintItem = z.infer<typeof reportServiceComplaintIt
 export type ReportMakeGoodItem = z.infer<typeof reportMakeGoodItemSchema>;
 export type OperatorReportsSnapshot = z.infer<typeof operatorReportsSnapshotSchema>;
 
-export const commsMessageKinds = [
-  "payment_reminder",
-  "payment_receipt",
-  "suspension_notice",
-  "unserviced_recovery",
-  "recovery_resolved"
-] as const;
+export const commsMessageKinds = residentNotificationKinds;
 
 export const commsOutboxStatuses = [
   "queued",
@@ -1539,6 +1564,9 @@ export type RouteStopStatus = (typeof routeStopStatuses)[number];
 export type RouteStatus = (typeof routeStatuses)[number];
 export type TruckStatus = (typeof truckStatuses)[number];
 export type IncidentType = (typeof incidentTypes)[number];
+export type OperatorBannerConfig = z.infer<typeof operatorBannerConfigSchema>;
+export type UpdateOperatorBannerConfigInput = z.infer<typeof updateOperatorBannerConfigInputSchema>;
+export type UpdateOperatorBannerConfigResult = z.infer<typeof updateOperatorBannerConfigResultSchema>;
 export type OperatorProfile = z.infer<typeof operatorProfileSchema>;
 export type UpdateOwnProfileInput = z.infer<typeof updateOwnProfileInputSchema>;
 export type OwnAccountProfile = z.infer<typeof ownAccountProfileSchema>;
@@ -1719,3 +1747,17 @@ export type {
   PaystackChargeSuccessData,
   PaystackWebhookEvent
 } from "./paystack";
+
+export {
+  normalizeNgPhone,
+  phoneOtpRequestInputSchema,
+  phoneOtpRequestResultSchema,
+  phoneOtpVerifyInputSchema,
+  phoneOtpVerifyResultSchema
+} from "./phoneOtp";
+export type {
+  PhoneOtpRequestInput,
+  PhoneOtpRequestResult,
+  PhoneOtpVerifyInput,
+  PhoneOtpVerifyResult
+} from "./phoneOtp";

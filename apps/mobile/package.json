@@ -12,7 +12,9 @@
     "typecheck": "tsc -p tsconfig.json",
     "eas:init": "npx eas-cli init --non-interactive",
     "eas:build:android": "npx eas-cli build --profile development --platform android --non-interactive",
-    "eas:build:ios": "npx eas-cli build --profile development --platform ios --non-interactive"
+    "eas:build:ios": "npx eas-cli build --profile development --platform ios --non-interactive",
+    "eas:fcm:ensure": "node ../../scripts/ensure-eas-fcm-v1.mjs",
+    "push:test": "node ../../scripts/send-test-resident-push.mjs"
   },
   "dependencies": {
     "@cleanops/shared": "file:../../packages/shared",

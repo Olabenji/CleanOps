@@ -212,18 +212,18 @@ Committed as `2eac133` (recovery + resident parity). Migrations `0049`–`0059`.
 | Resident web + mobile | Portal parity: Home / Pay / Issues / Inbox / Profile |
 | Smoke scripts | `scripts/smoke_make_good.sql`, `scripts/smoke_unserviced_recovery.sql` |
 
-### Sprint 15 — Quality gate — **next**
+### Sprint 15 — Quality gate — **done (local 29 Jul)**
 
-- CI: typecheck + migration lint
-- Smoke tests for sign-in, plan routes, close-incomplete, resident login, Paystack checkout
-- Android device QA for driver + agent + resident offline/network paths
-- Hosted Supabase migration + Edge Function deploy
+- [x] CI workflow: typecheck + migration lint + unit tests + build (`.github/workflows/quality-gate.yml`)
+- [x] Smoke: recovery SQL, resident login, Paystack webhook idempotency, Playwright resident login
+- [x] Android resident push device QA (driver/agent device QA still open)
+- [x] Hosted Supabase migration + Edge Function deploy (through `0079`, 29 Jul)
 
 ### Sprint 16 — Make-good / Coverage board + real Expo push
 
 - [x] Operator coverage list (due / completed / open recoveries) — ADO #143 slim, no map first (`0061`)
-- EAS project + development build for resident push end-to-end
-- Then fleet/dumpsite operator UI (#142/#144)
+- [x] EAS project + development build for resident push end-to-end
+- [x] Fleet/dumpsite operator UI (#142/#144 UI; live GPS remainder open)
 
 ---
 

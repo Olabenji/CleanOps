@@ -2006,7 +2006,8 @@ h1 {
   margin-bottom: 18px;
 }
 
-.admin-form .primary-button {
+.admin-form .primary-button,
+.admin-form .secondary-button {
   align-self: end;
 }
 
@@ -2652,6 +2653,31 @@ g:has(.route-monitor-node.remaining) .route-monitor-node-label {
   margin-top: 2px;
 }
 
+.dashboard-brand-extras {
+  display: grid;
+  flex: 0 1 280px;
+  gap: 10px;
+  min-width: 180px;
+}
+
+.dashboard-brand-extras > div {
+  display: grid;
+  gap: 2px;
+}
+
+.dashboard-brand-extras strong {
+  color: var(--co-accent-strong);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.dashboard-brand-extras span {
+  color: var(--co-muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
 .dashboard-brand-pillars {
   display: grid;
   flex: 1;
@@ -2780,6 +2806,7 @@ g:has(.route-monitor-node.remaining) .route-monitor-node-label {
 
   .route-monitor,
   .dashboard-brand-pillars,
+  .dashboard-brand-extras,
   .routes-workflow,
   .payment-workflow,
   .stop-row-detailed,
@@ -2802,7 +2829,7 @@ g:has(.route-monitor-node.remaining) .route-monitor-node-label {
   border: 1px solid var(--co-border);
   border-radius: var(--co-radius-lg);
   overflow: hidden;
-  height: 320px;
+  height: 360px;
   width: 100%;
   z-index: 0;
 }
@@ -2812,6 +2839,11 @@ g:has(.route-monitor-node.remaining) .route-monitor-node-label {
   width: 100%;
   font: inherit;
   background: var(--co-bg-deep);
+  cursor: grab;
+}
+
+.fleet-map-frame .leaflet-container:active {
+  cursor: grabbing;
 }
 
 .fleet-map-marker {
@@ -2821,8 +2853,8 @@ g:has(.route-monitor-node.remaining) .route-monitor-node-label {
 
 .fleet-map-marker-pin {
   display: block;
-  width: 22px;
-  height: 28px;
+  width: 28px;
+  height: 34px;
   position: relative;
 }
 
@@ -2835,8 +2867,36 @@ g:has(.route-monitor-node.remaining) .route-monitor-node-label {
   border: 2px solid #fff;
   box-shadow: 0 1px 4px rgb(16 32 23 / 0.35);
   position: absolute;
-  left: 3px;
-  top: 2px;
+  left: 6px;
+  top: 6px;
+  z-index: 1;
+}
+
+.fleet-map-marker-pulse {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgb(154 103 0 / 0.35);
+  animation: fleet-map-pulse 1.8s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes fleet-map-pulse {
+  0% {
+    transform: scale(0.55);
+    opacity: 0.85;
+  }
+  70% {
+    transform: scale(1.55);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.55);
+    opacity: 0;
+  }
 }
 
 .fleet-map-marker--site .fleet-map-marker-dot {
@@ -2879,6 +2939,19 @@ g:has(.route-monitor-node.remaining) .route-monitor-node-label {
   background: var(--co-warn);
 }
 
+.fleet-map-legend-live {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--co-accent-strong);
+}
+
+.fleet-map-legend-demo {
+  color: var(--co-warn);
+  font-weight: 600;
+}
+
+.fleet-map-hint,
 .fleet-map-overlap-note {
   margin-top: 6px;
 }
@@ -2895,6 +2968,11 @@ g:has(.route-monitor-node.remaining) .route-monitor-node-label {
 
 .fleet-map-popup-note {
   font-style: italic;
+}
+
+.fleet-demo-lagos-toggle {
+  margin-bottom: 10px;
+  align-items: flex-start;
 }
 
 .fleet-truck-map-list {

@@ -1,24 +1,26 @@
 # Deployment Readiness Checklist
 
-**Last updated:** 22 July 2026  
+**Last updated:** 29 July 2026  
 **Gate after:** local quality scripts / CI quality-gate workflow
 
 ## 1. Hosted database migrations
 
-Apply all pending migrations through `0063` to the hosted Supabase project:
+Apply all pending migrations through `0079` to the hosted Supabase project:
 
 ```bash
-npx supabase link --project-ref <PROJECT_REF>
-npx supabase db push
-npx supabase migration list
+npx supabase link --project-ref mpklygwxjskeiebtbdws
+npx supabase db push --linked
+npx supabase migration list --linked
 ```
 
-Confirm remote includes:
+**Status 29 Jul:** hosted remote includes **0001–0079** (including `0079_plan_daily_routes_zone_day_unique.sql`).  
+**As of 19 Sep 2026:** confirm whether **`0080_truck_live_gps.sql`** is on hosted; local may already include it — push with `npx supabase db push --linked` if missing. See [progress-snapshot.md](./progress-snapshot.md).
+
+Confirm remote includes (historical checkpoints):
 
 - `0058_frequency_make_good.sql`
 - `0059_unserviced_recovery_push.sql`
-- `0060_fix_compliance_case_status.sql`
-- `0061`–`0063` (coverage board + dashboard Payments `NGN` prefix)
+- `0060`–`0079` (coverage, fleet, reports, field proof, import, map, LAWMA reports, comms, banner, phone OTP, plan unique)
 
 ## 2. Edge Functions
 
@@ -31,7 +33,11 @@ npx supabase functions deploy resident-paystack-verify
 npx supabase functions deploy dispatch-resident-notifications --no-verify-jwt
 npx supabase functions deploy dispatch-resident-comms --no-verify-jwt
 npx supabase functions deploy send-reminders --no-verify-jwt
+npx supabase functions deploy phone-otp --no-verify-jwt
+npx supabase functions deploy staff-auth
 ```
+
+**Status 29 Jul:** all of the above redeployed to `mpklygwxjskeiebtbdws`.
 
 ## 3. Secrets and environment
 
@@ -76,9 +82,11 @@ Manual: operator close-incomplete → recovery notice → resident inbox.
 See `docs/expo-push-dev-build.md`. Summary:
 
 - EAS project `@olabenji/cleanops` / ID `0f45aaf0-43ab-47c4-9358-61ace5da1f58`
-- Set `EXPO_PUBLIC_EAS_PROJECT_ID`, run Android/iOS credentials, then `npm run eas:build:android` from `apps/mobile`
+- FCM V1 is linked on Expo (re-check: `npm run eas:fcm:ensure -w @cleanops/mobile`)
+- Set `EXPO_PUBLIC_EAS_PROJECT_ID`, then `npm run eas:build:android` from `apps/mobile`
 - Deploy/keep `dispatch-resident-notifications` available for outbox flush
+- QA helpers: resident Profile **Send test push**, or `npm run test:push`
 
 ## Blockers for this machine
 
-Android/iOS push credentials (FCM / APNs) still need interactive `eas credentials` on a machine with the Google/Apple accounts. Physical-device install is required for end-to-end push QA.
+Physical Android install + notification permission + delivery confirmation. iOS still needs interactive Apple/APNs credentials if targeting iPhone.
