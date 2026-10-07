@@ -1,28 +1,104 @@
 -- Prevent same-day duplicate ward routes from concurrent plan_daily_routes.
 -- Close-incomplete does not create routes; duplicates came from a TOCTOU race
 -- when two planners both saw "no route for ward" and both inserted.
+--
+-- Only extra duplicates that are still scheduled and untouched are cancelled.
+-- A route that is in progress, completed, or already has stop proof / completion
+-- data is left alone. If those progressed rows still collide, the migration
+-- raises and changes nothing, so a deploy fails instead of discarding real work.
 
--- Prefer the earliest / most progressed route; cancel extras.
-with ranked as (
-  select
-    id,
-    row_number() over (
-      partition by operator_id, zone_id, scheduled_date
-      order by
-        case status
-          when 'in_progress' then 0
-          when 'completed' then 1
-          when 'scheduled' then 2
-          else 3
-        end,
-        created_at asc
-    ) as rn
-  from public.routes
-  where status <> 'cancelled'
-)
-update public.routes
-set status = 'cancelled'
-where id in (select id from ranked where rn > 1);
+create or replace function public.reconcile_duplicate_zone_day_routes()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  conflict_list text;
+begin
+  with route_progress as (
+    select
+      routes.id,
+      routes.operator_id,
+      routes.zone_id,
+      routes.scheduled_date,
+      routes.created_at,
+      routes.status,
+      (
+        routes.status in ('in_progress', 'completed')
+        or exists (
+          select 1
+          from public.route_stops
+          where route_stops.route_id = routes.id
+            and (
+              route_stops.status in ('completed', 'skipped', 'missed_reported')
+              or route_stops.completed_at is not null
+              or nullif(btrim(coalesce(route_stops.proof_photo_path, '')), '') is not null
+              or route_stops.location is not null
+            )
+        )
+      ) as progressed
+    from public.routes
+    where routes.status <> 'cancelled'
+  ),
+  ranked as (
+    select
+      route_progress.id,
+      route_progress.status,
+      route_progress.progressed,
+      row_number() over (
+        partition by route_progress.operator_id, route_progress.zone_id, route_progress.scheduled_date
+        order by
+          case when route_progress.progressed then 0 else 1 end,
+          route_progress.created_at asc,
+          route_progress.id asc
+      ) as rn,
+      count(*) over (
+        partition by route_progress.operator_id, route_progress.zone_id, route_progress.scheduled_date
+      ) as group_size
+    from route_progress
+  )
+  update public.routes
+  set status = 'cancelled'
+  where id in (
+    select ranked.id
+    from ranked
+    where ranked.group_size > 1
+      and ranked.rn > 1
+      and ranked.status = 'scheduled'
+      and not ranked.progressed
+  );
+
+  select string_agg(
+    format(
+      'operator %s, zone %s, date %s',
+      conflicts.operator_id,
+      conflicts.zone_id,
+      conflicts.scheduled_date
+    ),
+    '; '
+    order by conflicts.scheduled_date, conflicts.operator_id, conflicts.zone_id
+  )
+  into conflict_list
+  from (
+    select routes.operator_id, routes.zone_id, routes.scheduled_date
+    from public.routes
+    where routes.status <> 'cancelled'
+    group by routes.operator_id, routes.zone_id, routes.scheduled_date
+    having count(*) > 1
+  ) conflicts;
+
+  if conflict_list is not null then
+    raise exception
+      'Cannot enforce one active route per ward per day. Duplicate routes that are in progress, completed, or already have stop proof or completion data were left unchanged: %',
+      conflict_list;
+  end if;
+end;
+$$;
+
+revoke all on function public.reconcile_duplicate_zone_day_routes() from public;
+
+select public.reconcile_duplicate_zone_day_routes();
 
 create unique index if not exists routes_one_active_per_zone_day_idx
   on public.routes (operator_id, zone_id, scheduled_date)
