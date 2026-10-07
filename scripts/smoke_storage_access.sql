@@ -19,6 +19,12 @@ declare
   deleted integer;
   has_owner_id boolean;
 begin
+  -- Supabase blocks every DELETE on storage.objects unless this
+  -- transaction-local flag is set. The flag only lets the statement
+  -- run; row security still decides which rows are removed. Rollback
+  -- drops the flag with the fixture rows.
+  perform set_config('storage.allow_delete_query', 'true', true);
+
   select rs.id
   into stop_id
   from public.route_stops rs
