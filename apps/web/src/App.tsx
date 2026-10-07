@@ -12,6 +12,7 @@ import type {
   MonthlyStaffSummary,
   OperatorCoverageSnapshot,
   OperatorDashboard,
+  OperatorBannerConfig,
   OperatorFleetSnapshot,
   OperatorCommsSnapshot,
   OperatorReportsSnapshot,
@@ -79,7 +80,9 @@ import {
   getCurrentOperatorProfile,
   getPasswordRecoveryContext,
   requestPasswordReset,
+  requestPhoneOtp,
   signInOperator,
+  verifyPhoneOtp,
   signOutOperator,
   subscribeToPasswordRecovery,
   type AuthState
@@ -110,7 +113,7 @@ import {
   sendPaymentReminders
 } from "./data/commsService";
 import { getOperatorReports } from "./data/reportsService";
-import { getOperatorZoneTemplates, importCustomersBulk, saveZoneDefaultTemplate } from "./data/settingsService";
+import { getOperatorZoneTemplates, importCustomersBulk, saveZoneDefaultTemplate, updateOperatorBannerConfig } from "./data/settingsService";
 import {
   addRoutePlanStop,
   cancelRouteTruckHandoff,
@@ -128,6 +131,7 @@ import {
   getRoutePlanningOptions,
   getRoutes,
   getStaffAttendance,
+  getStopProofSignedUrl,
   moveRoutePlanStop,
   onboardCustomer,
   onboardStaffMember,
@@ -204,6 +208,7 @@ const operatorPaymentChannels: PaymentChannel[] = [
 
 const LIVE_POLL_MS = 45_000;
 const PAYMENTS_POLL_MS = 20_000;
+const FLEET_POLL_MS = 30_000;
 
 const emptyPlanningOptions: RoutePlanningOptions = {
   zones: [],
@@ -265,6 +270,7 @@ export function App() {
   const [zoneTemplates, setZoneTemplates] = useState<OperatorZoneTemplatesSnapshot | null>(null);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsImporting, setSettingsImporting] = useState(false);
+  const [bannerSaving, setBannerSaving] = useState(false);
   const [fleetSaving, setFleetSaving] = useState(false);
   const [reportsRefreshing, setReportsRefreshing] = useState(false);
   const [commsBusy, setCommsBusy] = useState(false);
@@ -459,6 +465,53 @@ export function App() {
     }
 
     void refreshPaymentsLedger();
+    startPolling();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [auth, activeView, operationDate]);
+
+  useEffect(() => {
+    if (!auth || activeView !== "fleet") {
+      return;
+    }
+
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    async function refreshFleetBoard() {
+      try {
+        setFleet(await getOperatorFleet(operationDate));
+      } catch {
+        // Keep last good fleet snapshot during background refresh failures.
+      }
+    }
+
+    function startPolling() {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+      intervalId = setInterval(() => {
+        void refreshFleetBoard();
+      }, FLEET_POLL_MS);
+    }
+
+    function handleVisibilityChange() {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+      if (document.visibilityState === "visible") {
+        void refreshFleetBoard();
+        startPolling();
+      }
+    }
+
+    void refreshFleetBoard();
     startPolling();
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
@@ -743,21 +796,39 @@ export function App() {
     }
   }
 
+  async function applySignedIn(signedIn: Awaited<ReturnType<typeof signInOperator>>) {
+    setAuth(signedIn);
+    if (signedIn.profile.role === "platform_admin") {
+      setPlatformOperators(await listOperators());
+    } else if (signedIn.profile.role !== "resident") {
+      await loadWorkspace(operationDate);
+    }
+    setStatusMessage(`Signed in as ${signedIn.profile.fullName}`);
+  }
+
   async function handleSignIn(email: string, password: string) {
     setLoading(true);
     setError(null);
 
     try {
       const signedIn = await signInOperator(email, password);
-      setAuth(signedIn);
-      if (signedIn.profile.role === "platform_admin") {
-        setPlatformOperators(await listOperators());
-      } else if (signedIn.profile.role !== "resident") {
-        await loadWorkspace(operationDate);
-      }
-      setStatusMessage(`Signed in as ${signedIn.profile.fullName}`);
+      await applySignedIn(signedIn);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to sign in");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handlePhoneOtpSignIn(phone: string, code: string) {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const signedIn = await verifyPhoneOtp(phone, code);
+      await applySignedIn(signedIn);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to sign in with phone");
     } finally {
       setLoading(false);
     }
@@ -864,12 +935,35 @@ export function App() {
       );
       setRoutes(nextRoutes);
       await getOperatorDashboard(operationDate).then(setDashboard);
-      void dispatchResidentNotifications().catch(() => undefined);
-      setStatusMessage(
-        `Route closed (${result.outcome.replace("_", " ")}). ${result.recoveredStops} stop${
-          result.recoveredStops === 1 ? "" : "s"
-        } queued for next-day recovery.`
-      );
+
+      const closedSummary = `Route closed (${result.outcome.replace("_", " ")}). ${result.recoveredStops} stop${
+        result.recoveredStops === 1 ? "" : "s"
+      } queued for next-day recovery.`;
+
+      try {
+        const dispatchResult = await dispatchResidentNotifications();
+        if (dispatchResult && dispatchResult.failed > 0) {
+          setStatusMessage(
+            `${closedSummary} Push dispatch reported ${dispatchResult.failed} failure(s); check notification_outbox.`
+          );
+        } else if (dispatchResult && dispatchResult.skippedNoToken > 0 && dispatchResult.sent === 0) {
+          setStatusMessage(
+            `${closedSummary} Recovery notices queued, but no registered push devices for some residents.`
+          );
+        } else if (dispatchResult && dispatchResult.sent > 0) {
+          setStatusMessage(
+            `${closedSummary} Push dispatched (${dispatchResult.sent} sent).`
+          );
+        } else {
+          setStatusMessage(closedSummary);
+        }
+      } catch (dispatchErr) {
+        setStatusMessage(
+          `${closedSummary} Push outbox was not flushed (${
+            dispatchErr instanceof Error ? dispatchErr.message : "dispatch failed"
+          }). Start Edge Functions, then retry dispatch or run: node scripts/send-test-resident-push.mjs --dispatch`
+        );
+      }
     } catch (err) {
       setRouteInlineError({
         area: "routeAction",
@@ -1330,6 +1424,31 @@ export function App() {
     }
   }
 
+  async function handleSaveBanner(input: { bannerConfig: OperatorBannerConfig }) {
+    setBannerSaving(true);
+    setError(null);
+    setStatusMessage(null);
+    try {
+      const result = await updateOperatorBannerConfig({
+        bannerConfig: input.bannerConfig
+      });
+      setAuth((current) =>
+        current
+          ? {
+              ...current,
+              profile: {
+                ...current.profile,
+                bannerConfig: result.bannerConfig
+              }
+            }
+          : current
+      );
+      setStatusMessage("Mission, vision, and licence saved.");
+    } finally {
+      setBannerSaving(false);
+    }
+  }
+
   async function handleRecordMaintenance(input: RecordMaintenanceEventInput) {
     setFleetSaving(true);
     setError(null);
@@ -1465,7 +1584,14 @@ export function App() {
   }
 
   if (!auth) {
-    return <LoginScreen error={error} onSignIn={(email, password) => void handleSignIn(email, password)} statusMessage={statusMessage} />;
+    return (
+      <LoginScreen
+        error={error}
+        onPhoneOtpSignIn={(phone, code) => void handlePhoneOtpSignIn(phone, code)}
+        onSignIn={(email, password) => void handleSignIn(email, password)}
+        statusMessage={statusMessage}
+      />
+    );
   }
 
   if (auth.profile.role === "platform_admin") {
@@ -1565,6 +1691,7 @@ export function App() {
 
       {activeView === "dashboard" && dashboard ? (
         <DashboardView
+          bannerConfig={auth.profile.bannerConfig}
           brandName={auth.profile.brandName ?? auth.profile.operatorName}
           dashboard={dashboard}
           incidents={incidents}
@@ -1703,13 +1830,17 @@ export function App() {
       ) : null}
       {activeView === "settings" ? (
         <SettingsView
+          bannerConfig={auth.profile.bannerConfig}
+          brandName={auth.profile.brandName ?? auth.profile.operatorName}
           templates={zoneTemplates}
           onRefresh={() => void handleRefresh()}
+          onSaveBanner={handleSaveBanner}
           onSaveZoneTemplate={handleSaveZoneTemplate}
           onImportCustomers={handleImportCustomers}
           refreshing={refreshing}
           saving={settingsSaving}
           importing={settingsImporting}
+          bannerSaving={bannerSaving}
         />
       ) : null}
       </div>
@@ -1720,18 +1851,26 @@ export function App() {
 function LoginScreen({
   error,
   onSignIn,
+  onPhoneOtpSignIn,
   statusMessage
 }: {
   error: string | null;
   onSignIn: (email: string, password: string) => void;
+  onPhoneOtpSignIn: (phone: string, code: string) => void;
   statusMessage?: string | null;
 }) {
   const [email, setEmail] = useState(demoCredentials.email);
   const [password, setPassword] = useState(demoCredentials.password);
-  const [mode, setMode] = useState<"signIn" | "forgot">("signIn");
+  const [phone, setPhone] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [mode, setMode] = useState<"signIn" | "forgot" | "phone" | "phoneVerify">("signIn");
   const [forgotBusy, setForgotBusy] = useState(false);
   const [forgotMessage, setForgotMessage] = useState<string | null>(null);
   const [forgotError, setForgotError] = useState<string | null>(null);
+  const [otpBusy, setOtpBusy] = useState(false);
+  const [otpMessage, setOtpMessage] = useState<string | null>(null);
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [otpHint, setOtpHint] = useState<string | null>(null);
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -1752,6 +1891,39 @@ function LoginScreen({
     } finally {
       setForgotBusy(false);
     }
+  }
+
+  async function handlePhoneRequest(event: FormEvent) {
+    event.preventDefault();
+    setOtpBusy(true);
+    setOtpError(null);
+    setOtpMessage(null);
+    setOtpHint(null);
+
+    try {
+      const result = await requestPhoneOtp(phone);
+      setOtpMessage(
+        result.message ??
+          (result.devCode
+            ? "Dev reveal: use the code shown below (Termii not configured)."
+            : "Code sent. Check your SMS.")
+      );
+      if (result.devCode) {
+        setOtpHint(`Dev code: ${result.devCode}`);
+        setOtpCode(result.devCode);
+      }
+      setMode("phoneVerify");
+    } catch (err) {
+      setOtpError(err instanceof Error ? err.message : "Unable to send OTP.");
+    } finally {
+      setOtpBusy(false);
+    }
+  }
+
+  function handlePhoneVerify(event: FormEvent) {
+    event.preventDefault();
+    setOtpError(null);
+    onPhoneOtpSignIn(phone, otpCode);
   }
 
   if (mode === "forgot") {
@@ -1795,6 +1967,90 @@ function LoginScreen({
     );
   }
 
+  if (mode === "phone" || mode === "phoneVerify") {
+    return (
+      <main className="app-shell login-shell">
+        <section className="login-card">
+          <p className="eyebrow">CleanOps</p>
+          <h1>{mode === "phoneVerify" ? "Enter SMS code" : "Sign in with phone"}</h1>
+          <p>
+            {mode === "phoneVerify"
+              ? "Enter the 6-digit code sent to your Nigerian mobile number."
+              : "Use the phone on your provisioned CleanOps profile. SMS is sent via Termii."}
+          </p>
+          {statusMessage ? <p className="notice">{statusMessage}</p> : null}
+          {otpMessage ? <p className="notice">{otpMessage}</p> : null}
+          {otpHint ? <p className="notice">{otpHint}</p> : null}
+          {otpError ? <p className="notice error">{otpError}</p> : null}
+          {error && mode === "phoneVerify" ? <p className="notice error">{error}</p> : null}
+          {mode === "phone" ? (
+            <form className="login-form" onSubmit={(event) => void handlePhoneRequest(event)}>
+              <label>
+                Phone
+                <input
+                  autoComplete="tel"
+                  inputMode="tel"
+                  onChange={(event) => setPhone(event.target.value)}
+                  placeholder="0803… or +234…"
+                  required
+                  type="tel"
+                  value={phone}
+                />
+              </label>
+              <button className="primary-button" disabled={otpBusy} type="submit">
+                {otpBusy ? "Sending..." : "Send code"}
+              </button>
+            </form>
+          ) : (
+            <form className="login-form" onSubmit={handlePhoneVerify}>
+              <label>
+                Phone
+                <input readOnly type="tel" value={phone} />
+              </label>
+              <label>
+                Code
+                <input
+                  autoComplete="one-time-code"
+                  inputMode="numeric"
+                  maxLength={6}
+                  onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="6-digit code"
+                  required
+                  type="text"
+                  value={otpCode}
+                />
+              </label>
+              <button className="primary-button" type="submit">
+                Verify and sign in
+              </button>
+            </form>
+          )}
+          <button
+            className="ghost-button"
+            onClick={() => {
+              if (mode === "phoneVerify") {
+                setMode("phone");
+                setOtpCode("");
+                setOtpHint(null);
+                setOtpMessage(null);
+                setOtpError(null);
+              } else {
+                setMode("signIn");
+                setOtpError(null);
+                setOtpMessage(null);
+                setOtpHint(null);
+              }
+            }}
+            style={{ marginTop: 12 }}
+            type="button"
+          >
+            {mode === "phoneVerify" ? "Resend or change number" : "Back to email sign in"}
+          </button>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="app-shell login-shell">
       <section className="login-card">
@@ -1831,18 +2087,32 @@ function LoginScreen({
         <button
           className="ghost-button"
           onClick={() => {
+            setMode("phone");
+            setOtpError(null);
+            setOtpMessage(null);
+            setOtpHint(null);
+          }}
+          style={{ marginTop: 12 }}
+          type="button"
+        >
+          Sign in with phone OTP
+        </button>
+        <button
+          className="ghost-button"
+          onClick={() => {
             setMode("forgot");
             setForgotError(null);
             setForgotMessage(null);
           }}
-          style={{ marginTop: 12 }}
+          style={{ marginTop: 8 }}
           type="button"
         >
           Forgot password?
         </button>
         <p className="login-demo-hint">
           Local demo: {demoCredentials.email} / {demoCredentials.password}. Use a provisioned staff login, or{" "}
-          platform@cleanops.local / cleanops-platform-password for the platform console.
+          platform@cleanops.local / cleanops-platform-password for the platform console. Phone OTP demo: driver
+          +2348000000201 (needs Termii or PHONE_OTP_DEV_REVEAL).
         </p>
       </section>
     </main>
@@ -1869,6 +2139,7 @@ function parseRouteProgress(value: string): { completed: number; total: number; 
 }
 
 function DashboardView({
+  bannerConfig,
   brandName,
   dashboard,
   incidents,
@@ -1877,6 +2148,7 @@ function DashboardView({
   todayIso,
   onOpenRoutes
 }: {
+  bannerConfig?: OperatorBannerConfig | null;
   brandName?: string | null;
   dashboard: OperatorDashboard;
   incidents: IncidentReport[];
@@ -2014,6 +2286,7 @@ function DashboardView({
       </section>
 
       <DashboardBrandFooter
+        bannerConfig={bannerConfig}
         brandName={brandName}
         operatorName={dashboard.operatorName}
         zoneHint={zoneHint}
@@ -2072,6 +2345,7 @@ function RoutesView({
   const [skipReasons, setSkipReasons] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [selectedCustomerToAdd, setSelectedCustomerToAdd] = useState("");
+  const [proofOpeningId, setProofOpeningId] = useState<string | null>(null);
   const pendingStops = selectedRoute?.stops.filter((stop) => stop.status === "pending").length ?? 0;
   const resolvedStops = selectedRoute ? selectedRoute.stops.length - pendingStops : 0;
   const routeFinalized = selectedRoute?.status === "completed" || selectedRoute?.status === "cancelled";
@@ -2096,6 +2370,18 @@ function RoutesView({
     return a.label.localeCompare(b.label);
   });
   const selectedCover = routeCovers.find((cover) => cover.routeId === selectedRoute?.id);
+
+  async function openStopProof(stopId: string, proofPhotoPath: string) {
+    setProofOpeningId(stopId);
+    try {
+      const url = await getStopProofSignedUrl(proofPhotoPath);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Unable to open proof photo");
+    } finally {
+      setProofOpeningId(null);
+    }
+  }
 
   return (
     <section className="workflow-grid routes-workflow">
@@ -2421,6 +2707,19 @@ function RoutesView({
                         <p className="field-skip-reason">
                           <strong>Skip reason</strong>
                           {stop.skipReason}
+                        </p>
+                      ) : null}
+                      {stop.proofPhotoPath ? (
+                        <p className="field-note">
+                          <strong>Stop proof</strong>{" "}
+                          <button
+                            className="link-button"
+                            disabled={proofOpeningId === stop.id}
+                            onClick={() => void openStopProof(stop.id, stop.proofPhotoPath!)}
+                            type="button"
+                          >
+                            {proofOpeningId === stop.id ? "Opening…" : "View photo"}
+                          </button>
                         </p>
                       ) : null}
                     </div>

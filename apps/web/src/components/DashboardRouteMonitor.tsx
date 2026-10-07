@@ -1,5 +1,13 @@
-import type { RouteDetail, RouteStop } from "@cleanops/shared";
-import { Building2, ChartNoAxesCombined, Leaf, Route as RouteIcon, Truck, Wallet } from "lucide-react";
+import type { OperatorBannerConfig, RouteDetail, RouteStop } from "@cleanops/shared";
+import { defaultOperatorBannerConfig } from "@cleanops/shared";
+import {
+  Building2,
+  ChartNoAxesCombined,
+  Leaf,
+  Route as RouteIcon,
+  Truck,
+  Wallet
+} from "lucide-react";
 
 function pickActiveRoutes(routes: RouteDetail[]): RouteDetail[] {
   return [...routes]
@@ -382,13 +390,20 @@ export default function DashboardRouteMonitor({
 export function DashboardBrandFooter({
   brandName,
   operatorName,
-  zoneHint
+  zoneHint,
+  bannerConfig
 }: {
   brandName?: string | null;
   operatorName: string;
   zoneHint?: string | null;
+  bannerConfig?: OperatorBannerConfig | null;
 }) {
   const org = brandName?.trim() || operatorName;
+  const config = bannerConfig ?? defaultOperatorBannerConfig;
+  const mission = config.mission.trim();
+  const vision = config.vision.trim();
+  const licenseNumber = config.licenseNumber.trim();
+  const hasExtras = Boolean(mission || vision || licenseNumber);
 
   return (
     <footer className="dashboard-brand-footer" aria-label="Operator mission">
@@ -404,6 +419,28 @@ export function DashboardBrandFooter({
           </small>
         </div>
       </div>
+      {hasExtras ? (
+        <div className="dashboard-brand-extras" aria-label="Mission, vision, and licence">
+          {mission ? (
+            <div>
+              <strong>Mission</strong>
+              <span>{mission}</span>
+            </div>
+          ) : null}
+          {vision ? (
+            <div>
+              <strong>Vision</strong>
+              <span>{vision}</span>
+            </div>
+          ) : null}
+          {licenseNumber ? (
+            <div>
+              <strong>Licence</strong>
+              <span>{licenseNumber}</span>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       <div className="dashboard-brand-pillars">
         <div>
           <ChartNoAxesCombined aria-hidden="true" size={16} />

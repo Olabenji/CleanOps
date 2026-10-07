@@ -43,3 +43,5 @@ Thumbs.db
 # Supabase
 .branches/
 .temp/
+.supabase.env.tmp
+scripts/_tmp_*.sql

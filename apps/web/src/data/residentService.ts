@@ -216,12 +216,33 @@ export async function registerResidentPushDevice(input: RegisterResidentPushDevi
   return z.string().uuid().parse(data);
 }
 
-export async function dispatchResidentNotifications(limit = 50): Promise<void> {
+export type DispatchResidentNotificationsResult = {
+  claimed: number;
+  sent: number;
+  failed: number;
+  skippedNoToken: number;
+};
+
+export async function dispatchResidentNotifications(
+  limit = 50
+): Promise<DispatchResidentNotificationsResult | null> {
   if (!supabase) {
-    return;
+    return null;
   }
 
-  await supabase.functions.invoke("dispatch-resident-notifications", {
+  const { data, error } = await supabase.functions.invoke("dispatch-resident-notifications", {
     body: { limit }
   });
+
+  if (error) {
+    throw new Error(error.message ?? "Unable to dispatch resident notifications");
+  }
+
+  const payload = (data ?? {}) as Partial<DispatchResidentNotificationsResult>;
+  return {
+    claimed: Number(payload.claimed ?? 0),
+    sent: Number(payload.sent ?? 0),
+    failed: Number(payload.failed ?? 0),
+    skippedNoToken: Number(payload.skippedNoToken ?? 0)
+  };
 }

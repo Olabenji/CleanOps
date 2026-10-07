@@ -32,6 +32,9 @@ begin
   ) then
     raise exception 'missing keys: %', snap;
   end if;
+  if not (snap->'metrics' ? 'trucksLiveGpsToday') then
+    raise exception 'metrics missing trucksLiveGpsToday: %', snap->'metrics';
+  end if;
   raise notice 'trucks=% fuel=% dumpsite=% maintenance=% sites=% activeTrucks=% metrics=%',
     jsonb_array_length(snap->'trucks'),
     jsonb_array_length(snap->'fuelLogs'),

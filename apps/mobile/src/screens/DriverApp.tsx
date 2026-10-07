@@ -45,6 +45,7 @@ import {
   transitionAssignedRoute
 } from "../data/driverService";
 import type { FieldSession } from "../data/fieldSessionService";
+import { startTruckLiveGpsPublisher } from "../data/truckLiveGps";
 import ProfileSettingsCard from "../components/ProfileSettingsCard";
 import DriverTabBar, { type DriverTabId } from "../components/DriverTabBar";
 import DriverHistoryScreen from "./DriverHistoryScreen";
@@ -60,7 +61,7 @@ import {
   saveOfflineQueue,
   saveSyncEnabled
 } from "../data/offlineQueueStore";
-import { captureFieldProof } from "../data/fieldProof";
+import { captureStopGps, captureStopProofPhoto, warmStopProofPermissions } from "../data/fieldProof";
 
 const incidentTypeLabels: Record<IncidentType, string> = {
   blocked_access: "Blocked access",
@@ -206,6 +207,22 @@ export default function DriverApp({
   }, [wrapUpReady, route?.id]);
 
   useEffect(() => {
+    if (session.mode !== "supabase" || !route || route.status !== "in_progress") {
+      return;
+    }
+
+    const handle = startTruckLiveGpsPublisher(route.id, {
+      onStatus: (status) => {
+        if (status) {
+          setMessage(status);
+        }
+      }
+    });
+
+    return () => handle.stop();
+  }, [session.mode, route?.id, route?.status]);
+
+  useEffect(() => {
     void bootstrapDriver();
     void hydrateOfflineQueue();
   }, [session.fullName, session.mode]);
@@ -294,6 +311,9 @@ export default function DriverApp({
         setCanLoadDefaults(false);
         setShiftJobs([]);
         setMessage(`Signed in as ${session.fullName} (supabase)`);
+        if (assignedRoute.status === "in_progress") {
+          void warmStopProofPermissions();
+        }
         await refreshDumpsiteRun(assignedRoute.id);
         setPendingHandoffs(await fetchPendingHandoffs());
         const notices = await fetchPendingRouteNotices();
@@ -403,8 +423,10 @@ export default function DriverApp({
         setRoute(nextRoute);
       }
       setMessage("Shift started and synced.");
+      void warmStopProofPermissions();
     } catch (error) {
       setMessage(error instanceof Error ? `Shift started locally: ${error.message}` : "Shift started locally");
+      void warmStopProofPermissions();
     }
   }
 
@@ -452,86 +474,153 @@ export default function DriverApp({
 
     setSyncingStopIds((current) => ({ ...current, [stop.id]: true }));
 
-    let includePhoto = false;
+    let wantPhoto: false | "camera" | "library" = false;
     if (status === "completed") {
-      includePhoto = await new Promise<boolean>((resolve) => {
-        Alert.alert("Stop proof", "Add an optional photo for this completed stop? GPS is saved when available on this build.", [
-          { text: "Skip photo", style: "cancel", onPress: () => resolve(false) },
-          { text: "Take photo", onPress: () => resolve(true) }
-        ]);
+      wantPhoto = await new Promise<false | "camera" | "library">((resolve) => {
+        Alert.alert(
+          "Complete stop",
+          "Stop is saved first. Proof photo is optional — Gallery is fastest; Camera can feel slow on some phones.",
+          [
+            { text: "Save only", style: "cancel", onPress: () => resolve(false) },
+            { text: "Gallery", onPress: () => resolve("library") },
+            { text: "Camera", onPress: () => resolve("camera") }
+          ]
+        );
       });
     }
 
-    let proof: Awaited<ReturnType<typeof captureFieldProof>> = {
+    // GPS only up front — never open the camera before the stop is durable.
+    let gps: { latitude: number | null; longitude: number | null } = {
       latitude: null,
       longitude: null
     };
     try {
-      proof = await captureFieldProof({ includePhoto });
+      gps = await captureStopGps();
     } catch {
-      proof = {
-        latitude: null,
-        longitude: null,
-        photoSkippedReason: includePhoto
-          ? "Photo unavailable — stop will sync without proof."
-          : undefined
-      };
+      gps = { latitude: null, longitude: null };
     }
+
     const action = createStopAction(route.id, stop.id, status, note, skipReason, {
-      latitude: proof.latitude,
-      longitude: proof.longitude,
-      localPhotoUri: proof.localPhotoUri
+      latitude: gps.latitude,
+      longitude: gps.longitude
     });
+
+    // Persist locally before any camera / network work so a crash cannot lose the completion.
+    setRoute((current) => (current ? updateStop(current, stop.id, status, note, skipReason) : current));
+    const durableQueue = [
+      action,
+      ...queue.filter((item) => item.stopId !== stop.id || item.syncedAt)
+    ];
+    setQueue(durableQueue);
+    try {
+      await saveOfflineQueue(durableQueue);
+    } catch {
+      // Still continue — in-memory queue + UI already reflect the stop.
+    }
+
+    let synced = false;
+    let proofNote = "";
 
     try {
       const syncResult = await syncStopAction(stop.id, status as "completed" | "skipped", note, skipReason, {
-        latitude: proof.latitude,
-        longitude: proof.longitude,
-        localPhotoUri: proof.localPhotoUri,
-        mimeType: proof.mimeType
+        latitude: gps.latitude,
+        longitude: gps.longitude
       });
+      synced = true;
       const syncedAt = syncResult.syncedAt ?? new Date().toISOString();
       setLastSyncAt(syncedAt);
       await saveLastSyncAt(syncedAt);
-      const refreshed = (await fetchAssignedRoute(operationDate)) ?? route;
-      setRoute(refreshed);
-      const remainingPending = refreshed.stops.filter((item) => item.status === "pending").length;
-      const proofBits: string[] = [];
-      if (proof.latitude != null) {
-        proofBits.push("GPS saved");
-      }
-      if (proof.localPhotoUri) {
-        proofBits.push("photo saved");
-      } else if (includePhoto && proof.photoSkippedReason) {
-        proofBits.push("photo unavailable — synced without proof");
-      }
-      const proofNote = proofBits.length > 0 ? ` ${proofBits.join(" · ")}.` : "";
-      setMessage(
-        remainingPending === 0
-          ? `All stops finished. Use wrap-up below for dumpsite / end route.${proofNote}`
-          : `Stop update synced.${proofNote}`
+      setQueue((current) =>
+        current.map((item) =>
+          item.stopId === stop.id && !item.syncedAt ? { ...item, syncedAt, errorMessage: undefined } : item
+        )
       );
+      const bits: string[] = [];
+      if (gps.latitude != null) {
+        bits.push("GPS saved");
+      }
+      proofNote = bits.length > 0 ? ` ${bits.join(" · ")}.` : "";
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown sync error";
 
       if (!syncEnabled) {
         Alert.alert(
           "Connectivity error",
-          `This stop could not be saved to Supabase. Please check your connection and try again.\n\n${errorMessage}`
+          `This stop is kept on the device queue. Check your connection and sync later.\n\n${errorMessage}`
         );
-        setMessage(`Connectivity error: ${errorMessage}`);
-        return;
+        setMessage(`Queued offline: ${errorMessage}`);
+      } else {
+        setQueue((current) =>
+          current.map((item) =>
+            item.stopId === stop.id && !item.syncedAt ? { ...item, errorMessage } : item
+          )
+        );
+        setMessage(`Queued offline: ${errorMessage}`);
       }
+    }
 
-      setRoute((current) => (current ? updateStop(current, stop.id, status, note, skipReason) : current));
-      setQueue((current) => [
-        {
-          ...action,
-          errorMessage
-        },
-        ...current.filter((item) => item.stopId !== stop.id || item.syncedAt)
-      ]);
-      setMessage(`Queued offline: ${errorMessage}`);
+    // Optional photo AFTER the stop is saved/queued — crash here must not lose completion.
+    if (wantPhoto) {
+      setMessage(wantPhoto === "library" ? "Opening gallery…" : "Opening camera…");
+      try {
+        const photo = await captureStopProofPhoto(wantPhoto);
+        if (photo) {
+          try {
+            const photoSync = await syncStopAction(
+              stop.id,
+              status as "completed" | "skipped",
+              note,
+              skipReason,
+              {
+                latitude: gps.latitude,
+                longitude: gps.longitude,
+                localPhotoUri: photo.uri,
+                mimeType: photo.mimeType
+              }
+            );
+            const syncedAt = photoSync.syncedAt ?? new Date().toISOString();
+            setLastSyncAt(syncedAt);
+            await saveLastSyncAt(syncedAt);
+            proofNote = `${proofNote} Photo saved.`.replace(/\.\s+Photo/, ". Photo");
+            if (!synced) {
+              synced = true;
+              setQueue((current) =>
+                current.map((item) =>
+                  item.stopId === stop.id && !item.syncedAt
+                    ? { ...item, syncedAt, localPhotoUri: photo.uri, errorMessage: undefined }
+                    : item
+                )
+              );
+            }
+          } catch (photoError) {
+            const msg = photoError instanceof Error ? photoError.message : "photo upload failed";
+            proofNote = `${proofNote} Stop saved — photo failed (${msg}).`;
+          }
+        } else {
+          proofNote = `${proofNote} Stop saved without photo.`;
+        }
+      } catch {
+        proofNote = `${proofNote} Stop saved — photo picker unavailable.`;
+      }
+    }
+
+    try {
+      const refreshed = (await fetchAssignedRoute(operationDate)) ?? route;
+      setRoute(refreshed);
+      const remainingPending = refreshed.stops.filter((item) => item.status === "pending").length;
+      setMessage(
+        remainingPending === 0
+          ? `All stops finished. Use wrap-up below for dumpsite / end route.${proofNote}`
+          : synced
+            ? `Stop update synced.${proofNote}`
+            : `Stop saved on device (will sync).${proofNote}`
+      );
+    } catch {
+      setMessage(
+        synced
+          ? `Stop update synced.${proofNote}`
+          : `Stop saved on device (will sync).${proofNote}`
+      );
     } finally {
       setSyncingStopIds((current) => ({ ...current, [stop.id]: false }));
     }

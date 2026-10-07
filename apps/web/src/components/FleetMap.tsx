@@ -9,6 +9,8 @@ export type FleetMapMarker = {
   kind: "site" | "truck";
   title: string;
   subtitle?: string;
+  /** Shown in popup when Lagos demo mode remapped this pin. */
+  demo?: boolean;
 };
 
 type DisplayMarker = FleetMapMarker & {
@@ -65,25 +67,47 @@ export function offsetOverlappingMarkers(markers: FleetMapMarker[]): DisplayMark
 
 function markerIcon(kind: "site" | "truck") {
   const label = kind === "site" ? "Tip" : "Truck";
+  const pulse =
+    kind === "truck"
+      ? `<span class="fleet-map-marker-pulse" aria-hidden="true"></span>`
+      : "";
   return L.divIcon({
     className: `fleet-map-marker fleet-map-marker--${kind}`,
-    html: `<span class="fleet-map-marker-pin" title="${label}"><span class="fleet-map-marker-dot"></span></span>`,
-    iconSize: [22, 28],
-    iconAnchor: [11, 26],
-    popupAnchor: [0, -22]
+    html:
+      `<span class="fleet-map-marker-pin" title="${label}">` +
+      pulse +
+      `<span class="fleet-map-marker-dot"></span></span>`,
+    iconSize: [28, 34],
+    iconAnchor: [14, 28],
+    popupAnchor: [0, -24]
   });
 }
 
-export default function FleetMap({ markers }: { markers: FleetMapMarker[] }) {
+function markersSignature(markers: FleetMapMarker[]) {
+  return markers
+    .map((m) => `${m.id}:${m.latitude.toFixed(5)},${m.longitude.toFixed(5)}`)
+    .sort()
+    .join("|");
+}
+
+export default function FleetMap({
+  markers,
+  demoMode
+}: {
+  markers: FleetMapMarker[];
+  demoMode?: boolean;
+}) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
+  const fittedSignatureRef = useRef<string | null>(null);
 
   const displayMarkers = useMemo(() => offsetOverlappingMarkers(markers), [markers]);
   const overlapCount = useMemo(
     () => displayMarkers.filter((marker) => marker.offset).length,
     [displayMarkers]
   );
+  const signature = useMemo(() => markersSignature(markers), [markers]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) {
@@ -91,7 +115,10 @@ export default function FleetMap({ markers }: { markers: FleetMapMarker[] }) {
     }
 
     const map = L.map(containerRef.current, {
-      scrollWheelZoom: false,
+      scrollWheelZoom: true,
+      doubleClickZoom: true,
+      dragging: true,
+      zoomControl: true,
       attributionControl: true
     });
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -101,6 +128,8 @@ export default function FleetMap({ markers }: { markers: FleetMapMarker[] }) {
 
     layerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
+    // Default Lagos until markers arrive
+    map.setView([6.5244, 3.3792], 12);
 
     const onResize = () => {
       map.invalidateSize();
@@ -114,6 +143,7 @@ export default function FleetMap({ markers }: { markers: FleetMapMarker[] }) {
       map.remove();
       mapRef.current = null;
       layerRef.current = null;
+      fittedSignatureRef.current = null;
     };
   }, []);
 
@@ -127,7 +157,7 @@ export default function FleetMap({ markers }: { markers: FleetMapMarker[] }) {
     layer.clearLayers();
 
     if (displayMarkers.length === 0) {
-      map.setView([6.5244, 3.3792], 11);
+      map.setView([6.5244, 3.3792], 12);
       return;
     }
 
@@ -136,9 +166,13 @@ export default function FleetMap({ markers }: { markers: FleetMapMarker[] }) {
       const leafletMarker = L.marker([marker.displayLat, marker.displayLng], {
         icon: markerIcon(marker.kind),
         title: marker.title,
-        riseOnHover: true
+        riseOnHover: true,
+        keyboard: true
       });
       const kindLabel = marker.kind === "site" ? "Tip site" : "Started truck";
+      const demoNote = marker.demo
+        ? `<p class="fleet-map-popup-note">Lagos demo location (not device GPS)</p>`
+        : "";
       const offsetNote = marker.offset
         ? `<p class="fleet-map-popup-note">Offset slightly — shared coordinates with another pin</p>`
         : "";
@@ -146,6 +180,7 @@ export default function FleetMap({ markers }: { markers: FleetMapMarker[] }) {
         `<div class="fleet-map-popup"><strong>${escapeHtml(marker.title)}</strong>` +
           `<p>${escapeHtml(kindLabel)}</p>` +
           (marker.subtitle ? `<p>${escapeHtml(marker.subtitle)}</p>` : "") +
+          demoNote +
           offsetNote +
           `</div>`
       );
@@ -154,27 +189,44 @@ export default function FleetMap({ markers }: { markers: FleetMapMarker[] }) {
     }
 
     map.invalidateSize();
-    if (displayMarkers.length === 1) {
-      map.setView([displayMarkers[0].displayLat, displayMarkers[0].displayLng], 14);
-    } else {
-      map.fitBounds(bounds.pad(0.18), { maxZoom: 15 });
+    // Re-fit when the pin set/coords change; keep user's pan/zoom otherwise.
+    if (fittedSignatureRef.current !== signature) {
+      fittedSignatureRef.current = signature;
+      if (displayMarkers.length === 1) {
+        map.setView([displayMarkers[0].displayLat, displayMarkers[0].displayLng], 14, {
+          animate: true
+        });
+      } else {
+        map.fitBounds(bounds.pad(0.2), { maxZoom: 15, animate: true });
+      }
     }
-  }, [displayMarkers]);
+  }, [displayMarkers, signature]);
 
   const siteCount = markers.filter((m) => m.kind === "site").length;
   const truckCount = markers.filter((m) => m.kind === "truck").length;
 
   return (
     <div className="fleet-map-wrap">
-      <div className="fleet-map-frame" ref={containerRef} role="img" aria-label="Fleet sites and started trucks map" />
-      <div className="fleet-map-legend" aria-hidden="true">
+      <div
+        className="fleet-map-frame"
+        ref={containerRef}
+        aria-label="Interactive fleet map — pan and zoom; tip sites and started trucks"
+      />
+      <div className="fleet-map-legend">
         <span className="fleet-map-legend-item fleet-map-legend-item--site">
           <span className="fleet-map-legend-swatch" /> Tip sites ({siteCount})
         </span>
         <span className="fleet-map-legend-item fleet-map-legend-item--truck">
-          <span className="fleet-map-legend-swatch" /> Started trucks ({truckCount})
+          <span className="fleet-map-legend-swatch" /> Trucks ({truckCount})
+          <span className="fleet-map-legend-live">live map</span>
         </span>
+        {demoMode ? (
+          <span className="fleet-map-legend-item fleet-map-legend-demo">Lagos demo pins</span>
+        ) : null}
       </div>
+      <p className="muted coverage-footnote fleet-map-hint">
+        Pan / scroll-zoom the map. Amber truck pins pulse; click a pin for details.
+      </p>
       {overlapCount > 0 ? (
         <p className="muted coverage-footnote fleet-map-overlap-note">
           {overlapCount} pin{overlapCount === 1 ? "" : "s"} share the same coordinates and are spread

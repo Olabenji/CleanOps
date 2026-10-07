@@ -12,7 +12,7 @@ import {
   View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import type { FieldRole } from "../data/fieldSessionService";
+import type { FieldRole, PhoneOtpRequestOutcome } from "../data/fieldSessionService";
 import { requestPasswordReset } from "../data/passwordResetService";
 import { formatConnectionProbe, probeSupabaseConnection } from "../lib/supabaseDiagnostics";
 
@@ -20,26 +20,36 @@ export default function SignInScreen({
   loading,
   error,
   onSignIn,
+  onPhoneOtpSignIn,
+  onRequestPhoneOtp,
   onDemoSignIn
 }: {
   loading: boolean;
   error: string | null;
   onSignIn: (credentials: { email: string; password: string }) => void;
+  onPhoneOtpSignIn: (credentials: { phone: string; code: string }) => void;
+  onRequestPhoneOtp: (phone: string) => Promise<PhoneOtpRequestOutcome>;
   onDemoSignIn: (role: FieldRole) => void;
 }) {
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [phone, setPhone] = useState("");
+  const [otpCode, setOtpCode] = useState("");
   const [connectionStatus, setConnectionStatus] = useState("Checking backend connection...");
   const [checkingConnection, setCheckingConnection] = useState(true);
   const [showDemoAccounts, setShowDemoAccounts] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [keyboardInset, setKeyboardInset] = useState(0);
-  const [mode, setMode] = useState<"signIn" | "forgot">("signIn");
+  const [mode, setMode] = useState<"signIn" | "forgot" | "phone" | "phoneVerify">("signIn");
   const [forgotBusy, setForgotBusy] = useState(false);
   const [forgotMessage, setForgotMessage] = useState<string | null>(null);
   const [forgotError, setForgotError] = useState<string | null>(null);
+  const [otpBusy, setOtpBusy] = useState(false);
+  const [otpMessage, setOtpMessage] = useState<string | null>(null);
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [otpHint, setOtpHint] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -95,11 +105,57 @@ export default function SignInScreen({
     }
   }
 
+  async function handlePhoneRequest() {
+    Keyboard.dismiss();
+    setOtpBusy(true);
+    setOtpError(null);
+    setOtpMessage(null);
+    setOtpHint(null);
+
+    try {
+      const result = await onRequestPhoneOtp(phone);
+      setOtpMessage(result.message ?? "Code sent. Check your SMS.");
+      if (result.devCode) {
+        setOtpHint(`Dev code: ${result.devCode}`);
+        setOtpCode(result.devCode);
+      }
+      setMode("phoneVerify");
+    } catch (requestError) {
+      setOtpError(requestError instanceof Error ? requestError.message : "Unable to send OTP.");
+    } finally {
+      setOtpBusy(false);
+    }
+  }
+
+  function handlePhoneVerify() {
+    Keyboard.dismiss();
+    setOtpError(null);
+    onPhoneOtpSignIn({ phone, code: otpCode });
+  }
+
   function scrollToInput(offsetY: number) {
     requestAnimationFrame(() => {
       scrollRef.current?.scrollTo({ animated: true, y: offsetY });
     });
   }
+
+  const heading =
+    mode === "forgot"
+      ? "Forgot password"
+      : mode === "phone"
+        ? "Sign in with phone"
+        : mode === "phoneVerify"
+          ? "Enter SMS code"
+          : "Sign in";
+
+  const copy =
+    mode === "forgot"
+      ? "Enter your account email. We will send a reset link that opens in the browser. After you set a new password, return here to sign in."
+      : mode === "phone"
+        ? "Use the Nigerian mobile number on your provisioned CleanOps profile. SMS is sent via Termii."
+        : mode === "phoneVerify"
+          ? "Enter the 6-digit code from SMS to finish signing in."
+          : "Staff and residents can sign in with email/password or phone OTP for their CleanOps account.";
 
   return (
     <KeyboardAvoidingView
@@ -123,12 +179,8 @@ export default function SignInScreen({
         style={styles.scroll}
       >
         <Text style={styles.eyebrow}>CleanOps</Text>
-        <Text style={styles.heading}>{mode === "forgot" ? "Forgot password" : "Sign in"}</Text>
-        <Text style={styles.copy}>
-          {mode === "forgot"
-            ? "Enter your account email. We will send a reset link that opens in the browser. After you set a new password, return here to sign in."
-            : "Staff and residents can sign in with the email and password provided for their CleanOps account."}
-        </Text>
+        <Text style={styles.heading}>{heading}</Text>
+        <Text style={styles.copy}>{copy}</Text>
         <Text style={styles.hint}>
           Live sync needs your phone on the same Wi‑Fi as the dev machine, with Supabase running on port 54321.
         </Text>
@@ -143,21 +195,31 @@ export default function SignInScreen({
         </View>
 
         <View style={styles.formCard}>
-          <Text style={styles.formTitle}>{mode === "forgot" ? "Reset by email" : "Account login"}</Text>
-          <TextInput
-            autoCapitalize="none"
-            autoComplete="email"
-            autoCorrect={false}
-            editable={!loading && !forgotBusy}
-            keyboardType="email-address"
-            onChangeText={setEmail}
-            onFocus={() => scrollToInput(180)}
-            placeholder="Email"
-            returnKeyType={mode === "forgot" ? "done" : "next"}
-            style={styles.input}
-            textContentType="username"
-            value={email}
-          />
+          <Text style={styles.formTitle}>
+            {mode === "forgot"
+              ? "Reset by email"
+              : mode === "phone" || mode === "phoneVerify"
+                ? "Phone OTP"
+                : "Account login"}
+          </Text>
+
+          {mode === "signIn" || mode === "forgot" ? (
+            <TextInput
+              autoCapitalize="none"
+              autoComplete="email"
+              autoCorrect={false}
+              editable={!loading && !forgotBusy}
+              keyboardType="email-address"
+              onChangeText={setEmail}
+              onFocus={() => scrollToInput(180)}
+              placeholder="Email"
+              returnKeyType={mode === "forgot" ? "done" : "next"}
+              style={styles.input}
+              textContentType="username"
+              value={email}
+            />
+          ) : null}
+
           {mode === "signIn" ? (
             <View style={styles.passwordField}>
               <TextInput
@@ -184,9 +246,47 @@ export default function SignInScreen({
               </Pressable>
             </View>
           ) : null}
+
+          {mode === "phone" || mode === "phoneVerify" ? (
+            <TextInput
+              autoComplete="tel"
+              editable={mode === "phone" && !otpBusy && !loading}
+              keyboardType="phone-pad"
+              onChangeText={setPhone}
+              onFocus={() => scrollToInput(180)}
+              placeholder="0803… or +234…"
+              style={styles.input}
+              textContentType="telephoneNumber"
+              value={phone}
+            />
+          ) : null}
+
+          {mode === "phoneVerify" ? (
+            <TextInput
+              autoComplete="one-time-code"
+              editable={!loading}
+              keyboardType="number-pad"
+              maxLength={6}
+              onChangeText={(value) => setOtpCode(value.replace(/\D/g, "").slice(0, 6))}
+              onFocus={() => scrollToInput(260)}
+              onSubmitEditing={handlePhoneVerify}
+              placeholder="6-digit code"
+              style={styles.input}
+              textContentType="oneTimeCode"
+              value={otpCode}
+            />
+          ) : null}
+
           {mode === "signIn" && error ? <Text style={styles.error}>{error}</Text> : null}
+          {mode === "phoneVerify" && error ? <Text style={styles.error}>{error}</Text> : null}
           {mode === "forgot" && forgotError ? <Text style={styles.error}>{forgotError}</Text> : null}
           {mode === "forgot" && forgotMessage ? <Text style={styles.success}>{forgotMessage}</Text> : null}
+          {(mode === "phone" || mode === "phoneVerify") && otpError ? <Text style={styles.error}>{otpError}</Text> : null}
+          {(mode === "phone" || mode === "phoneVerify") && otpMessage ? (
+            <Text style={styles.success}>{otpMessage}</Text>
+          ) : null}
+          {otpHint ? <Text style={styles.success}>{otpHint}</Text> : null}
+
           {mode === "signIn" ? (
             <Pressable
               disabled={loading || !email.trim() || !password}
@@ -195,7 +295,9 @@ export default function SignInScreen({
             >
               <Text style={styles.primaryButtonText}>{loading ? "Signing in..." : "Sign in"}</Text>
             </Pressable>
-          ) : (
+          ) : null}
+
+          {mode === "forgot" ? (
             <Pressable
               disabled={forgotBusy || !email.trim()}
               onPress={() => void handleForgotSubmit()}
@@ -203,20 +305,76 @@ export default function SignInScreen({
             >
               <Text style={styles.primaryButtonText}>{forgotBusy ? "Sending..." : "Send reset link"}</Text>
             </Pressable>
-          )}
+          ) : null}
+
+          {mode === "phone" ? (
+            <Pressable
+              disabled={otpBusy || loading || phone.trim().length < 7}
+              onPress={() => void handlePhoneRequest()}
+              style={[styles.primaryButton, (otpBusy || loading || phone.trim().length < 7) && styles.disabled]}
+            >
+              <Text style={styles.primaryButtonText}>{otpBusy ? "Sending..." : "Send code"}</Text>
+            </Pressable>
+          ) : null}
+
+          {mode === "phoneVerify" ? (
+            <Pressable
+              disabled={loading || otpCode.length !== 6}
+              onPress={handlePhoneVerify}
+              style={[styles.primaryButton, (loading || otpCode.length !== 6) && styles.disabled]}
+            >
+              <Text style={styles.primaryButtonText}>{loading ? "Verifying..." : "Verify and sign in"}</Text>
+            </Pressable>
+          ) : null}
+
           <Pressable
-            disabled={loading || forgotBusy}
+            disabled={loading || forgotBusy || otpBusy}
             onPress={() => {
-              setMode((current) => (current === "signIn" ? "forgot" : "signIn"));
-              setForgotError(null);
-              setForgotMessage(null);
+              if (mode === "signIn") {
+                setMode("phone");
+              } else if (mode === "phoneVerify") {
+                setMode("phone");
+                setOtpCode("");
+                setOtpHint(null);
+                setOtpMessage(null);
+                setOtpError(null);
+              } else if (mode === "phone") {
+                setMode("signIn");
+                setOtpError(null);
+                setOtpMessage(null);
+                setOtpHint(null);
+              } else {
+                setMode("signIn");
+                setForgotError(null);
+                setForgotMessage(null);
+              }
             }}
             style={styles.forgotLink}
           >
             <Text style={styles.forgotLinkText}>
-              {mode === "signIn" ? "Forgot password?" : "Back to sign in"}
+              {mode === "signIn"
+                ? "Sign in with phone OTP"
+                : mode === "phoneVerify"
+                  ? "Resend or change number"
+                  : mode === "phone"
+                    ? "Back to email sign in"
+                    : "Back to sign in"}
             </Text>
           </Pressable>
+
+          {mode === "signIn" ? (
+            <Pressable
+              disabled={loading || forgotBusy}
+              onPress={() => {
+                setMode("forgot");
+                setForgotError(null);
+                setForgotMessage(null);
+              }}
+              style={styles.forgotLink}
+            >
+              <Text style={styles.forgotLinkText}>Forgot password?</Text>
+            </Pressable>
+          ) : null}
         </View>
 
         {mode === "signIn" ? (
@@ -235,7 +393,7 @@ export default function SignInScreen({
                   style={[styles.card, styles.driverCard, loading && styles.disabled]}
                 >
                   <Text style={styles.cardTitle}>Demo driver</Text>
-                  <Text style={styles.cardCopy}>driver@cleanops.local</Text>
+                  <Text style={styles.cardCopy}>driver@cleanops.local · +2348000000201</Text>
                 </Pressable>
 
                 <Pressable
@@ -244,7 +402,7 @@ export default function SignInScreen({
                   style={[styles.card, styles.agentCard, loading && styles.disabled]}
                 >
                   <Text style={styles.cardTitle}>Demo collection agent</Text>
-                  <Text style={styles.cardCopy}>agent@cleanops.local</Text>
+                  <Text style={styles.cardCopy}>agent@cleanops.local · +2348000000205</Text>
                 </Pressable>
 
                 <Pressable

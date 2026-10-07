@@ -4,9 +4,11 @@ import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import {
   restoreFieldSession,
+  requestPhoneOtp,
   signInFieldUser,
   signInWithCredentials,
   signOutFieldUser,
+  verifyPhoneOtp,
   type FieldSession
 } from "./src/data/fieldSessionService";
 import AgentApp from "./src/screens/AgentApp";
@@ -60,6 +62,20 @@ function FieldApp() {
     }
   }
 
+  async function handlePhoneOtpSignIn(credentials: { phone: string; code: string }) {
+    setSigningIn(true);
+    setError(null);
+
+    try {
+      const nextSession = await verifyPhoneOtp(credentials.phone, credentials.code);
+      setSession(nextSession);
+    } catch (signInError) {
+      setError(signInError instanceof Error ? signInError.message : "Unable to sign in with phone");
+    } finally {
+      setSigningIn(false);
+    }
+  }
+
   async function handleDemoSignIn(role: FieldSession["role"]) {
     setSigningIn(true);
     setError(null);
@@ -102,6 +118,8 @@ function FieldApp() {
           error={error}
           loading={signingIn}
           onDemoSignIn={(role) => void handleDemoSignIn(role)}
+          onPhoneOtpSignIn={(credentials) => void handlePhoneOtpSignIn(credentials)}
+          onRequestPhoneOtp={requestPhoneOtp}
           onSignIn={(credentials) => void handleSignInWithCredentials(credentials)}
         />
       </SafeAreaView>

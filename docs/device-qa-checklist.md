@@ -64,10 +64,14 @@ Automated coverage: `npm run test:browser`
 
 ### Resident (development build only)
 
-- [ ] Push permission prompt appears
-- [ ] Device token registers in `resident_push_devices`
-- [ ] Outbox dispatch delivers notification
-- [ ] Notification tap opens the expected resident surface
+- [x] Push permission prompt appears (Android 13+ needs `POST_NOTIFICATIONS`)
+- [x] Banner shows **Push alerts enabled**
+- [x] Device token registers in `resident_push_devices`
+- [x] Profile → **Send test push** delivers a remote notification (Tunde Lawal / Android)
+- [x] Outbox dispatch delivers recovery notice (tray confirmed 29 Jul)
+- [x] Notification tap opens the expected resident surface (Inbox)
+
+See `docs/expo-push-dev-build.md` for APK links and CLI helpers (`eas:fcm:ensure`, `test:push`).
 
 ## Sign-off
 
@@ -76,4 +80,4 @@ Automated coverage: `npm run test:browser`
 | Browser | | | |
 | Android driver/agent | | | |
 | Android resident Expo Go | | | |
-| Android resident push (dev build) | | | |
+| Android resident push (dev build) | | 29 Jul 2026 | Pass (Tunde Lawal) |

@@ -91,6 +91,7 @@ type RawRouteStop = {
   notes: string | null;
   skip_reason: string | null;
   is_make_good?: boolean | null;
+  proof_photo_path?: string | null;
   customers:
     | {
         display_name?: string;
@@ -145,6 +146,7 @@ export async function getRoutes(operationDate?: string): Promise<RouteDetail[]> 
         notes,
         skip_reason,
         is_make_good,
+        proof_photo_path,
         customers(id, display_name, address, service_status)
       )
     `
@@ -154,6 +156,8 @@ export async function getRoutes(operationDate?: string): Promise<RouteDetail[]> 
   if (operationDate) {
     query = query.eq("scheduled_date", operationDate);
   }
+
+  query = query.neq("status", "cancelled");
 
   const { data, error } = await query;
 
@@ -1109,10 +1113,32 @@ function mapRoute(route: any): RouteDetail | null {
           notes: stop.notes,
           skipReason: stop.skip_reason,
           serviceStatus: customer?.service_status ?? "active",
-          isMakeGood: Boolean(stop.is_make_good)
+          isMakeGood: Boolean(stop.is_make_good),
+          proofPhotoPath: stop.proof_photo_path ?? null
         };
       })
   });
 
   return parsed.success ? parsed.data : null;
+}
+
+const STOP_PROOF_BUCKET = "stop-proofs";
+
+/** Signed URL so operators can open driver stop proof photos in a new tab. */
+export async function getStopProofSignedUrl(proofPhotoPath: string, expiresInSeconds = 3600): Promise<string> {
+  if (!supabase) {
+    throw new Error("Stop proof viewing requires a live Supabase connection.");
+  }
+
+  const path = proofPhotoPath.trim();
+  if (!path) {
+    throw new Error("No proof photo path");
+  }
+
+  const { data, error } = await supabase.storage.from(STOP_PROOF_BUCKET).createSignedUrl(path, expiresInSeconds);
+  if (error || !data?.signedUrl) {
+    throw new Error(error?.message ?? "Unable to create proof photo link");
+  }
+
+  return data.signedUrl;
 }

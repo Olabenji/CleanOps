@@ -7,7 +7,9 @@ import { resolve } from "node:path";
 const container = process.env.SUPABASE_DB_CONTAINER ?? "supabase_db_cleanops";
 const smokeFiles = [
   "scripts/smoke_make_good.sql",
-  "scripts/smoke_unserviced_recovery.sql"
+  "scripts/smoke_unserviced_recovery.sql",
+  "scripts/smoke_duplicate_routes.sql",
+  "scripts/smoke_storage_access.sql"
 ];
 
 for (const file of smokeFiles) {
