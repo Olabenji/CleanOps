@@ -8,8 +8,16 @@ const anonKey =
 
 const termiiApiKey = Deno.env.get("TERMII_API_KEY") ?? "";
 const termiiSenderId = Deno.env.get("TERMII_SENDER_ID") ?? "CleanOps";
-const otpPepper = Deno.env.get("PHONE_OTP_PEPPER") ?? serviceRoleKey.slice(0, 32);
-const devReveal = (Deno.env.get("PHONE_OTP_DEV_REVEAL") ?? "").toLowerCase() === "true";
+const otpPepper = (Deno.env.get("PHONE_OTP_PEPPER") ?? "").trim();
+const devRevealRequested =
+  (Deno.env.get("PHONE_OTP_DEV_REVEAL") ?? "").toLowerCase() === "true";
+const devReveal = devRevealRequested && !isHostedSupabaseProject(supabaseUrl);
+
+if (devRevealRequested && isHostedSupabaseProject(supabaseUrl)) {
+  console.warn(
+    "phone-otp: PHONE_OTP_DEV_REVEAL is ignored because SUPABASE_URL points at a hosted *.supabase.co project."
+  );
+}
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const RESEND_COOLDOWN_MS = 60 * 1000;
@@ -25,6 +33,15 @@ type LookupResult = {
   fullName?: string;
   email?: string;
 };
+
+function isHostedSupabaseProject(url: string) {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return hostname === "supabase.co" || hostname.endsWith(".supabase.co");
+  } catch {
+    return false;
+  }
+}
 
 function jsonResponse(body: Record<string, unknown>, status = 200) {
   return Response.json(body, {
@@ -46,6 +63,10 @@ function generateOtpCode() {
 }
 
 async function hashOtp(phoneE164: string, code: string) {
+  if (!otpPepper) {
+    throw new Error("PHONE_OTP_PEPPER is not configured.");
+  }
+
   const material = `${phoneE164}:${code}:${otpPepper}`;
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(material));
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -110,6 +131,17 @@ Deno.serve(async (request) => {
 
   if (!supabaseUrl || !serviceRoleKey) {
     return jsonResponse({ error: "Server misconfigured (Supabase URL / service role)." }, 500);
+  }
+
+  if (!otpPepper) {
+    return jsonResponse(
+      {
+        ok: false,
+        error:
+          "PHONE_OTP_PEPPER is not configured. Set it in the phone-otp function secrets."
+      },
+      500
+    );
   }
 
   const admin = createClient(supabaseUrl, serviceRoleKey);

@@ -12,6 +12,20 @@ function jsonResponse(body: Record<string, unknown>, status = 200) {
   return Response.json(body, { status });
 }
 
+function timingSafeEqualString(left: string, right: string) {
+  const encoder = new TextEncoder();
+  const leftBytes = encoder.encode(left);
+  const rightBytes = encoder.encode(right);
+  const length = Math.max(leftBytes.length, rightBytes.length);
+  let mismatch = leftBytes.length === rightBytes.length ? 0 : 1;
+
+  for (let index = 0; index < length; index += 1) {
+    mismatch |= (leftBytes[index] ?? 0) ^ (rightBytes[index] ?? 0);
+  }
+
+  return mismatch === 0;
+}
+
 async function verifyPaystackSignature(rawBody: string, signatureHeader: string | null) {
   if (!paystackSecretKey) {
     return { ok: false as const, error: "PAYSTACK_SECRET_KEY is not configured" };
@@ -39,7 +53,7 @@ async function verifyPaystackSignature(rawBody: string, signatureHeader: string 
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
 
-  if (computed !== signatureHeader.toLowerCase()) {
+  if (!timingSafeEqualString(computed, signatureHeader.toLowerCase())) {
     return { ok: false as const, error: "Invalid Paystack signature" };
   }
 

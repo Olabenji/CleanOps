@@ -18,8 +18,8 @@ Foundation leftover from Item 5 Comms. Email/password remains the default; phone
 ```
 TERMII_API_KEY=...          # required for real SMS
 TERMII_SENDER_ID=CleanOps
-PHONE_OTP_DEV_REVEAL=true   # optional: return OTP in API when Termii is unset
-PHONE_OTP_PEPPER=...        # optional; defaults to a slice of the service role key
+PHONE_OTP_DEV_REVEAL=true   # local only: return OTP in API when Termii is unset
+PHONE_OTP_PEPPER=...        # required; the function does not derive this from the service role key
 ```
 
 3. Serve functions: `npm run dev:functions`
@@ -27,7 +27,7 @@ PHONE_OTP_PEPPER=...        # optional; defaults to a slice of the service role 
 5. Mobile: same control on `SignInScreen`.
 6. SQL smoke: `psql ... -f scripts/smoke_phone_otp.sql`
 
-Without `TERMII_API_KEY`, request returns a clear `sms_not_configured` soft-fail (HTTP 503) unless `PHONE_OTP_DEV_REVEAL=true`, which returns `devCode` for local verify.
+Without `TERMII_API_KEY`, request returns a clear `sms_not_configured` soft-fail (HTTP 503) unless `PHONE_OTP_DEV_REVEAL=true`, which returns `devCode` for local verify. That flag is ignored when `SUPABASE_URL` points at a hosted `*.supabase.co` project. A missing `PHONE_OTP_PEPPER` fails the request with a clear configuration error.
 
 ## Limits
 
@@ -46,7 +46,7 @@ Audit rows land in `phone_otp_audit`. Challenges in `phone_otp_challenges` (serv
 ```bash
 npx supabase db push
 npx supabase functions deploy phone-otp
-npx supabase secrets set TERMII_API_KEY=... TERMII_SENDER_ID=CleanOps
+npx supabase secrets set TERMII_API_KEY=... TERMII_SENDER_ID=CleanOps PHONE_OTP_PEPPER=...
 ```
 
 ## Out of scope
