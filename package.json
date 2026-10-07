@@ -41,6 +41,7 @@
   "devDependencies": {
     "@playwright/test": "^1.61.1",
     "@types/node": "latest",
+    "supabase": "2.109.1",
     "typescript": "latest"
   },
   "dependencies": {
