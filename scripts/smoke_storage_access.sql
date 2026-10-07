@@ -4,15 +4,15 @@ begin;
 
 do $$
 declare
-  operator_id uuid := '00000000-0000-4000-8000-000000000001';
+  v_operator_id uuid := '00000000-0000-4000-8000-000000000001';
   driver_user uuid := '00000000-0000-4000-8000-000000000021';
   driver_staff uuid := '00000000-0000-4000-8000-000000000201';
   other_staff uuid := '00000000-0000-4000-8000-000000000202';
   owner_user uuid := '00000000-0000-4000-8000-000000000011';
   agent_user uuid := '00000000-0000-4000-8000-000000000031';
   resident_user uuid := '00000000-0000-4000-8000-000000000041';
-  own_licence text := operator_id::text || '/' || '00000000-0000-4000-8000-000000000201' || '/smoke-own.jpg';
-  other_licence text := operator_id::text || '/' || '00000000-0000-4000-8000-000000000202' || '/smoke-other.jpg';
+  own_licence text := v_operator_id::text || '/' || '00000000-0000-4000-8000-000000000201' || '/smoke-own.jpg';
+  other_licence text := v_operator_id::text || '/' || '00000000-0000-4000-8000-000000000202' || '/smoke-other.jpg';
   stop_id uuid;
   proof_path text;
   seen integer;
@@ -24,14 +24,14 @@ begin
   from public.route_stops rs
   join public.routes r on r.id = rs.route_id
   where r.driver_id = driver_staff
-    and r.operator_id = operator_id
+    and r.operator_id = v_operator_id
   limit 1;
 
   if stop_id is null then
     raise exception 'assigned demo stop missing';
   end if;
 
-  proof_path := operator_id::text || '/' || stop_id::text || '/smoke-proof.jpg';
+  proof_path := v_operator_id::text || '/' || stop_id::text || '/smoke-proof.jpg';
 
   select exists (
     select 1
@@ -85,7 +85,7 @@ begin
     insert into storage.objects (bucket_id, name, owner, owner_id)
     values (
       'driver-licences',
-      operator_id::text || '/' || driver_staff::text || '/smoke-upload.jpg',
+      v_operator_id::text || '/' || driver_staff::text || '/smoke-upload.jpg',
       driver_user,
       driver_user::text
     );
@@ -93,7 +93,7 @@ begin
     insert into storage.objects (bucket_id, name, owner)
     values (
       'driver-licences',
-      operator_id::text || '/' || driver_staff::text || '/smoke-upload.jpg',
+      v_operator_id::text || '/' || driver_staff::text || '/smoke-upload.jpg',
       driver_user
     );
   end if;
@@ -103,7 +103,7 @@ begin
       insert into storage.objects (bucket_id, name, owner, owner_id)
       values (
         'driver-licences',
-        operator_id::text || '/' || other_staff::text || '/smoke-denied.jpg',
+        v_operator_id::text || '/' || other_staff::text || '/smoke-denied.jpg',
         driver_user,
         driver_user::text
       );
@@ -111,7 +111,7 @@ begin
       insert into storage.objects (bucket_id, name, owner)
       values (
         'driver-licences',
-        operator_id::text || '/' || other_staff::text || '/smoke-denied.jpg',
+        v_operator_id::text || '/' || other_staff::text || '/smoke-denied.jpg',
         driver_user
       );
     end if;
