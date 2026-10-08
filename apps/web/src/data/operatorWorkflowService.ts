@@ -1003,7 +1003,9 @@ export async function onboardCustomer(input: CustomerOnboardingInput) {
     input_service_status: parsed.serviceStatus,
     input_collections_per_week: parsed.collectionsPerWeek,
     input_preferred_weekdays: parsed.preferredWeekdays,
-    input_frequency_notes: parsed.frequencyNotes ?? null
+    input_frequency_notes: parsed.frequencyNotes ?? null,
+    input_whatsapp_consent: parsed.whatsappConsent,
+    input_sms_consent: parsed.smsConsent
   });
 
   if (error) {
@@ -1028,7 +1030,9 @@ export async function updateCustomer(input: CustomerUpdateInput) {
     input_monthly_rate_kobo: parsed.monthlyRateKobo,
     input_collections_per_week: parsed.collectionsPerWeek,
     input_preferred_weekdays: parsed.preferredWeekdays,
-    input_frequency_notes: parsed.frequencyNotes ?? null
+    input_frequency_notes: parsed.frequencyNotes ?? null,
+    input_whatsapp_consent: parsed.whatsappConsent,
+    input_sms_consent: parsed.smsConsent
   });
 
   if (error) {

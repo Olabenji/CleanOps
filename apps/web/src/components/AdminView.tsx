@@ -212,7 +212,9 @@ export default function AdminView({
     zoneId: defaultZoneId,
     collectionsPerWeek: 1,
     preferredWeekdays: [1] as number[],
-    frequencyNotes: ""
+    frequencyNotes: "",
+    whatsappConsent: false,
+    smsConsent: false
   });
   const [staffFilters, setStaffFilters] = useState<StaffAdminFilters>({
     query: "",
@@ -303,7 +305,9 @@ export default function AdminView({
         zoneId: defaultZoneId,
         collectionsPerWeek: 1,
         preferredWeekdays: [1],
-        frequencyNotes: ""
+        frequencyNotes: "",
+        whatsappConsent: false,
+        smsConsent: false
       });
     }
 
@@ -359,7 +363,9 @@ export default function AdminView({
       zoneId: customer.zoneId,
       collectionsPerWeek: customer.collectionsPerWeek,
       preferredWeekdays: [...customer.preferredWeekdays],
-      frequencyNotes: customer.frequencyNotes ?? ""
+      frequencyNotes: customer.frequencyNotes ?? "",
+      whatsappConsent: customer.whatsappConsent,
+      smsConsent: customer.smsConsent
     });
     setActiveModal("customer");
   }
@@ -582,7 +588,9 @@ export default function AdminView({
           zoneId: customerForm.zoneId,
           collectionsPerWeek: customerForm.collectionsPerWeek,
           preferredWeekdays: customerForm.preferredWeekdays,
-          frequencyNotes: customerForm.frequencyNotes || null
+          frequencyNotes: customerForm.frequencyNotes || null,
+          whatsappConsent: customerForm.whatsappConsent,
+          smsConsent: customerForm.smsConsent
         });
         closeModal();
         return;
@@ -598,7 +606,9 @@ export default function AdminView({
         zoneId: customerForm.zoneId,
         collectionsPerWeek: customerForm.collectionsPerWeek,
         preferredWeekdays: customerForm.preferredWeekdays,
-        frequencyNotes: customerForm.frequencyNotes || null
+        frequencyNotes: customerForm.frequencyNotes || null,
+        whatsappConsent: customerForm.whatsappConsent,
+        smsConsent: customerForm.smsConsent
       });
       setCustomerForm({
         address: "",
@@ -610,7 +620,9 @@ export default function AdminView({
         zoneId: defaultZoneId,
         collectionsPerWeek: 1,
         preferredWeekdays: [1],
-        frequencyNotes: ""
+        frequencyNotes: "",
+        whatsappConsent: false,
+        smsConsent: false
       });
       closeModal();
     } catch (error) {
@@ -1432,6 +1444,33 @@ export default function AdminView({
               value={customerForm.frequencyNotes}
             />
           </label>
+          <fieldset className="weekday-fieldset">
+            <legend>Message consent</legend>
+            <p className="panel-subtitle">
+              Record only what this resident has agreed to. Payment reminders, receipts, and suspension
+              notices are not sent on a channel without consent. Sign-in codes are separate.
+            </p>
+            <label className="checkbox-row">
+              <input
+                checked={customerForm.whatsappConsent}
+                onChange={(event) =>
+                  setCustomerForm((current) => ({ ...current, whatsappConsent: event.target.checked }))
+                }
+                type="checkbox"
+              />
+              WhatsApp notices
+            </label>
+            <label className="checkbox-row">
+              <input
+                checked={customerForm.smsConsent}
+                onChange={(event) =>
+                  setCustomerForm((current) => ({ ...current, smsConsent: event.target.checked }))
+                }
+                type="checkbox"
+              />
+              SMS notices
+            </label>
+          </fieldset>
           {!editingCustomerId ? (
             <label>
               Service status

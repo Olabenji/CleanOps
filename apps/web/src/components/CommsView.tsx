@@ -187,8 +187,9 @@ export default function CommsView({
             Flush message queue
           </button>
           <p className="panel-subtitle" style={{ margin: 0 }}>
-            Requires Twilio and/or Termii secrets on the Edge Function runtime. Receipts and
-            suspension notices auto-queue when payments post or a customer is suspended.
+            Sends only to residents who have agreed to that channel. WhatsApp uses approved templates;
+            SMS is the fallback when a template is unavailable. Receipts and suspension notices queue
+            when payments post or a customer is suspended.
           </p>
         </div>
       </article>
@@ -197,7 +198,10 @@ export default function CommsView({
         <div className="panel-header-row">
           <div>
             <h3>Recent message outbox</h3>
-            <p className="panel-subtitle">WhatsApp / SMS attempts for this operator.</p>
+            <p className="panel-subtitle">
+              WhatsApp / SMS attempts for this operator. A cancelled row keeps the reason, including
+              missing consent.
+            </p>
           </div>
         </div>
 

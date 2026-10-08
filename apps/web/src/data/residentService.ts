@@ -21,6 +21,24 @@ import {
 import { z } from "zod";
 import { supabase } from "../lib/supabase";
 
+export async function setMyResidentMessageConsent(
+  channel: "whatsapp" | "sms",
+  granted: boolean
+): Promise<void> {
+  if (!supabase) {
+    throw new Error("Message consent requires a live Supabase connection.");
+  }
+
+  const { error } = await supabase.rpc("set_my_resident_message_consent", {
+    input_channel: channel,
+    input_granted: granted
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 export async function getResidentHome(): Promise<ResidentHome> {
   if (!supabase) {
     throw new Error("Resident home requires a live Supabase connection.");

@@ -27,6 +27,28 @@ const REQUEST_TIMEOUT_MS = 15_000;
 
 export { formatCollectionFrequency };
 
+export async function setMyResidentMessageConsent(
+  channel: "whatsapp" | "sms",
+  granted: boolean
+): Promise<void> {
+  if (!supabase) {
+    throw new Error("Message consent requires Supabase");
+  }
+
+  const { error } = await withTimeout(
+    supabase.rpc("set_my_resident_message_consent", {
+      input_channel: channel,
+      input_granted: granted
+    }),
+    REQUEST_TIMEOUT_MS,
+    "Timed out while saving message consent"
+  );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 export async function getResidentHome(): Promise<ResidentHome> {
   if (!supabase) {
     throw new Error("Resident home requires Supabase");
