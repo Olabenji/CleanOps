@@ -4,7 +4,7 @@ begin;
 
 do $$
 declare
-  customer_id uuid := '00000000-0000-4000-8000-000000000401';
+  v_customer_id uuid := '00000000-0000-4000-8000-000000000401';
   other_customer uuid := '00000000-0000-4000-8000-000000000402';
   operator_id uuid := '00000000-0000-4000-8000-000000000001';
   owner_id uuid := '00000000-0000-4000-8000-000000000011';
@@ -76,7 +76,7 @@ begin
 
   notification_id := public.enqueue_resident_comms(
     operator_id,
-    customer_id,
+    v_customer_id,
     'payment_reminder',
     'Smoke reminder',
     'ignored',
@@ -100,10 +100,10 @@ begin
   end if;
 
   perform public.record_resident_message_consent(
-    operator_id, customer_id, 'whatsapp', true, 'operator_dashboard', owner_id
+    operator_id, v_customer_id, 'whatsapp', true, 'operator_dashboard', owner_id
   );
   perform public.record_resident_message_consent(
-    operator_id, customer_id, 'sms', true, 'operator_dashboard', owner_id
+    operator_id, v_customer_id, 'sms', true, 'operator_dashboard', owner_id
   );
   perform public.record_resident_message_consent(
     operator_id, other_customer, 'whatsapp', true, 'operator_dashboard', owner_id
@@ -111,7 +111,7 @@ begin
 
   notification_id := public.enqueue_resident_comms(
     operator_id,
-    customer_id,
+    v_customer_id,
     'payment_reminder',
     'Smoke reminder',
     '',
@@ -157,10 +157,10 @@ begin
   end if;
 
   perform public.record_resident_message_consent(
-    operator_id, customer_id, 'whatsapp', false, 'operator_dashboard', owner_id
+    operator_id, v_customer_id, 'whatsapp', false, 'operator_dashboard', owner_id
   );
   perform public.record_resident_message_consent(
-    operator_id, customer_id, 'sms', false, 'operator_dashboard', owner_id
+    operator_id, v_customer_id, 'sms', false, 'operator_dashboard', owner_id
   );
 
   update public.notification_outbox
@@ -239,7 +239,7 @@ begin
   select consent.source, consent.granted
   into consent_source, consent_granted
   from public.resident_message_consent consent
-  where consent.customer_id = customer_id
+  where consent.customer_id = v_customer_id
     and consent.channel = 'sms';
 
   if consent_source is distinct from 'resident_app' or consent_granted is distinct from true then
