@@ -838,6 +838,16 @@ export const residentHomeSchema = z.object({
   collectionsPerWeek: z.number().int().min(1).max(7),
   preferredWeekdays: preferredWeekdaysSchema,
   frequencyNotes: z.string().nullable().optional(),
+  messageConsent: z
+    .object({
+      whatsapp: z.boolean(),
+      sms: z.boolean(),
+      whatsappDecidedAt: z.string().nullable().optional(),
+      smsDecidedAt: z.string().nullable().optional(),
+      whatsappSource: z.string().nullable().optional(),
+      smsSource: z.string().nullable().optional()
+    })
+    .optional(),
   monthlyRateKobo: z.number().int().nonnegative(),
   paidThisMonthKobo: z.number().int().nonnegative(),
   outstandingKobo: z.number().int().nonnegative(),
@@ -1150,6 +1160,7 @@ export const dispatchCommsResultSchema = z.object({
   failed: z.number().int().nonnegative().optional(),
   viaWhatsApp: z.number().int().nonnegative().optional(),
   viaSms: z.number().int().nonnegative().optional(),
+  skipped: z.number().int().nonnegative().optional(),
   providers: z
     .object({
       twilioConfigured: z.boolean().optional(),
@@ -1256,7 +1267,13 @@ export const adminCustomerSchema = z.object({
   preferredWeekdays: preferredWeekdaysSchema,
   frequencyNotes: z.string().nullable().optional(),
   hasLoginProfile: z.boolean().optional().default(false),
-  loginEmail: z.string().nullable().optional()
+  loginEmail: z.string().nullable().optional(),
+  whatsappConsent: z.boolean().optional().default(false),
+  smsConsent: z.boolean().optional().default(false),
+  whatsappConsentAt: z.string().nullable().optional(),
+  smsConsentAt: z.string().nullable().optional(),
+  whatsappConsentSource: z.string().nullable().optional(),
+  smsConsentSource: z.string().nullable().optional()
 });
 
 export const adminMasterDataSchema = z.object({
@@ -1333,7 +1350,9 @@ export const customerOnboardingInputSchema = z.object({
   serviceStatus: z.enum(["active", "suspended"]),
   collectionsPerWeek: z.number().int().min(1).max(7).default(1),
   preferredWeekdays: preferredWeekdaysSchema.default([1]),
-  frequencyNotes: z.string().optional().nullable()
+  frequencyNotes: z.string().optional().nullable(),
+  whatsappConsent: z.boolean().optional().default(false),
+  smsConsent: z.boolean().optional().default(false)
 });
 
 export const staffUpdateInputSchema = z.object({
@@ -1367,7 +1386,9 @@ export const customerUpdateInputSchema = z.object({
   monthlyRateKobo: z.number().int().nonnegative(),
   collectionsPerWeek: z.number().int().min(1).max(7).default(1),
   preferredWeekdays: preferredWeekdaysSchema.default([1]),
-  frequencyNotes: z.string().optional().nullable()
+  frequencyNotes: z.string().optional().nullable(),
+  whatsappConsent: z.boolean().optional().default(false),
+  smsConsent: z.boolean().optional().default(false)
 });
 
 export const paymentSummarySchema = z.object({

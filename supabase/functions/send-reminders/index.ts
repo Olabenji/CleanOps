@@ -1,17 +1,22 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { COMMS_CRON_SECRET_HEADER, classifyCommsCaller } from "../../../packages/shared/src/residentComms.ts";
 
 const supabaseUrl =
   Deno.env.get("SUPABASE_URL") ?? Deno.env.get("EXPO_PUBLIC_SUPABASE_URL") ?? "";
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("EXPO_PUBLIC_SUPABASE_ANON_KEY") ?? "";
+const cronSecret = Deno.env.get("COMMS_CRON_SECRET") ?? "";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-cleanops-cron-secret"
+};
 
 function jsonResponse(body: Record<string, unknown>, status = 200) {
   return Response.json(body, {
     status,
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
-    }
+    headers: corsHeaders
   });
 }
 
@@ -26,12 +31,7 @@ type ReminderRequest = {
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") {
-    return new Response("ok", {
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
-      }
-    });
+    return new Response("ok", { headers: corsHeaders });
   }
 
   if (request.method !== "POST") {
@@ -48,18 +48,31 @@ Deno.serve(async (request) => {
     return jsonResponse({ error: "daysBeforeDue must be 2 or 5" }, 400);
   }
 
+  const caller = classifyCommsCaller({
+    configuredSecret: cronSecret,
+    presentedSecret: request.headers.get(COMMS_CRON_SECRET_HEADER),
+    authorizationHeader: request.headers.get("Authorization")
+  });
+  if (caller.kind === "rejected") {
+    return jsonResponse({ error: caller.error }, caller.status);
+  }
+
   const force = Boolean(body.force);
   const asOf = typeof body.asOf === "string" ? body.asOf : undefined;
   const shouldDispatch = body.dispatch !== false;
   const limit = typeof body.limit === "number" ? Math.min(Math.max(body.limit, 1), 100) : 50;
 
-  const authHeader = request.headers.get("Authorization");
   let queueResult: Record<string, unknown> | null = null;
+  let dispatchOperatorId: string | null = null;
 
-  // Prefer caller JWT so RLS/operator scoping applies; fall back to service role + operatorId for cron.
-  if (authHeader && anonKey) {
+  if (caller.kind === "staff") {
+    if (!anonKey) {
+      return jsonResponse({ error: "Unauthorized" }, 401);
+    }
+
     const userClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } }
+      global: { headers: { Authorization: caller.authorization } },
+      auth: { persistSession: false, autoRefreshToken: false }
     });
     const {
       data: { user },
@@ -70,6 +83,18 @@ Deno.serve(async (request) => {
       return jsonResponse({ error: "Unauthorized" }, 401);
     }
 
+    const { data: context, error: contextError } = await userClient.rpc("comms_caller_context");
+    if (contextError || !context || typeof context !== "object") {
+      const message = contextError?.message ?? "Unauthorized";
+      const status = /not permitted|Operator context/i.test(message) ? 403 : 401;
+      return jsonResponse({ error: message }, status);
+    }
+
+    dispatchOperatorId = (context as { operatorId?: string }).operatorId ?? null;
+    if (!dispatchOperatorId) {
+      return jsonResponse({ error: "Operator context is required" }, 403);
+    }
+
     const { data, error } = await userClient.rpc("queue_payment_reminders", {
       input_days_before_due: daysBeforeDue,
       input_force: force,
@@ -77,33 +102,19 @@ Deno.serve(async (request) => {
     });
 
     if (error) {
-      return jsonResponse({ error: error.message }, 400);
+      const status = /not permitted/i.test(error.message) ? 403 : 400;
+      return jsonResponse({ error: error.message }, status);
     }
     queueResult = (data ?? {}) as Record<string, unknown>;
-  } else if (body.operatorId) {
+  } else {
+    if (!body.operatorId) {
+      return jsonResponse({ error: "operatorId is required for cron reminder runs" }, 400);
+    }
+
+    dispatchOperatorId = body.operatorId;
     const admin = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false }
     });
-
-    // Resolve an owner profile for the operator so set_config-style RPCs aren't required.
-    const { data: owner, error: ownerError } = await admin
-      .from("profiles")
-      .select("id")
-      .eq("operator_id", body.operatorId)
-      .in("role", ["operator_owner", "operations_supervisor", "platform_admin"])
-      .limit(1)
-      .maybeSingle();
-
-    if (ownerError || !owner?.id) {
-      return jsonResponse(
-        { error: ownerError?.message ?? "No operator manager profile found for operatorId" },
-        400
-      );
-    }
-
-    // Queue via SQL function using a security-definer path: call through service role after
-    // temporarily impersonating is not available; instead use direct insert helper via RPC
-    // that accepts operator id for service role only.
     const { data, error } = await admin.rpc("queue_payment_reminders_for_operator", {
       input_operator_id: body.operatorId,
       input_days_before_due: daysBeforeDue,
@@ -115,24 +126,29 @@ Deno.serve(async (request) => {
       return jsonResponse({ error: error.message }, 400);
     }
     queueResult = (data ?? {}) as Record<string, unknown>;
-  } else {
-    return jsonResponse(
-      { error: "Provide Authorization bearer token, or operatorId for service-role cron" },
-      401
-    );
   }
 
   let dispatchResult: Record<string, unknown> | null = null;
   if (shouldDispatch) {
     const dispatchUrl = `${supabaseUrl.replace(/\/$/, "")}/functions/v1/dispatch-resident-comms`;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      apikey: anonKey || serviceRoleKey
+    };
+    const dispatchBody: Record<string, unknown> = { limit };
+
+    if (caller.kind === "cron") {
+      headers[COMMS_CRON_SECRET_HEADER] = cronSecret;
+      headers.Authorization = `Bearer ${anonKey || serviceRoleKey}`;
+      dispatchBody.operatorId = dispatchOperatorId;
+    } else {
+      headers.Authorization = caller.authorization;
+    }
+
     const response = await fetch(dispatchUrl, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${serviceRoleKey}`,
-        apikey: serviceRoleKey,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ limit })
+      headers,
+      body: JSON.stringify(dispatchBody)
     });
     dispatchResult = (await response.json().catch(() => ({}))) as Record<string, unknown>;
     if (!response.ok) {

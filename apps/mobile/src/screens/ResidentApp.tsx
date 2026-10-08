@@ -5,6 +5,7 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   View
 } from "react-native";
@@ -21,7 +22,8 @@ import {
   listResidentComplaints,
   listResidentNotifications,
   listResidentPayments,
-  markResidentNotificationRead
+  markResidentNotificationRead,
+  setMyResidentMessageConsent
 } from "../data/residentService";
 import {
   attachResidentPushResponseHandler,
@@ -59,6 +61,7 @@ export default function ResidentApp({
   const [installationId, setInstallationId] = useState<string | null>(null);
   const [focusNotificationId, setFocusNotificationId] = useState<string | null>(null);
   const [testPushBusy, setTestPushBusy] = useState(false);
+  const [consentSaving, setConsentSaving] = useState<"whatsapp" | "sms" | null>(null);
 
   async function load(isRefresh = false) {
     if (session.mode === "pilot") {
@@ -87,7 +90,8 @@ export default function ResidentApp({
           timezone: "Africa/Lagos"
         },
         zoneTrucks: [],
-        makeGood: null
+        makeGood: null,
+        messageConsent: { whatsapp: false, sms: false }
       });
       setNotifications([]);
       setPayments([]);
@@ -223,6 +227,36 @@ export default function ResidentApp({
       setFocusNotificationId(notification.id);
     } catch (markError) {
       setError(markError instanceof Error ? markError.message : "Unable to mark notification read");
+    }
+  }
+
+  async function handleConsent(channel: "whatsapp" | "sms", granted: boolean) {
+    if (!home) {
+      return;
+    }
+
+    const previous = home.messageConsent ?? { whatsapp: false, sms: false };
+    setHome({ ...home, messageConsent: { ...previous, [channel]: granted } });
+    setError(null);
+
+    if (session.mode !== "supabase") {
+      setMessage("Consent updated in the offline demo. A live account saves this choice.");
+      return;
+    }
+
+    setConsentSaving(channel);
+    try {
+      await setMyResidentMessageConsent(channel, granted);
+      setMessage(
+        granted
+          ? `${channel === "whatsapp" ? "WhatsApp" : "SMS"} notices enabled.`
+          : `${channel === "whatsapp" ? "WhatsApp" : "SMS"} notices turned off.`
+      );
+    } catch (consentError) {
+      setHome({ ...home, messageConsent: previous });
+      setError(consentError instanceof Error ? consentError.message : "Unable to save message consent");
+    } finally {
+      setConsentSaving(null);
     }
   }
 
@@ -364,6 +398,31 @@ export default function ResidentApp({
               <Pressable onPress={() => setTab("payments")} style={styles.inlineButton}>
                 <Text style={styles.inlineButtonText}>View account and payments</Text>
               </Pressable>
+            </View>
+
+            <View style={styles.card}>
+              <Text style={styles.cardEyebrow}>Message consent</Text>
+              <Text style={styles.cardTitle}>WhatsApp and SMS</Text>
+              <Text style={styles.muted}>
+                Choose how {home.psp.brandName ?? home.psp.operatorName} can send payment reminders,
+                receipts, and suspension notices. Sign-in codes are not affected.
+              </Text>
+              <View style={styles.consentRow}>
+                <Text style={styles.body}>WhatsApp notices</Text>
+                <Switch
+                  disabled={consentSaving !== null}
+                  onValueChange={(granted) => void handleConsent("whatsapp", granted)}
+                  value={home.messageConsent?.whatsapp ?? false}
+                />
+              </View>
+              <View style={styles.consentRow}>
+                <Text style={styles.body}>SMS notices</Text>
+                <Switch
+                  disabled={consentSaving !== null}
+                  onValueChange={(granted) => void handleConsent("sms", granted)}
+                  value={home.messageConsent?.sms ?? false}
+                />
+              </View>
             </View>
           </View>
         ) : null}
@@ -549,6 +608,12 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 15,
     lineHeight: 21
+  },
+  consentRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12
   },
   serviceActive: {
     color: colors.accent,

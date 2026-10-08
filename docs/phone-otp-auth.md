@@ -7,6 +7,7 @@ Foundation leftover from Item 5 Comms. Email/password remains the default; phone
 **Termii SMS OTP + Supabase session linking** (not Supabase Auth built-in phone provider).
 
 - Supabase Auth phone SMS typically needs Twilio/MessageBird in the Auth dashboard; this stack already uses **Termii** for Nigerian SMS.
+- OTP uses Termii's transactional `dnd` route. `TERMII_BASE_URL` overrides the default `https://api.ng.termii.com` for both this function and resident-notice SMS. Sign-in OTP is not blocked by WhatsApp/SMS notice consent.
 - Edge Function `phone-otp` issues a hashed 6-digit challenge, sends SMS via Termii, then on verify uses `auth.admin.generateLink` (magic link) and returns `tokenHash` for `supabase.auth.verifyOtp({ type: 'email' })`.
 - Role-aware session loading is unchanged: clients still call `get_session_operator_context` after the session exists.
 

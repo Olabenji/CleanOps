@@ -46,9 +46,13 @@ verify_jwt = true
 [functions.dispatch-resident-notifications]
 verify_jwt = false
 
+# Auth is enforced in the function: a staff JWT scoped to that operator, or
+# COMMS_CRON_SECRET. verify_jwt stays false so a cron caller is not rejected
+# by the gateway before the shared-secret check runs.
 [functions.dispatch-resident-comms]
 verify_jwt = false
 
+# Same auth model as dispatch-resident-comms. verify_jwt stays false.
 [functions.send-reminders]
 verify_jwt = false
 

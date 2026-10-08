@@ -13,6 +13,7 @@ import {
   getResidentHome,
   listMyPayments,
   listMyServiceComplaints,
+  setMyResidentMessageConsent,
   startResidentPaystackCheckout,
   submitResidentComplaint,
   verifyResidentPaystackPayment
@@ -68,6 +69,7 @@ export default function ResidentApp({
   const [form, setForm] = useState<SubmitResidentComplaintInput>(emptyForm);
   const [paymentHistoryOpen, setPaymentHistoryOpen] = useState(false);
   const [complaintHistoryOpen, setComplaintHistoryOpen] = useState(false);
+  const [consentSaving, setConsentSaving] = useState<"whatsapp" | "sms" | null>(null);
 
   async function loadPortal(isRefresh = false) {
     if (isRefresh) {
@@ -97,6 +99,34 @@ export default function ResidentApp({
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  }
+
+  async function onConsentChange(channel: "whatsapp" | "sms", granted: boolean) {
+    if (!home) {
+      return;
+    }
+
+    const previous = home.messageConsent ?? { whatsapp: false, sms: false };
+    setHome({
+      ...home,
+      messageConsent: { ...previous, [channel]: granted }
+    });
+    setConsentSaving(channel);
+    setError(null);
+
+    try {
+      await setMyResidentMessageConsent(channel, granted);
+      setNotice(
+        granted
+          ? `${channel === "whatsapp" ? "WhatsApp" : "SMS"} notices enabled.`
+          : `${channel === "whatsapp" ? "WhatsApp" : "SMS"} notices turned off.`
+      );
+    } catch (consentError) {
+      setHome({ ...home, messageConsent: previous });
+      setError(consentError instanceof Error ? consentError.message : "Unable to save message consent");
+    } finally {
+      setConsentSaving(null);
     }
   }
 
@@ -275,6 +305,33 @@ export default function ResidentApp({
                 .
               </p>
             ) : null}
+          </section>
+
+          <section className="resident-card">
+            <p className="eyebrow">Message consent</p>
+            <h2>WhatsApp and SMS</h2>
+            <p className="muted">
+              Choose how {home.psp.brandName ?? home.psp.operatorName} can send payment reminders, receipts,
+              and suspension notices. Sign-in codes are not affected.
+            </p>
+            <label className="checkbox-row">
+              <input
+                checked={home.messageConsent?.whatsapp ?? false}
+                disabled={consentSaving !== null}
+                onChange={(event) => void onConsentChange("whatsapp", event.target.checked)}
+                type="checkbox"
+              />
+              WhatsApp notices
+            </label>
+            <label className="checkbox-row">
+              <input
+                checked={home.messageConsent?.sms ?? false}
+                disabled={consentSaving !== null}
+                onChange={(event) => void onConsentChange("sms", event.target.checked)}
+                type="checkbox"
+              />
+              SMS notices
+            </label>
           </section>
 
           <section className="resident-card">

@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { termiiSmsRequest } from "../../../packages/shared/src/residentComms.ts";
 
 const supabaseUrl =
   Deno.env.get("SUPABASE_URL") ?? Deno.env.get("EXPO_PUBLIC_SUPABASE_URL") ?? "";
@@ -73,18 +74,18 @@ async function hashOtp(phoneE164: string, code: string) {
 }
 
 async function sendTermiiSms(toE164: string, body: string) {
-  const to = toE164.replace(/^\+/, "");
-  const response = await fetch("https://api.ng.termii.com/api/sms/send", {
+  // Sign-in OTP is user-initiated. It is not gated by WhatsApp/SMS notice consent.
+  const request = termiiSmsRequest({
+    baseUrl: Deno.env.get("TERMII_BASE_URL"),
+    toE164,
+    senderId: termiiSenderId,
+    sms: body,
+    apiKey: termiiApiKey
+  });
+  const response = await fetch(request.url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      to,
-      from: termiiSenderId,
-      sms: body,
-      type: "plain",
-      channel: "generic",
-      api_key: termiiApiKey
-    })
+    body: JSON.stringify(request.body)
   });
 
   const payload = await response.json().catch(() => ({}));
