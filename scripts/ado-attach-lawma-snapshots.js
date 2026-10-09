@@ -8,13 +8,22 @@ const ORG = "benjaminbabawale-elevatedtech";
 const PROJECT = "CleanOps";
 const API = `https://dev.azure.com/${ORG}/${PROJECT}/_apis`;
 const WI = 50;
-const pat = fs.readFileSync(path.join(__dirname, "../.env_PAT.local"), "utf8").trim();
-const auth = "Basic " + Buffer.from(":" + pat).toString("base64");
 
 const files = [
   "docs/ado-snapshots/11-admin-customers-frequency.png",
   "docs/ado-snapshots/12-admin-customer-frequency-edit.png"
 ];
+
+const existing = files.filter((relative) => fs.existsSync(path.join(__dirname, "..", relative)));
+if (existing.length === 0) {
+  console.warn(
+    "No LAWMA frequency snapshots to attach. Those images were removed because they showed a real operator brand."
+  );
+  process.exit(0);
+}
+
+const pat = (process.env.AZURE_DEVOPS_EXT_PAT || fs.readFileSync(path.join(__dirname, "../.env_PAT.local"), "utf8")).trim();
+const auth = "Basic " + Buffer.from(":" + pat).toString("base64");
 
 async function ado(method, url, body, contentType) {
   const headers = { Authorization: auth };
@@ -29,11 +38,8 @@ async function ado(method, url, body, contentType) {
 
 (async () => {
   const attachments = [];
-  for (const relative of files) {
+  for (const relative of existing) {
     const full = path.join(__dirname, "..", relative);
-    if (!fs.existsSync(full)) {
-      throw new Error(`Missing snapshot: ${full}`);
-    }
     const uploaded = await ado(
       "POST",
       `${API}/wit/attachments?fileName=${encodeURIComponent(path.basename(full))}&api-version=7.1`,

@@ -15,16 +15,36 @@ const RESTORE_TIMEOUT_MS = 4_000;
 
 export type { FieldRole, FieldSession } from "../lib/fieldSession";
 
-const credentials: Record<Exclude<FieldRole, "resident">, { email: string; password: string }> = {
-  driver: {
-    email: "driver@cleanops.local",
-    password: "cleanops-driver-password"
-  },
-  collection_agent: {
-    email: "agent@cleanops.local",
-    password: "cleanops-agent-password"
+function localDemoPassword(value: string | undefined, envName: string) {
+  const password = value?.trim() ?? "";
+  if (!password) {
+    throw new Error(
+      `Local demo password is not configured. Set ${envName} in apps/mobile/.env.local (npm run demo:passwords writes it from .env.demo.local).`
+    );
   }
-};
+
+  return password;
+}
+
+function fieldCredentials(role: Exclude<FieldRole, "resident">) {
+  if (role === "driver") {
+    return {
+      email: "driver@cleanops.local",
+      password: localDemoPassword(
+        process.env.EXPO_PUBLIC_DEMO_DRIVER_PASSWORD,
+        "EXPO_PUBLIC_DEMO_DRIVER_PASSWORD"
+      )
+    };
+  }
+
+  return {
+    email: "agent@cleanops.local",
+    password: localDemoPassword(
+      process.env.EXPO_PUBLIC_DEMO_AGENT_PASSWORD,
+      "EXPO_PUBLIC_DEMO_AGENT_PASSWORD"
+    )
+  };
+}
 
 function toFieldRole(role: string): FieldRole | null {
   if (role === "driver" || role === "collection_agent" || role === "resident") {
@@ -262,7 +282,7 @@ export async function signInFieldUser(role: FieldRole): Promise<FieldSession> {
 
   try {
     const { error } = await withTimeout(
-      supabase.auth.signInWithPassword(credentials[role]),
+      supabase.auth.signInWithPassword(fieldCredentials(role)),
       SIGN_IN_TIMEOUT_MS,
       "Timed out while signing in"
     );

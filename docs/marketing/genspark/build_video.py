@@ -139,7 +139,7 @@ def end_card(frame: Image.Image) -> Image.Image:
         base,
         [
             ("CLEANOPS", 88, (255, 255, 255)),
-            ("Next to Godliness.", 48, (216, 238, 224)),
+            ("Demo Waste Co (Fictional).", 48, (216, 238, 224)),
             ("Routes. Collections. Cash. One system.", 32, (238, 245, 239)),
             ("For LAWMA PSP operators", 26, (200, 220, 205)),
         ],

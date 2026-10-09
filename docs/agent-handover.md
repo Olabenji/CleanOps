@@ -127,12 +127,7 @@ This markdown mirrors the handover canvas for repo durability. Prefer migrations
 
 ## Demo logins
 
-| Role | Email |
-|------|-------|
-| Operator | `owner@cleanops.local` |
-| Driver | `driver@cleanops.local` |
-| Agent | `agent@cleanops.local` |
-| Resident | Admin-provisioned customer login |
+Local seed only. Run `npm run demo:passwords` and read gitignored `.env.demo.local` (template: `demo.env.example`). Do not commit those passwords. Hosted projects are not seeded with these users by migrations.
 
 ## Plans (do not edit unless asked)
 

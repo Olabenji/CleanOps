@@ -16,7 +16,7 @@ On a physical phone, set `EXPO_PUBLIC_WEB_APP_URL` to the **LAN** web URL (for e
 
 1. Start Supabase local (`npx supabase start`) and the web app (`npm run dev -w @cleanops/web`).
 2. Open Inbucket / Mailpit (local Auth mail UI — typically http://localhost:54324).
-3. On web login, choose **Forgot password?**, enter a known seed email (e.g. `driver@cleanops.local` or an operator email).
+3. On web login, choose **Forgot password?**, enter a seeded local email from `.env.demo.local` (operator or field staff).
 4. Confirm the generic success message (does not reveal whether the account exists).
 5. Open the email in Inbucket → follow the recovery link → set a new password → **Continue to sign in**.
 6. Sign in with the new password on web and/or mobile.

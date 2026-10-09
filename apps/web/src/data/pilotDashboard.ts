@@ -1,7 +1,7 @@
 import type { OperatorDashboard } from "@cleanops/shared";
 
 export const pilotDashboard: OperatorDashboard = {
-  operatorName: "Next to Godliness Ventures",
+  operatorName: "Demo Waste Co (Fictional)",
   metrics: [
     {
       label: "Route Progress",

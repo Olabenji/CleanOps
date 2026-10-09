@@ -47,7 +47,7 @@ const updates = [
     ids: [7],
     files: ["01-dashboard.png", "07-platform-admin.png", "10-mobile-driver-stops.png"],
     blurb:
-      "<p><b>Phase 1 deliverable snapshot.</b> Operator web command centre (dashboard/routes/payments/staff/admin), platform tenant console, and driver mobile field workflows. Local pilot tenant: Next to Godliness; second tenant Island Clean for multi-tenant isolation.</p>"
+      "<p><b>Phase 1 deliverable snapshot.</b> Operator web command centre (dashboard/routes/payments/staff/admin), platform tenant console, and driver mobile field workflows. Local pilot tenant: Demo Waste Co (Fictional); second tenant Island Clean for multi-tenant isolation.</p>"
   },
   {
     ids: [8, 9, 10],
@@ -149,7 +149,7 @@ const updates = [
     ids: [41, 42, 43],
     files: ["07-platform-admin.png"],
     blurb:
-      "<p><b>Sprint 10 — Platform admin.</b> Platform console lists tenants (Next to Godliness, Island Clean) with plan/status and Onboard / Suspend actions.</p>"
+      "<p><b>Sprint 10 — Platform admin.</b> Platform console lists tenants (Demo Waste Co (Fictional), Island Clean) with plan/status and Onboard / Suspend actions.</p>"
   },
   {
     ids: [44],
@@ -161,7 +161,7 @@ const updates = [
     ids: [45],
     files: ["01-dashboard.png", "06-admin.png"],
     blurb:
-      "<p><b>API table grants restore.</b> After migration 0047 restored authenticated SELECT/DML, Next to Godliness dashboard and Admin staff lists load live tenant rows again.</p>"
+      "<p><b>API table grants restore.</b> After migration 0047 restored authenticated SELECT/DML, Demo Waste Co (Fictional) dashboard and Admin staff lists load live tenant rows again.</p>"
   },
   {
     ids: [46, 47, 48, 49],

@@ -13,6 +13,7 @@
  */
 
 import { createHmac, randomBytes } from "node:crypto";
+import { loadDemoAccounts } from "./demo-accounts.mjs";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? "http://127.0.0.1:54321";
 const ANON_KEY =
@@ -23,11 +24,16 @@ const ANON_KEY =
 const OPERATOR_ID = "00000000-0000-4000-8000-000000000001";
 const PILOT_FAKE_ROUTE_PREFIX = "11111111-1111-4111-8111";
 
+const demoAccounts = await loadDemoAccounts();
 const CREDS = {
-  operator: { email: "owner@cleanops.local", password: "cleanops-demo-password" },
-  driver: { email: "driver@cleanops.local", password: "cleanops-driver-password" },
-  agent: { email: "agent@cleanops.local", password: "cleanops-agent-password" }
+  operator: { email: demoAccounts.operator.email, password: demoAccounts.operator.password },
+  driver: { email: demoAccounts.driver.email, password: demoAccounts.driver.password },
+  agent: { email: demoAccounts.collection_agent.email, password: demoAccounts.collection_agent.password }
 };
+
+if (!CREDS.operator.password || !CREDS.driver.password || !CREDS.agent.password) {
+  throw new Error("Local demo passwords missing. Run npm run demo:passwords (see demo.env.example).");
+}
 
 const results = [];
 let passed = 0;
@@ -168,7 +174,7 @@ async function run() {
   const dashJson = JSON.stringify(dashboard.body ?? {});
   const dashOk =
     dashboard.ok &&
-    dashboard.body?.operatorName === "Next to Godliness Ventures" &&
+    dashboard.body?.operatorName === "Demo Waste Co (Fictional)" &&
     !dashJson.includes(PILOT_FAKE_ROUTE_PREFIX);
   record(
     "Operator dashboard snapshot (live seed data)",

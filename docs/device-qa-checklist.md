@@ -13,12 +13,7 @@
 
 ## Demo credentials
 
-| Role | Email | Password |
-|------|-------|----------|
-| Operator | `owner@cleanops.local` | `cleanops-demo-password` |
-| Driver | `driver@cleanops.local` | `cleanops-driver-password` |
-| Agent | `agent@cleanops.local` | `cleanops-agent-password` |
-| Resident | `resident@cleanops.local` | `cleanops-resident-password` |
+Do not copy passwords into this doc. After `npx supabase db reset`, run `npm run demo:passwords`. Emails and passwords are in gitignored `.env.demo.local` (`demo.env.example` lists the keys). Field one-tap sign-in reads `EXPO_PUBLIC_DEMO_*` from `apps/mobile/.env.local`, which that command updates.
 
 ## Browser QA (Chromium / Edge)
 

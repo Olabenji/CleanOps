@@ -3,7 +3,7 @@ import { getOperationDate, getOperationMonth } from "@cleanops/shared";
 
 export const pilotAgent = {
   fullName: "Kunle Martins",
-  operatorName: "Next to Godliness Ventures"
+  operatorName: "Demo Waste Co (Fictional)"
 };
 
 export const pilotAgentCustomers: CustomerLedgerItem[] = [

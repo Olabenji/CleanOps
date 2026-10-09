@@ -9,5 +9,9 @@ declare const process: {
     EXPO_PUBLIC_EAS_PROJECT_ID?: string;
     /** Optional Sentry DSN for production error monitoring. */
     EXPO_PUBLIC_SENTRY_DSN?: string;
+    /** Local demo passwords written by `npm run demo:passwords`. Never commit values. */
+    EXPO_PUBLIC_DEMO_DRIVER_PASSWORD?: string;
+    EXPO_PUBLIC_DEMO_AGENT_PASSWORD?: string;
+    EXPO_PUBLIC_DEMO_RESIDENT_PASSWORD?: string;
   };
 };
