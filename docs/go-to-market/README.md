@@ -13,7 +13,7 @@ Investor / operator-facing materials for pitching, training, and technical dilig
 - Accent green `#1A7F45`
 - Soft mint `#D8EEE0` / page bg `#EEF5EF`
 - Ink `#102017`
-- Tagline options: **Next to Godliness.** · **Routes. Collections. Cash. One system.**
+- Tagline options: **Demo Waste Co (Fictional).** · **Routes. Collections. Cash. One system.**
 
 ## Related assets
 
