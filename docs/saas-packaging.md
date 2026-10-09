@@ -74,12 +74,12 @@ Everything in Growth, plus:
 
 ## Local multi-tenant smoke checklist
 
-1. Sign in as `platform@cleanops.local` / `cleanops-platform-password`.
-2. Confirm Next to Godliness and Island Clean appear in Operators.
+1. Sign in as the platform admin from gitignored `.env.demo.local` (see `demo.env.example`; run `npm run demo:passwords` after `db reset`).
+2. Confirm Demo Waste Co (Fictional) and Island Clean appear in Operators.
 3. Onboard a third operator; copy the one-time password.
 4. Sign out; sign in as the new owner — empty/own workspace only.
-5. Sign in as `owner@cleanops.local` — Next to Godliness data only; Island customers/staff absent.
-6. Sign in as `island.owner@cleanops.local` / `cleanops-island-password` — Island brand in sidebar.
+5. Sign in as the Demo Waste Co (Fictional) owner from `.env.demo.local` — that tenant's data only; Island customers/staff absent.
+6. Sign in as the Island owner from `.env.demo.local` — Island brand in sidebar.
 7. From platform console, Suspend Island Clean; Island owner sign-in should fail with suspended message.
 8. Reactivate Island Clean.
 

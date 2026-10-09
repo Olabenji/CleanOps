@@ -35,11 +35,13 @@ npm run dev:mobile      # uses npx expo start -c
 
 Set your machine's LAN IP in `apps/mobile/.env.local` so physical devices can reach local Supabase.
 
-| Role | Demo login |
-|------|------------|
-| Operator (web) | `owner@cleanops.local` / `cleanops-demo-password` |
-| Driver (mobile) | `driver@cleanops.local` / `cleanops-driver-password` |
-| Collection agent (mobile) | `agent@cleanops.local` / `cleanops-agent-password` |
+Local demo accounts are created only by `supabase/seed.sql` (local `supabase start` / `db reset`). Their passwords are not in the repo. After the database is up:
+
+```bash
+npm run demo:passwords
+```
+
+That writes gitignored `.env.demo.local` (see `demo.env.example`) and copies the field-app passwords into `apps/mobile/.env.local`. Sign in with those values. Migrations do not create these users on hosted Supabase.
 
 Copy `.env.example` to `.env` and fill in Supabase, Paystack, Twilio, Termii, and Sentry values before connecting live services.
 

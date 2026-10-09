@@ -103,7 +103,7 @@ Prefer **Android** for this P0 (FCM already linked). iOS needs Apple Developer +
 2. Install on a physical Android phone (not emulator-only for final sign-off).
 3. Connect phone to the same LAN as local Supabase **or** point `.env.local` at hosted Supabase.
 4. Start Metro: `cd apps/mobile && npm run start -- --dev-client`
-5. Open the CleanOps development client; sign in as resident (`resident@cleanops.local` / `cleanops-resident-password` when seeded).
+5. Open the CleanOps development client; sign in as the local resident from `.env.demo.local` (`npm run demo:passwords` after seed).
 6. Grant notification permission when prompted.
 7. Confirm banner: **Push alerts enabled for collection updates.**
 8. SQL / Studio: row in `resident_push_devices` with this customer + Expo token.

@@ -13,7 +13,7 @@ Phase 1 critical path. Agents collect cash in the field; operators reconcile tho
 
 | Capability | Deliverable |
 |------------|-------------|
-| Agent auth | Seed login `agent@cleanops.local`; staff `profile_id` link |
+| Agent auth | Local seed login (see `demo.env.example`); staff `profile_id` link |
 | Customer lookup | Search by name, phone, or address via RPC |
 | Payment entry | Record payment with `agent_cash` (or other channels); auto receipt reference |
 | Receipt | On-screen confirmation + share receipt reference (mobile) |

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { createClient } from "@supabase/supabase-js";
+import { loadDemoAccounts } from "./demo-accounts.mjs";
 
 const supabaseUrl =
   process.env.SUPABASE_URL ??
@@ -12,9 +13,15 @@ const anonKey =
   process.env.ANON_KEY ??
   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ??
   "";
-const email = process.env.RESIDENT_SMOKE_EMAIL ?? "resident@cleanops.local";
-const password =
-  process.env.RESIDENT_SMOKE_PASSWORD ?? "cleanops-resident-password";
+const demoAccounts = await loadDemoAccounts();
+const email = process.env.RESIDENT_SMOKE_EMAIL ?? demoAccounts.resident.email;
+const password = process.env.RESIDENT_SMOKE_PASSWORD ?? demoAccounts.resident.password;
+
+if (!password) {
+  throw new Error(
+    "Set RESIDENT_SMOKE_PASSWORD or run npm run demo:passwords so .env.demo.local exists."
+  );
+}
 
 if (!anonKey) {
   throw new Error(

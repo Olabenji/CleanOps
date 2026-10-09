@@ -39,9 +39,9 @@ CleanOps is a Lagos State waste-collection operations platform for LAWMA PSP ope
 ----------------------------------------
 
 Product name: CleanOps
-Pilot operator flavour (OK to show): Next to Godliness Ventures — Surulere ward, Lagos
+Pilot operator flavour (OK to show): Demo Waste Co (Fictional) — Surulere ward, Lagos
 Tagline options (pick ONE primary; others as alt end-cards):
-  A) “Next to Godliness.” (brand echo — preferred for Lagos PSP audience)
+  A) “Demo Waste Co (Fictional).” (fictional pilot brand — not a real LAWMA operator)
   B) “Run the ward from one command centre.”
   C) “Routes. Collections. Cash. One system.”
 
@@ -144,7 +144,7 @@ VO:
 SCENE 5 — CLOSE / LOCKUP (0:28–0:35)
 Visual: Return to fleet atmosphere + CleanOps wordmark centred. Soft mint gradient hold.
 Primary end line:
-  “Next to Godliness.”
+  “Demo Waste Co (Fictional).”
 Secondary (smaller):
   “Routes. Collections. Cash. One system.”
 CTA (final 2s):
@@ -162,12 +162,12 @@ Beat map:
   0–3s   Brand + fleet atmosphere + wordmark
   3–7s   Problem→solution wipe
   7–11s  Quick triptych: Dashboard / Driver / Agent (use the three UI feature images)
-  11–15s Lockup + “Next to Godliness.” + CTA
+  11–15s Lockup + “Demo Waste Co (Fictional).” + CTA
 
 VO (tight):
   “Stop running the ward on paper.
    CleanOps — routes, collections, cash — one system.
-   Next to Godliness.”
+   Demo Waste Co (Fictional).”
 
 ----------------------------------------
 5. JINGLE / SONIC LOGO BRIEF
@@ -184,7 +184,7 @@ Hook lyrics (singable, repeatable) — choose and polish ONE:
 OPTION 1 (preferred):
   “CleanOps… keep the ward clean,
    routes on time, cash on screen —
-   Next to Godliness.”
+   Demo Waste Co (Fictional).”
 
 OPTION 2:
   “From the truck to the till,
@@ -194,7 +194,7 @@ OPTION 2:
 OPTION 3 (more Pidgin flavour — only if tasteful):
   “No more paper wahala —
    CleanOps dey run am proper.
-   Next to Godliness.”
+   Demo Waste Co (Fictional).”
 
 Arrangement:
   Bar 1–2: motif intro (whistle/kalimba)
@@ -219,13 +219,13 @@ Deliverables for audio:
        complete, skip, log fuel and dumpsite — even when the network dips.
 [0:22] Agents collect door-to-door with searchable ledgers and receipts —
        so day-end cash finally matches the books.
-[0:28] CleanOps. Next to Godliness.
+[0:28] CleanOps. Demo Waste Co (Fictional).
        Routes. Collections. Cash. One system.
 
 Alternate short VO (if music-forward mix):
   “Paper out. Ops in.
    CleanOps — the PSP command centre for Lagos wards.
-   Next to Godliness.”
+   Demo Waste Co (Fictional).”
 
 ----------------------------------------
 7. ON-SCREEN TEXT RULES
@@ -308,7 +308,7 @@ END OF BRIEF — BUILD TO THIS SPEC.
 
 If the tool prefers a short opener before the long brief:
 
-> Create a 30s Lagos PSP waste-ops marketing film + Afro-modern jingle for **CleanOps**, using my attached feature images. Follow the pasted master brief exactly — brand-first, no janitorial positioning, tagline “Next to Godliness.”
+> Create a 30s Lagos PSP waste-ops marketing film + Afro-modern jingle for **CleanOps**, using my attached feature images. Follow the pasted master brief exactly — brand-first, no janitorial positioning, tagline “Demo Waste Co (Fictional).”
 
 ---
 

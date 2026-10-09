@@ -1,18 +1,22 @@
+-- Local demo tenant. Passwords are random here; set them with `npm run demo:passwords`
+-- from the gitignored `.env.demo.local` file (see demo.env.example). Do not commit passwords.
 insert into public.operators (id, name, lawma_reference, primary_contact_phone, slug, status, plan_code, brand_name, timezone, onboarded_at)
 values (
   '00000000-0000-4000-8000-000000000001',
-  'Next to Godliness Ventures',
-  'LAWMA-PSP-SURULERE-007',
+  'Demo Waste Co (Fictional)',
+  'DEMO-FICTIONAL-SURULERE',
   '+2348000000001',
-  'next-to-godliness',
+  'demo-waste-co',
   'active',
   'pro',
-  'Next to Godliness',
+  'Demo Waste Co (Fictional)',
   'Africa/Lagos',
   now()
 )
 on conflict (id) do update
 set
+  name = excluded.name,
+  lawma_reference = excluded.lawma_reference,
   slug = excluded.slug,
   status = excluded.status,
   plan_code = excluded.plan_code,
@@ -51,7 +55,7 @@ values (
   'authenticated',
   'owner@cleanops.local',
   '+2348000000011',
-  crypt('cleanops-demo-password', gen_salt('bf')),
+  crypt(encode(gen_random_bytes(24), 'hex'), gen_salt('bf')),
   now(),
   now(),
   now(),
@@ -123,7 +127,7 @@ values (
   'authenticated',
   'driver@cleanops.local',
   '+2348000000201',
-  crypt('cleanops-driver-password', gen_salt('bf')),
+  crypt(encode(gen_random_bytes(24), 'hex'), gen_salt('bf')),
   now(),
   now(),
   now(),
@@ -195,7 +199,7 @@ values (
   'authenticated',
   'agent@cleanops.local',
   '+2348000000205',
-  crypt('cleanops-agent-password', gen_salt('bf')),
+  crypt(encode(gen_random_bytes(24), 'hex'), gen_salt('bf')),
   now(),
   now(),
   now(),
@@ -450,7 +454,7 @@ values (
   'authenticated',
   'resident@cleanops.local',
   '+2348000000041',
-  crypt('cleanops-resident-password', gen_salt('bf')),
+  crypt(encode(gen_random_bytes(24), 'hex'), gen_salt('bf')),
   now(),
   now(),
   now(),
@@ -614,7 +618,7 @@ values
   )
 on conflict (id) do nothing;
 
--- Platform admin (operator_id null). Local password: cleanops-platform-password
+-- Platform admin (operator_id null). Password is applied from .env.demo.local.
 insert into auth.users (
   id,
   instance_id,
@@ -646,7 +650,7 @@ values (
   'authenticated',
   'platform@cleanops.local',
   '+2348000000091',
-  crypt('cleanops-platform-password', gen_salt('bf')),
+  crypt(encode(gen_random_bytes(24), 'hex'), gen_salt('bf')),
   now(),
   now(),
   now(),
@@ -697,7 +701,7 @@ values (
 )
 on conflict (id) do nothing;
 
--- Second demo tenant for multi-tenant QA. Owner password: cleanops-island-password
+-- Second demo tenant for multi-tenant QA. Owner password comes from .env.demo.local.
 insert into public.operators (id, name, lawma_reference, primary_contact_phone, slug, status, plan_code, brand_name, timezone, onboarded_at)
 values (
   '00000000-0000-4000-8000-000000000002',
@@ -713,6 +717,8 @@ values (
 )
 on conflict (id) do update
 set
+  name = excluded.name,
+  lawma_reference = excluded.lawma_reference,
   slug = excluded.slug,
   status = excluded.status,
   plan_code = excluded.plan_code,
@@ -751,7 +757,7 @@ values (
   'authenticated',
   'island.owner@cleanops.local',
   '+2348000000093',
-  crypt('cleanops-island-password', gen_salt('bf')),
+  crypt(encode(gen_random_bytes(24), 'hex'), gen_salt('bf')),
   now(),
   now(),
   now(),

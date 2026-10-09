@@ -27,6 +27,8 @@ Ready-to-paste brief for generating a CleanOps marketing video + jingle in Gensp
 
 Rebuild: `python docs/marketing/genspark/build_video.py` (needs FFmpeg + Pillow).
 
+The checked-in MP4 end cards say **Demo Waste Co (Fictional).** Jingle WAVs are instrumental. A full Pillow rebuild uses the same line from `build_video.py`.
+
 ## Quick start (Genspark)
 
 1. Upload the five PNGs in `assets/` to Genspark.

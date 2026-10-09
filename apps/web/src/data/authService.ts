@@ -8,7 +8,7 @@ import {
   type PhoneOtpVerifyResult
 } from "@cleanops/shared";
 import { supabase } from "../lib/supabase";
-import { demoCredentials, pilotProfile } from "./pilotWorkflows";
+import { pilotProfile } from "./pilotWorkflows";
 
 export type AuthState = {
   profile: OperatorProfile;
@@ -73,7 +73,7 @@ export async function getCurrentOperatorProfile(): Promise<AuthState | null> {
   return loadProfile(sessionData.session.user.id);
 }
 
-export async function signInOperator(email = demoCredentials.email, password = demoCredentials.password) {
+export async function signInOperator(email: string, password: string) {
   if (!supabase) {
     return {
       profile: pilotProfile,

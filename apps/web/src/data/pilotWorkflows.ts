@@ -18,16 +18,11 @@ import { defaultOperatorBannerConfig, getOperationDate, getOperationMonth } from
 import { pilotDashboard } from "./pilotDashboard";
 import { deriveRouteProgress } from "../lib/routeProgress";
 
-export const demoCredentials = {
-  email: "owner@cleanops.local",
-  password: "cleanops-demo-password"
-};
-
 export const pilotProfile: OperatorProfile = {
   id: "00000000-0000-4000-8000-000000000011",
   operatorId: "00000000-0000-4000-8000-000000000001",
-  operatorName: "Next to Godliness Ventures",
-  brandName: "Next to Godliness",
+  operatorName: "Demo Waste Co (Fictional)",
+  brandName: "Demo Waste Co (Fictional)",
   operatorStatus: "active",
   planCode: "pro",
   timezone: "Africa/Lagos",

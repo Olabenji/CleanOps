@@ -50,7 +50,7 @@ CleanOps is **past demo and into pilot-ready / near production**. Operator web c
 | Role enum | `operator_owner`, `operations_supervisor`, `driver`, `collection_agent`, `resident`, `platform_admin` |
 | Auth helpers | `current_operator_id()`, `current_app_role()` |
 | Shared validation | Zod schemas for routes, payments, attendance, admin, incidents, agent collections, staff login results |
-| Demo credentials | `owner@cleanops.local`, `driver@cleanops.local`, `agent@cleanops.local` (seed); Admin can provision more |
+| Demo credentials | Local seed only. Passwords live in gitignored `.env.demo.local` (`npm run demo:passwords`). Admin can provision more |
 
 **Pending**
 
@@ -471,7 +471,7 @@ Default smoke target: Blue Gate Mini Mart (`…404`) with ₦15,000 (`AMOUNT_KOB
 
 **4. Confirm on operator web**
 
-Sign in as `owner@cleanops.local`, open **Payments**. Within ~20 seconds the Paystack row should appear (or click **Refresh data**). Full-month payments should clear suspension on that customer.
+Sign in as the local operator from `.env.demo.local`, open **Payments**. Within ~20 seconds the Paystack row should appear (or click **Refresh data**). Full-month payments should clear suspension on that customer.
 
 **5. Optional SQL check**
 
@@ -481,10 +481,8 @@ select * from public.payments where idempotency_key like 'paystack:%' order by p
 
 | Role | Credentials |
 |------|-------------|
-| Operator (web) | `owner@cleanops.local` / `cleanops-demo-password` |
-| Driver (mobile) | `driver@cleanops.local` / `cleanops-driver-password` |
-| Collection agent (mobile) | `agent@cleanops.local` / `cleanops-agent-password` |
-| Resident | Admin-provisioned customer login |
+| Operator, driver, agent, resident, platform, island | Local only, in gitignored `.env.demo.local` after `npm run demo:passwords` |
+| Resident (hosted) | Admin-provisioned customer login |
 | Newly onboarded staff | Temp password shown once in Admin credentials modal |
 
 ---

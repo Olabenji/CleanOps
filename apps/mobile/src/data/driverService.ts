@@ -30,9 +30,25 @@ import { pilotDriver, pilotDriverRoute } from "./driverPilot";
 
 const REQUEST_TIMEOUT_MS = 15_000;
 
+function localDemoPassword(value: string | undefined, envName: string) {
+  const password = value?.trim() ?? "";
+  if (!password) {
+    throw new Error(
+      `Local demo password is not configured. Set ${envName} in apps/mobile/.env.local (npm run demo:passwords writes it from .env.demo.local).`
+    );
+  }
+
+  return password;
+}
+
 export const driverCredentials = {
   email: "driver@cleanops.local",
-  password: "cleanops-driver-password"
+  get password() {
+    return localDemoPassword(
+      process.env.EXPO_PUBLIC_DEMO_DRIVER_PASSWORD,
+      "EXPO_PUBLIC_DEMO_DRIVER_PASSWORD"
+    );
+  }
 };
 
 export type DriverSession = {

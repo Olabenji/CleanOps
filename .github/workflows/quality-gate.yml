@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+  actions: write
+
 jobs:
   quality:
     name: Typecheck, tests, and migrations
@@ -43,6 +47,9 @@ jobs:
 
       - name: Start local Supabase
         run: npx supabase start
+
+      - name: Apply local demo passwords
+        run: node scripts/apply-demo-passwords.mjs --export-github-env
 
       - name: Migration list
         run: npx supabase migration list --local

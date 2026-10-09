@@ -156,7 +156,6 @@ import {
   updateStaffMember,
   updateTruck
 } from "./data/operatorWorkflowService";
-import { demoCredentials } from "./data/pilotWorkflows";
 import { filterCustomerLedger } from "./lib/adminFilters";
 import { formatAppError, parseAmountNairaToKobo } from "./lib/errors";
 import { deriveRouteProgress } from "./lib/routeProgress";
@@ -1859,8 +1858,8 @@ function LoginScreen({
   onPhoneOtpSignIn: (phone: string, code: string) => void;
   statusMessage?: string | null;
 }) {
-  const [email, setEmail] = useState(demoCredentials.email);
-  const [password, setPassword] = useState(demoCredentials.password);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [phone, setPhone] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [mode, setMode] = useState<"signIn" | "forgot" | "phone" | "phoneVerify">("signIn");
@@ -2110,9 +2109,9 @@ function LoginScreen({
           Forgot password?
         </button>
         <p className="login-demo-hint">
-          Local demo: {demoCredentials.email} / {demoCredentials.password}. Use a provisioned staff login, or{" "}
-          platform@cleanops.local / cleanops-platform-password for the platform console. Phone OTP demo: driver
-          +2348000000201 (needs Termii or PHONE_OTP_DEV_REVEAL).
+          Local demo passwords are not stored in the app. After resetting local Supabase, run npm run
+          demo:passwords and sign in with the accounts in the gitignored .env.demo.local file. Phone OTP demo
+          uses the seeded driver number +2348000000201 (needs Termii or PHONE_OTP_DEV_REVEAL).
         </p>
       </section>
     </main>
